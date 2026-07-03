@@ -1,0 +1,5 @@
+gogo
+ui/node_modules/
+ui/dist/
+# Keep the placeholder so go:embed doesn't break
+!ui/dist/index.html

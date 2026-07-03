@@ -1,0 +1,37 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Run the gogo server (with embedded UI)
+    cmds:
+      - task: ui:build
+      - go run .
+
+  run:
+    desc: Run the gogo server (skip UI rebuild)
+    cmd: go run .
+
+  build:
+    desc: Build the gogo binary
+    cmds:
+      - task: ui:build
+      - go build -o bin/gogo .
+
+  test:
+    desc: Run Go tests
+    cmd: go test ./...
+
+  ui:dev:
+    desc: Start the Vite dev server
+    dir: ui
+    cmd: npm run dev
+
+  ui:build:
+    desc: Build the UI for production embedding
+    dir: ui
+    cmd: npm run build
+
+  ui:install:
+    desc: Install UI dependencies
+    dir: ui
+    cmd: npm install
