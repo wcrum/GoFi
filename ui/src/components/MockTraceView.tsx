@@ -45,7 +45,7 @@ export function MockTraceView({ result, activeIndex }: Props) {
         <FieldsDump fields={result.parsedFields} />
       </div>
 
-      {result.stages.map((stage, i) => {
+      {(result.stages ?? []).map((stage, i) => {
         const badge = passBadge(stage.pass)
         const active = stepping && activeIndex === i
         return (

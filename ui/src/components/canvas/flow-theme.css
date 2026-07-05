@@ -16,6 +16,7 @@
   --xy-connectionline-stroke-default: rgb(var(--g-accent-main));
   --xy-handle-background-color-default: rgb(var(--g-accent-main));
   --xy-controls-button-background-color-default: rgb(var(--g-primary));
+  --xy-controls-button-background-color-hover-default: rgb(var(--g-secondary));
   --xy-controls-button-border-color-default: var(--g-border-weak);
   --xy-background-pattern-dots-color-default: var(--g-border-medium);
 }

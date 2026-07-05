@@ -11,7 +11,8 @@ import {
   type Edge,
   type NodeMouseHandler,
 } from '@xyflow/react'
-import { Input, Alert } from '@cnak-us/design-system'
+import { Input } from '@cnak-us/design-system'
+import { useToast } from '../Toast'
 import type { ListenerDefinition, StageSpec, TapEvent, TestCase } from '../../types'
 import { createListener, streamListener } from '../../api'
 import { genId } from '../../lib/id'
@@ -79,13 +80,13 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 }
 
 function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
+  const addToast = useToast()
   const seed = useMemo(() => listenerToFlow(initial ?? DEFAULT_LISTENER), [initial])
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(seed.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(seed.edges)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [name, setName] = useState(initial?.name ?? '')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [testCases, setTestCases] = useState<TestCase[]>(initial?.testCases ?? [])
   // Mock panel and NodeInspector share the right-hand rail, so they're
   // mutually exclusive: opening one closes the other.
@@ -219,7 +220,6 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
   )
 
   async function handleCreate() {
-    setError(null)
     setSaving(true)
     try {
       const def = { ...flowToListener(name.trim(), nodes, edges), testCases }
@@ -227,7 +227,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
       const created = await createListener(def)
       onSaved?.(created)
     } catch (e) {
-      setError(String(e))
+      addToast(String(e))
     } finally {
       setSaving(false)
     }
@@ -311,7 +311,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
   const readOnly = mode === 'view'
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-g-canvas">
+    <div className="absolute inset-0 flex flex-col bg-g-canvas">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-g-border-weak bg-g-primary">
         {mode === 'create' ? (
           <>
@@ -353,12 +353,6 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
           Close
         </button>
       </div>
-
-      {error && (
-        <div className="px-4 pt-3">
-          <Alert severity="error">{error}</Alert>
-        </div>
-      )}
 
       <div className="flex-1 flex min-h-0">
         {!readOnly && (

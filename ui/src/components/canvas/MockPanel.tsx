@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Edge } from '@xyflow/react'
-import { PanelHeader, Input, Alert, Spinner, Badge } from '@cnak-us/design-system'
+import { PanelHeader, Input, Spinner, Badge } from '@cnak-us/design-system'
+import { useToast } from '../Toast'
 import { RiPlayLine, RiDeleteBinLine, RiAddLine, RiMagicLine } from 'react-icons/ri'
 import type { SimulateResult, TestCase } from '../../types'
 import { simulateListener } from '../../api'
@@ -47,14 +48,14 @@ function statesForStep(
 
   states['ingress'] = step === 0 ? 'active' : result.parseError ? 'error' : 'pass'
 
-  result.stages.forEach((stage, i) => {
+  ;(result.stages ?? []).forEach((stage, i) => {
     const pos = i + 1
     if (step === pos) states[stage.id] = 'active'
     else if (step > pos) states[stage.id] = stage.pass ? 'pass' : stage.error ? 'error' : 'drop'
     // step < pos: not reached yet — leave unset (cleared on canvas).
   })
 
-  const finalStep = result.stages.length + 1
+  const finalStep = (result.stages ?? []).length + 1
   if (step >= finalStep) {
     if (result.dropped) {
       // Dropped messages only reach a sink if a dead-letter sink is
@@ -84,15 +85,15 @@ function statesForStep(
 }
 
 export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnly, setMockStates, onClose }: Props) {
+  const addToast = useToast()
   const [selectedId, setSelectedId] = useState<string | null>(testCases[0]?.id ?? null)
   const [result, setResult] = useState<SimulateResult | null>(null)
   const [step, setStep] = useState(0)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [autoPlay, setAutoPlay] = useState(false)
 
   const selected = testCases.find((t) => t.id === selectedId) ?? null
-  const totalSteps = result ? result.stages.length + 2 : 0 // parse + stages + final
+  const totalSteps = result ? (result.stages ?? []).length + 2 : 0 // parse + stages + final
 
   const clearHighlights = useCallback(() => setMockStates({}), [setMockStates])
 
@@ -163,14 +164,12 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
   function resetPlayback() {
     setResult(null)
     setStep(0)
-    setError(null)
     setAutoPlay(false)
     clearHighlights()
   }
 
   async function handlePlay() {
     if (!selected) return
-    setError(null)
     setAutoPlay(false)
     setLoading(true)
     try {
@@ -181,7 +180,7 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
       setResult(res)
       setStep(0)
     } catch (e) {
-      setError(String(e))
+      addToast(String(e))
       setResult(null)
     } finally {
       setLoading(false)
@@ -289,8 +288,6 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
             </button>
           </div>
         )}
-
-        {error && <Alert severity="error">{error}</Alert>}
 
         {loading && (
           <div className="flex justify-center">
