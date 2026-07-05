@@ -2,24 +2,32 @@ version: '3'
 
 tasks:
   default:
-    desc: Run the gogo server (with embedded UI)
+    desc: Run the gofi server (with embedded UI)
     cmds:
       - task: ui:build
       - go run .
 
   run:
-    desc: Run the gogo server (skip UI rebuild)
+    desc: Run the gofi server (skip UI rebuild)
     cmd: go run .
 
   build:
-    desc: Build the gogo binary
+    desc: Build the gofi binary
     cmds:
       - task: ui:build
-      - go build -o bin/gogo .
+      - go build -o bin/gofi .
 
   test:
     desc: Run Go tests
     cmd: go test ./...
+
+  docker:build:
+    desc: Build the gofi Docker image
+    cmd: docker build --build-context designsystem=../cnak-design-system -t gofi:local .
+
+  docker:up:
+    desc: Build (if needed) and start gofi via Docker Compose
+    cmd: docker compose up --build -d
 
   ui:dev:
     desc: Start the Vite dev server

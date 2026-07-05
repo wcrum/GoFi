@@ -1,4 +1,4 @@
-gogo
+/bin/gofi
 ui/node_modules/
 ui/dist/
 # Keep the placeholder so go:embed doesn't break

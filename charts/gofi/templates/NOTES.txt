@@ -1,0 +1,13 @@
+GoFi has been installed.
+
+The controller's REST API and embedded UI are exposed by the Service:
+  {{ include "gofi.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+To access the UI locally, run:
+
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "gofi.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+
+Then open http://localhost:{{ .Values.service.port }} in your browser.
+
+Note: replicaCount is fixed at 1 - the controller keeps its reconciliation
+state in memory and is not horizontally scalable yet.

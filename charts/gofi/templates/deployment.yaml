@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gofi.fullname" . }}
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+spec:
+  # replicaCount MUST stay 1 - see comment in values.yaml. The controller
+  # keeps its reconciliation state in memory and is not horizontally
+  # scalable in its current form.
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gofi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "gofi.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "gofi.serviceAccountName" . }}
+      containers:
+        - name: gofi
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # This Deployment runs the controller itself (REST API + embedded
+          # SPA + operator reconciliation loop). It deliberately does NOT set
+          # LISTENER_SPEC - that env var is only injected into Pods spawned
+          # by the Kubernetes operator driver for individual listeners.
+          env:
+            - name: GOFI_DEPLOY_MODE
+              value: "kubernetes"
+            - name: INGRESS_API_ADDR
+              value: ":{{ .Values.service.port }}"
+            # GOFI_IMAGE tells the Kubernetes driver (driver/kube.go) which
+            # image to spawn for each listener Pod. Derived from the same
+            # values as this Deployment's own image so operators never have
+            # to configure it twice / risk drift.
+            - name: GOFI_IMAGE
+              value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

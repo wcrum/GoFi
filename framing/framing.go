@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cnak-us/gogo/spec"
+	"github.com/wcrum/gofi/spec"
 )
 
 // Framer reads one complete frame per call.

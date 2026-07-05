@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cnak-us/gogo/message"
+	"github.com/wcrum/gofi/message"
 )
 
 type xmlParser struct{}

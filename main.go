@@ -8,19 +8,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
-	"github.com/cnak-us/gogo/api"
-	"github.com/cnak-us/gogo/controller"
-	"github.com/cnak-us/gogo/driver"
-	"github.com/cnak-us/gogo/listener"
-	"github.com/cnak-us/gogo/spec"
+	"github.com/wcrum/gofi/api"
+	"github.com/wcrum/gofi/controller"
+	"github.com/wcrum/gofi/deploymode"
+	"github.com/wcrum/gofi/driver"
+	"github.com/wcrum/gofi/listener"
+	"github.com/wcrum/gofi/spec"
+	"github.com/wcrum/gofi/taprelay"
 )
 
 //go:generate sh -c "cd ui && npm run build"
 
 func main() {
-	slog.Info("=== cnak-ingress starting ===")
+	slog.Info("=== gofi starting ===")
 
 	// Listener mode: run a single pipeline defined by the LISTENER_SPEC env var.
 	// This is how Docker/Kubernetes drivers spawn independent listener instances.
@@ -58,6 +61,16 @@ func runListenerMode(raw string) {
 		ln.Run(ctx)
 	}()
 
+	// Expose this listener's tap over the network so the controller (running
+	// as a separate container/Pod under Docker/Kubernetes) can proxy live
+	// SSE traffic to it. See taprelay and driver.TapTarget.
+	relayAddr := envOrDefault("TAP_RELAY_ADDR", ":9091")
+	go func() {
+		if err := taprelay.New(ln.Tap).ListenAndServe(ctx, relayAddr); err != nil {
+			slog.Error("tap relay server error", "name", def.Name, "error", err)
+		}
+	}()
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
@@ -68,7 +81,11 @@ func runListenerMode(raw string) {
 func runControllerMode() {
 	apiAddr := envOrDefault("INGRESS_API_ADDR", ":9090")
 
-	d := driver.NewInProcess()
+	mode := deploymode.Detect()
+	slog.Info("deployment mode detected", "mode", mode)
+
+	d := newDriver(mode)
+	slog.Info("driver selected", "kind", d.Kind())
 	ctrl := controller.New(d)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -85,7 +102,7 @@ func runControllerMode() {
 
 	srv := &http.Server{
 		Addr:    apiAddr,
-		Handler: api.New(ctrl, staticFS),
+		Handler: api.New(ctrl, staticFS, mode),
 	}
 
 	go func() {
@@ -96,7 +113,7 @@ func runControllerMode() {
 		}
 	}()
 
-	slog.Info("=== cnak-ingress ready ===", "api", apiAddr, "ui", apiAddr)
+	slog.Info("=== gofi ready ===", "api", apiAddr, "ui", apiAddr)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -112,4 +129,64 @@ func envOrDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// newDriver selects the runtime driver to use, based on the detected
+// deployment mode unless overridden by GOFI_DRIVER. Note that ModeDocker (a
+// generic "we're in some container but can't tell it's Compose" fallback)
+// intentionally falls through to InProcess, not Docker — we should never
+// assume Docker-socket/network capability we haven't actually confirmed.
+//
+// If a driver's prerequisites are missing, this fails fast (os.Exit(1))
+// rather than silently falling back to InProcess: a deployment that
+// explicitly declares compose/kubernetes should error loudly, not silently
+// run every listener in the controller's own process.
+func newDriver(mode deploymode.Mode) driver.Driver {
+	kind := os.Getenv("GOFI_DRIVER")
+	if kind == "" {
+		switch mode {
+		case deploymode.ModeCompose:
+			kind = "docker"
+		case deploymode.ModeKubernetes:
+			kind = "kubernetes"
+		default:
+			kind = "inprocess"
+		}
+	}
+
+	switch kind {
+	case "docker":
+		d, err := driver.NewDocker(driver.DockerConfig{
+			Image:   os.Getenv("GOFI_IMAGE"),
+			Network: os.Getenv("GOFI_DOCKER_NETWORK"),
+		})
+		if err != nil {
+			slog.Error("docker driver init failed", "error", err)
+			os.Exit(1)
+		}
+		return d
+	case "kubernetes":
+		d, err := driver.NewKube(k8sNamespace(), os.Getenv("GOFI_IMAGE"))
+		if err != nil {
+			slog.Error("kube driver init failed", "error", err)
+			os.Exit(1)
+		}
+		return d
+	default:
+		return driver.NewInProcess()
+	}
+}
+
+// k8sNamespace resolves the namespace the Kubernetes driver should manage
+// Pods in: an explicit GOFI_K8S_NAMESPACE override, or else the namespace
+// the projected serviceaccount token tells us we're running in.
+func k8sNamespace() string {
+	if v := os.Getenv("GOFI_K8S_NAMESPACE"); v != "" {
+		return v
+	}
+	b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }

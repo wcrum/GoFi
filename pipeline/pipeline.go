@@ -1,6 +1,6 @@
-// Package pipeline chains a Framer → Parser → Filter → Sink for one connection.
-// It also maintains a Tap: a broadcast channel subscribers can attach to for
-// live traffic inspection (used by the SSE endpoint in the API).
+// Package pipeline chains a Framer → Parser → Stage chain → Sink(s) for one
+// connection. It also maintains a Tap: a broadcast channel subscribers can
+// attach to for live traffic inspection (used by the SSE endpoint in the API).
 package pipeline
 
 import (
@@ -9,19 +9,22 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/cnak-us/gogo/filter"
-	"github.com/cnak-us/gogo/framing"
-	"github.com/cnak-us/gogo/message"
-	"github.com/cnak-us/gogo/parser"
-	"github.com/cnak-us/gogo/sink"
-	"github.com/cnak-us/gogo/spec"
+	"github.com/google/cel-go/cel"
+
+	"github.com/wcrum/gofi/filter"
+	"github.com/wcrum/gofi/framing"
+	"github.com/wcrum/gofi/message"
+	"github.com/wcrum/gofi/parser"
+	"github.com/wcrum/gofi/sink"
+	"github.com/wcrum/gofi/spec"
 )
 
 // TapEvent is a message observed on the tap. It carries the processed message
-// plus a Dropped flag if the CEL filter rejected it.
+// plus a Dropped flag if a stage in the chain rejected it.
 type TapEvent struct {
-	Msg     *message.Message
-	Dropped bool
+	Msg       *message.Message
+	Dropped   bool
+	DroppedBy string
 }
 
 // Tap is a fan-out broadcast to live UI subscribers. Each subscriber receives
@@ -62,19 +65,34 @@ func (t *Tap) broadcast(ev TapEvent) {
 	}
 }
 
-// Pipeline runs the full processing chain for one connection stream.
-type Pipeline struct {
-	name   string
-	framer framing.Framer
-	parser parser.Parser
-	filter *filter.Filter // nil if no filter configured
-	sink   sink.Sink
-	tap    *Tap
+// sinkTarget pairs a Sink with its optional compiled `when` condition. A nil
+// when means "always send". The pairing between sinks and their SinkCfg.When
+// is by INDEX: sinks[i] corresponds to def.Sinks[i] in New, since both are
+// built from the same def.Sinks slice in the same order (listener.New builds
+// sinks from def.Sinks, and New here zips them back up with def.Sinks[i].When
+// by that same index) — keep this invariant in mind if either slice is ever
+// reordered independently of the other.
+type sinkTarget struct {
+	sink sink.Sink
+	when cel.Program // nil = always send
 }
 
-// New builds a Pipeline from a ListenerDefinition and an already-opened reader.
-// The sink is passed in because it is owned by the listener (shared across connections).
-func New(def spec.ListenerDefinition, r io.Reader, s sink.Sink, tap *Tap) (*Pipeline, error) {
+// Pipeline runs the full processing chain for one connection stream.
+type Pipeline struct {
+	name           string
+	framer         framing.Framer
+	parser         parser.Parser
+	chain          *filter.Chain
+	sinks          []sinkTarget
+	deadLetterSink sink.Sink
+	tap            *Tap
+}
+
+// New builds a Pipeline from a ListenerDefinition and an already-opened
+// reader. sinks, deadLetterSink, and chain are passed in because they are
+// owned by the listener (shared across every connection of that listener) —
+// see listener.New, which builds them exactly once per listener.
+func New(def spec.ListenerDefinition, r io.Reader, sinks []sink.Sink, deadLetterSink sink.Sink, chain *filter.Chain, tap *Tap) (*Pipeline, error) {
 	fr, err := framing.New(def.Framing, r)
 	if err != nil {
 		return nil, err
@@ -83,20 +101,28 @@ func New(def spec.ListenerDefinition, r io.Reader, s sink.Sink, tap *Tap) (*Pipe
 	if err != nil {
 		return nil, err
 	}
-	var f *filter.Filter
-	if def.Filter != nil && def.Filter.Expression != "" {
-		f, err = filter.New(def.Filter.Expression)
-		if err != nil {
-			return nil, err
+
+	targets := make([]sinkTarget, len(sinks))
+	for i, sk := range sinks {
+		st := sinkTarget{sink: sk}
+		if i < len(def.Sinks) && def.Sinks[i].When != "" {
+			prog, err := filter.CompileCEL(def.Sinks[i].When)
+			if err != nil {
+				return nil, err
+			}
+			st.when = prog
 		}
+		targets[i] = st
 	}
+
 	return &Pipeline{
-		name:   def.Name,
-		framer: fr,
-		parser: pr,
-		filter: f,
-		sink:   s,
-		tap:    tap,
+		name:           def.Name,
+		framer:         fr,
+		parser:         pr,
+		chain:          chain,
+		sinks:          targets,
+		deadLetterSink: deadLetterSink,
+		tap:            tap,
 	}, nil
 }
 
@@ -121,21 +147,44 @@ func (p *Pipeline) Run(ctx context.Context, remoteAddr string) {
 			slog.Warn("parse error", "listener", p.name, "error", err)
 		}
 
-		if p.filter != nil {
-			pass, err := p.filter.Pass(msg)
-			if err != nil {
-				slog.Warn("filter eval error", "listener", p.name, "error", err)
+		pass, droppedBy, err := p.chain.Pass(msg)
+		if err != nil {
+			slog.Warn("stage eval error", "listener", p.name, "error", err)
+		}
+		if !pass {
+			p.tap.broadcast(TapEvent{Msg: msg, Dropped: true, DroppedBy: droppedBy})
+			if p.deadLetterSink != nil {
+				msg.Meta["droppedBy"] = droppedBy
+				if err := p.deadLetterSink.Send(msg); err != nil {
+					slog.Warn("dead-letter sink error", "listener", p.name, "error", err)
+				}
 			}
-			if !pass {
-				p.tap.broadcast(TapEvent{Msg: msg, Dropped: true})
-				continue
-			}
+			continue
 		}
 
 		p.tap.broadcast(TapEvent{Msg: msg, Dropped: false})
 
-		if err := p.sink.Send(msg); err != nil {
-			slog.Warn("sink error", "listener", p.name, "error", err)
+		for _, st := range p.sinks {
+			if st.when != nil {
+				ok, err := filter.EvalCELBool(st.when, msg)
+				if err != nil {
+					// Fail CLOSED for routing conditions specifically: an
+					// unevaluable `when` shouldn't silently fan out to a
+					// sink it wasn't meant for — a routing mistake sending
+					// to the WRONG destination is worse than a message
+					// simply not reaching an ambiguous one. This is the
+					// deliberate opposite of the stage chain's fail-open
+					// behavior above.
+					slog.Warn("sink 'when' eval error", "listener", p.name, "error", err)
+					continue
+				}
+				if !ok {
+					continue
+				}
+			}
+			if err := st.sink.Send(msg); err != nil {
+				slog.Warn("sink error", "listener", p.name, "error", err)
+			}
 		}
 	}
 }

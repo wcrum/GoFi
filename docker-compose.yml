@@ -1,0 +1,24 @@
+# The /var/run/docker.sock bind mount below gives GoFi's controller access to
+# the Docker Engine API (Docker or Podman's compatible socket). This is used
+# by the Docker driver (see driver/docker.go) to spawn one sibling container
+# per "listener" definition, running the same image in listener mode. See the
+# Dockerfile for why the image's final stage runs as root to be able to read
+# the socket.
+services:
+  gofi:
+    build:
+      context: .
+      additional_contexts:
+        - designsystem=../cnak-design-system
+    environment:
+      GOFI_DEPLOY_MODE: compose
+    ports:
+      # Host 9091 -> container 9090 (the controller's REST API + embedded UI).
+      # The tap-relay port (container 9091) is intentionally NOT published to
+      # the host: it's only ever reached container-to-container, by the
+      # controller dialing a sibling listener container over the compose
+      # network's embedded DNS (see driver/docker.go's Tap) — never from
+      # outside, so there's nothing for the host to gain by publishing it.
+      - "9091:9090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -1,5 +1,5 @@
 {
-  "name": "gogo-ui",
+  "name": "gofi-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cnak-us/design-system": "file:../../cnak-design-system",
+    "@xyflow/react": "^12.11.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.0.0"

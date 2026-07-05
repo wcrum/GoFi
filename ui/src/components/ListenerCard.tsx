@@ -1,38 +1,55 @@
+import { useEffect, useState } from 'react'
 import { Card, Badge } from '@cnak-us/design-system'
-import { RiDeleteBinLine, RiEyeLine, RiRadarLine } from 'react-icons/ri'
+import { RiDeleteBinLine, RiEyeLine, RiWifiLine, RiNodeTree } from 'react-icons/ri'
 import type { ListenerDefinition } from '../types'
+import { FRAMING_COLOR, PARSER_COLOR, SINK_COLOR, STAGE_KIND_COLOR } from './stageColors'
 
 interface Props {
   def: ListenerDefinition
   onDelete: () => void
   onInspect: () => void
+  onOpenCanvas: () => void
 }
 
-const FRAMING_COLOR: Record<string, 'blue' | 'green' | 'purple' | 'orange' | 'gray'> = {
-  line: 'blue',
-  delimited: 'green',
-  'length-prefix': 'purple',
-  raw: 'orange',
+const MAX_STAGE_BADGES = 3
+
+// Local, self-contained shape of GET /api/listeners/{name}/status — kept
+// inline here rather than in ../types since that file is owned elsewhere.
+interface RuntimeInfo {
+  kind: string
+  id?: string
+  status?: string
+  startedAt?: string
+  node?: string
+  ip?: string
 }
 
-const PARSER_COLOR: Record<string, 'blue' | 'green' | 'gray'> = {
-  xml: 'blue',
-  json: 'green',
-  none: 'gray',
-}
+export function ListenerCard({ def, onDelete, onInspect, onOpenCanvas }: Props) {
+  const stages = def.stages ?? []
+  const sinks = def.sinks ?? []
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
 
-const SINK_COLOR: Record<string, 'blue' | 'green' | 'purple' | 'gray'> = {
-  nats: 'green',
-  http: 'blue',
-  stdout: 'gray',
-}
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/listeners/${encodeURIComponent(def.name)}/status`)
+      .then((res) => (res.ok ? (res.json() as Promise<RuntimeInfo>) : null))
+      .then((info) => {
+        if (!cancelled) setRuntime(info)
+      })
+      .catch(() => {
+        // Listener may not have started yet, or the endpoint may be
+        // unreachable in this deployment mode — silently ignore.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [def.name])
 
-export function ListenerCard({ def, onDelete, onInspect }: Props) {
   return (
     <Card padding="md" className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <RiRadarLine className="text-g-accent-main text-xl shrink-0" />
+          <RiWifiLine className="text-g-accent-main text-xl shrink-0" />
           <div className="min-w-0">
             <div className="font-semibold text-g-text truncate">{def.name}</div>
             <div className="text-sm text-g-text-secondary">
@@ -41,6 +58,13 @@ export function ListenerCard({ def, onDelete, onInspect }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onOpenCanvas}
+            title="View pipeline"
+            className="p-1.5 rounded text-g-text-secondary hover:text-g-accent-main hover:bg-g-hover transition-colors"
+          >
+            <RiNodeTree />
+          </button>
           <button
             onClick={onInspect}
             title="Inspect live traffic"
@@ -66,19 +90,39 @@ export function ListenerCard({ def, onDelete, onInspect }: Props) {
         )}
         <Arrow />
         <Stage label="parse" value={def.parser.format || 'none'} color={PARSER_COLOR[def.parser.format] ?? 'gray'} />
-        {def.filter?.expression && (
+        {stages.length > 0 && (
           <>
             <Arrow />
-            <Stage label="filter" value="CEL" color="yellow" />
-            <span className="text-g-text-secondary font-mono truncate max-w-xs" title={def.filter.expression}>
-              {def.filter.expression}
-            </span>
+            {stages.length > MAX_STAGE_BADGES ? (
+              <Stage label="stages" value={`${stages.length} stages`} color="gray" />
+            ) : (
+              stages.map((s, i) => (
+                <div key={s.id} className="flex items-center gap-2">
+                  {i > 0 && <Arrow />}
+                  <Stage label={s.kind} value={s.type ?? s.kind} color={STAGE_KIND_COLOR[s.kind] ?? 'gray'} />
+                </div>
+              ))
+            )}
           </>
         )}
-        <Arrow />
-        <Stage label="sink" value={def.sink.type} color={SINK_COLOR[def.sink.type] ?? 'gray'} />
-        {def.sink.subject && (
-          <span className="text-g-text-secondary font-mono">{def.sink.subject}</span>
+        {sinks.map((sink, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Arrow />
+            <Stage label="sink" value={sink.type} color={SINK_COLOR[sink.type] ?? 'gray'} />
+            {sink.subject && <span className="text-g-text-secondary font-mono">{sink.subject}</span>}
+          </div>
+        ))}
+        {def.deadLetterSink && (
+          <>
+            <Arrow />
+            <Stage label="dead-letter" value={def.deadLetterSink.type} color="orange" />
+          </>
+        )}
+        {runtime && (
+          <>
+            <Arrow />
+            <Stage label="runtime" value={`${runtime.kind}: ${runtime.status ?? 'unknown'}`} color="gray" />
+          </>
         )}
       </div>
     </Card>

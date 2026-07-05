@@ -4,8 +4,8 @@ package parser
 import (
 	"fmt"
 
-	"github.com/cnak-us/gogo/message"
-	"github.com/cnak-us/gogo/spec"
+	"github.com/wcrum/gofi/message"
+	"github.com/wcrum/gofi/spec"
 )
 
 // Parser decodes a raw frame into the message's Fields map.

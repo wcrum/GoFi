@@ -7,10 +7,10 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
-	"github.com/cnak-us/gogo/driver"
-	"github.com/cnak-us/gogo/listener"
-	"github.com/cnak-us/gogo/spec"
+	"github.com/wcrum/gofi/driver"
+	"github.com/wcrum/gofi/spec"
 )
 
 // Controller holds desired state and drives the runtime driver to match it.
@@ -75,9 +75,23 @@ func (c *Controller) List() []spec.ListenerDefinition {
 	return out
 }
 
-// Tap returns the live traffic tap for a named listener (in-process only).
-func (c *Controller) Tap(name string) *listener.Listener {
-	return c.drv.Tap(name)
+// Tap returns how to reach a named listener's live traffic tap, forwarding
+// to the underlying driver (see driver.TapTarget).
+func (c *Controller) Tap(ctx context.Context, name string) (driver.TapTarget, bool, error) {
+	return c.drv.Tap(ctx, name)
+}
+
+// RuntimeStatus reports the underlying compute (container/Pod) currently
+// backing a named listener, forwarding to the underlying driver (see
+// driver.RuntimeInfo).
+func (c *Controller) RuntimeStatus(ctx context.Context, name string) (driver.RuntimeInfo, bool, error) {
+	return c.drv.RuntimeStatus(ctx, name)
+}
+
+// DriverKind identifies the underlying driver implementation, surfaced via
+// /api/mode's driverKind field.
+func (c *Controller) DriverKind() string {
+	return c.drv.Kind()
 }
 
 func (c *Controller) trigger() {
@@ -87,13 +101,26 @@ func (c *Controller) trigger() {
 	}
 }
 
+// resyncInterval is how often Run re-diffs desired vs. actual state even
+// without an explicit Add/Remove trigger. This is what notices a
+// container/Pod that died on its own (OOM, node reschedule, manual
+// docker kill / kubectl delete) — Create sets RestartPolicy "no"/Never
+// specifically so this loop, not the platform, is what makes crashes
+// visible and recovers from them.
+const resyncInterval = 30 * time.Second
+
 // Run processes reconcile events until ctx is cancelled.
 func (c *Controller) Run(ctx context.Context) {
+	ticker := time.NewTicker(resyncInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-c.reconcileCh:
+			c.sync(ctx)
+		case <-ticker.C:
 			c.sync(ctx)
 		}
 	}

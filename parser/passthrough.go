@@ -1,6 +1,6 @@
 package parser
 
-import "github.com/cnak-us/gogo/message"
+import "github.com/wcrum/gofi/message"
 
 type passthroughParser struct{}
 

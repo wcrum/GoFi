@@ -1,0 +1,55 @@
+# Default values for gofi.
+
+image:
+  repository: ghcr.io/wcrum/gofi
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# IMPORTANT: replicaCount MUST stay at 1.
+# The GoFi controller keeps its reconciliation state (controller.Controller) in
+# memory only. There is no leader election, no shared/external state store, and
+# no work-sharding between replicas today, so running more than one replica
+# will cause multiple controllers to race to create/delete the same listener
+# Pods. Do not scale this deployment horizontally until the controller gains
+# real distributed-state support.
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 9090
+
+serviceAccount:
+  # Whether a ServiceAccount should be created for the controller.
+  create: true
+  # Name of the ServiceAccount to use. If not set and create is true, a name
+  # is generated using the fullname template.
+  name: ""
+
+rbac:
+  # Whether to create the Role/RoleBinding the controller needs to manage
+  # listener Pods in its own namespace (see driver/kube.go).
+  create: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# Extra environment variables to add to the controller container, e.g. to
+# override tuning knobs. GOFI_DEPLOY_MODE is NOT configurable here - the
+# deployment template always sets it to "kubernetes" directly, since this
+# chart only ever runs the controller inside a Kubernetes cluster.
+env: []
+# - name: SOME_EXTRA_VAR
+#   value: "some-value"
+
+podAnnotations: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -4,8 +4,8 @@ package sink
 import (
 	"fmt"
 
-	"github.com/cnak-us/gogo/message"
-	"github.com/cnak-us/gogo/spec"
+	"github.com/wcrum/gofi/message"
+	"github.com/wcrum/gofi/spec"
 )
 
 // Sink receives a processed message.
@@ -21,7 +21,7 @@ func New(cfg spec.SinkCfg, listenerName string) (Sink, error) {
 	case "nats":
 		return newNATS(cfg, listenerName)
 	case "http":
-		return newHTTP(cfg), nil
+		return newHTTP(cfg)
 	case "stdout", "":
 		return &stdoutSink{}, nil
 	default:

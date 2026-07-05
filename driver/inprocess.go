@@ -4,15 +4,17 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
-	"github.com/cnak-us/gogo/listener"
-	"github.com/cnak-us/gogo/spec"
+	"github.com/wcrum/gofi/listener"
+	"github.com/wcrum/gofi/spec"
 )
 
 type entry struct {
-	def    spec.ListenerDefinition
-	ln     *listener.Listener
-	cancel context.CancelFunc
+	def       spec.ListenerDefinition
+	ln        *listener.Listener
+	cancel    context.CancelFunc
+	startedAt time.Time
 }
 
 // InProcess runs each listener as goroutines within the controller process.
@@ -44,7 +46,7 @@ func (d *InProcess) Create(ctx context.Context, def spec.ListenerDefinition) err
 		ln.Run(lctx)
 	}()
 
-	d.running[def.Name] = &entry{def: def, ln: ln, cancel: cancel}
+	d.running[def.Name] = &entry{def: def, ln: ln, cancel: cancel, startedAt: time.Now()}
 	return nil
 }
 
@@ -72,11 +74,27 @@ func (d *InProcess) List(_ context.Context) ([]spec.ListenerDefinition, error) {
 	return out, nil
 }
 
-func (d *InProcess) Tap(name string) *listener.Listener {
+func (d *InProcess) Tap(_ context.Context, name string) (TapTarget, bool, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	if e, ok := d.running[name]; ok {
-		return e.ln
+		return TapTarget{Local: e.ln.Tap}, true, nil
 	}
-	return nil
+	return TapTarget{}, false, nil
 }
+
+// RuntimeStatus reports "running" for any listener present in the map — if
+// it's tracked here at all, its goroutine is running (no separate concept of
+// container/pod IDs, health, or node exists for this driver).
+func (d *InProcess) RuntimeStatus(_ context.Context, name string) (RuntimeInfo, bool, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	e, ok := d.running[name]
+	if !ok {
+		return RuntimeInfo{}, false, nil
+	}
+	return RuntimeInfo{Kind: "inprocess", Status: "running", StartedAt: e.startedAt}, true, nil
+}
+
+// Kind identifies this driver implementation.
+func (d *InProcess) Kind() string { return "inprocess" }

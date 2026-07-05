@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { PanelHeader, Badge } from '@cnak-us/design-system'
+import { PanelHeader, Badge, Spinner, Alert } from '@cnak-us/design-system'
 import { RiCloseLine } from 'react-icons/ri'
-import type { TapEvent } from '../types'
-import { streamListener } from '../api'
+import type { TapEvent, SimulateResult } from '../types'
+import { streamListener, getListener, simulateListener } from '../api'
+import { MockTraceView } from './MockTraceView'
 
 interface Props {
   name: string
@@ -74,7 +75,7 @@ export function ListenerStream({ name, onClose }: Props) {
             </div>
           )}
           {events.map((ev, i) => (
-            <EventRow key={i} ev={ev} />
+            <EventRow key={i} ev={ev} name={name} />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -83,8 +84,32 @@ export function ListenerStream({ name, onClose }: Props) {
   )
 }
 
-function EventRow({ ev }: { ev: TapEvent }) {
+function EventRow({ ev, name }: { ev: TapEvent; name: string }) {
   const [expanded, setExpanded] = useState(false)
+  // Mock-replay state, local to this row so a failed simulate (e.g. a
+  // draft-only listener deleted since capture) never crashes the whole stream.
+  const [simResult, setSimResult] = useState<SimulateResult | null>(null)
+  const [simError, setSimError] = useState<string | null>(null)
+  const [simLoading, setSimLoading] = useState(false)
+
+  // Replay this captured frame through the dry-run endpoint: fetch the
+  // listener's current definition and simulate `ev.raw` against it, so we can
+  // see *why* it landed where it did without it touching a real sink.
+  async function handleReplay(e: React.MouseEvent) {
+    e.stopPropagation()
+    setSimError(null)
+    setSimLoading(true)
+    try {
+      const def = await getListener(name)
+      const result = await simulateListener(def, ev.raw)
+      setSimResult(result)
+    } catch (err) {
+      setSimError(String(err))
+      setSimResult(null)
+    } finally {
+      setSimLoading(false)
+    }
+  }
 
   return (
     <div
@@ -101,11 +126,33 @@ function EventRow({ ev }: { ev: TapEvent }) {
         <span className="truncate text-g-text-secondary">
           {JSON.stringify(ev.fields).slice(0, 120)}
         </span>
+        <button
+          onClick={handleReplay}
+          disabled={simLoading}
+          className="ml-auto shrink-0 text-xs px-2 py-0.5 rounded border border-g-border-weak text-g-text-secondary hover:text-g-text hover:border-g-accent-main/40 transition-colors disabled:opacity-50"
+        >
+          {simLoading ? 'Testing…' : 'Test in Mock'}
+        </button>
       </div>
       {expanded && (
         <pre className="mt-1 text-g-text whitespace-pre-wrap break-all">
           {JSON.stringify({ fields: ev.fields, meta: ev.meta }, null, 2)}
         </pre>
+      )}
+      {simError && (
+        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+          <Alert severity="error">{simError}</Alert>
+        </div>
+      )}
+      {simLoading && (
+        <div className="mt-2 flex justify-center">
+          <Spinner size="16px" />
+        </div>
+      )}
+      {simResult && (
+        <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+          <MockTraceView result={simResult} />
+        </div>
       )}
     </div>
   )

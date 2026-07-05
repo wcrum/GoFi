@@ -1,0 +1,41 @@
+{{- if .Values.rbac.create }}
+# This Role backs the Kubernetes operator driver (driver/kube.go), which
+# creates and deletes one bare Pod per listener definition in this namespace
+# (analogous to how driver/docker.go spawns one sibling container per
+# listener under Docker/Podman). Deliberately bare Pods — no Deployment, no
+# Service, no ConfigMap — so no additional RBAC rules are needed beyond the
+# ones below: a Deployment's own ReplicaSet reconciler would fight GoFi's own
+# controller.sync reconciler over the same object, and a Service adds no
+# value since Pod IPs are already flat-routable cluster-internally and the
+# controller already does a Get per tap request (driver.Kube.Tap). The Role
+# is deliberately namespaced (not a ClusterRole) since the controller should
+# only ever manage Pods in its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "gofi.fullname" . }}
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "gofi.fullname" . }}
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "gofi.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gofi.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

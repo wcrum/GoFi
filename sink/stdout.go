@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/cnak-us/gogo/message"
+	"github.com/wcrum/gofi/message"
 )
 
 type stdoutSink struct{}
