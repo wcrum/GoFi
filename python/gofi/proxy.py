@@ -1,7 +1,7 @@
 """Fixed-target RPC relay for native controllers outside Docker's VM.
 
 The worker stays exclusively on an internal bridge. This relay publishes a
-loopback control port and forwards only its worker's two unary RPC methods.
+loopback control port and forwards only its worker's fixed unary RPC methods.
 It cannot serve as a general HTTP or CONNECT proxy.
 """
 from http.client import HTTPConnection
@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 
 TARGET = os.environ["GOFI_WORKER_TARGET"]
-ALLOWED = {"/gofi.v1.WorkerService/ListFunctions", "/gofi.v1.WorkerService/Invoke", "/gofi.v1.WorkerService/FormatSource", "/gofi.v1.WorkerService/ValidateSource"}
+ALLOWED = {"/gofi.v1.WorkerService/ListFunctions", "/gofi.v1.WorkerService/Invoke", "/gofi.v1.WorkerService/FormatSource", "/gofi.v1.WorkerService/ValidateSource", "/gofi.v1.WorkerService/DescribeEnvironment", "/gofi.v1.WorkerService/Debug"}
 LIMIT = 2 * 1048576
 
 class Handler(BaseHTTPRequestHandler):

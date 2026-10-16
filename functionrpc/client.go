@@ -4,6 +4,8 @@ package functionrpc
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,8 +28,30 @@ type Binding struct {
 }
 type Resolver func(context.Context) (map[string]Binding, error)
 
+// InlineRunner executes an unresolved inline stage (editor simulations of
+// unsaved source) in an isolated worker. It is installed by the controller
+// process; listener runtimes only ever see resolved managed-library refs.
+type InlineRunner func(context.Context, *spec.PythonRef, *gofiv1.WorkerInvokeRequest) (*gofiv1.WorkerInvokeResponse, error)
+
 var resolverMu sync.RWMutex
 var resolve Resolver
+var inlineRunner InlineRunner
+
+// InlineRunTimeout covers starting a scratch worker as well as the call.
+const InlineRunTimeout = 90 * time.Second
+
+// NewInvocationID returns a short random id correlating one invocation's
+// result with its live worker log lines.
+func NewInvocationID() string {
+	var id [8]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(id[:])
+}
+
+func SetInlineRunner(r InlineRunner) { resolverMu.Lock(); inlineRunner = r; resolverMu.Unlock() }
+
 var transport = &http.Transport{Proxy: nil, ResponseHeaderTimeout: 5 * time.Second}
 var client = &http.Client{Transport: transport}
 
@@ -47,24 +71,14 @@ func Bindings(ctx context.Context) (map[string]Binding, error) {
 	}
 	return bindings, nil
 }
-func Environment(ctx context.Context, def spec.ListenerDefinition) (string, error) {
+func Environment(ctx context.Context, def spec.FlowDefinition) (string, error) {
 	bindings, err := Bindings(ctx)
 	if err != nil {
 		return "", err
 	}
-	refs := []*spec.PythonRef{def.Source.Python, def.Parser.Python}
-	for _, s := range def.Stages {
-		refs = append(refs, s.Python)
-	}
-	for _, s := range def.Sinks {
-		refs = append(refs, s.Python)
-	}
-	if def.DeadLetterSink != nil {
-		refs = append(refs, def.DeadLetterSink.Python)
-	}
 	used := map[string]Binding{}
-	for _, ref := range refs {
-		if ref != nil {
+	for _, use := range def.PythonRefs() {
+		if ref := use.Ref; ref.Library != "" {
 			binding, ok := bindings[ref.Library]
 			if !ok {
 				return "", fmt.Errorf("Python library %q is not ready", ref.Library)
@@ -76,24 +90,13 @@ func Environment(ctx context.Context, def spec.ListenerDefinition) (string, erro
 	return string(data), err
 }
 
+// Invoke calls one Python function. A user-code failure is returned as an
+// error (callers fail closed) together with the response, whose captured
+// stdout, duration, and error location remain available for traces.
 func Invoke(ctx context.Context, ref *spec.PythonRef, kind string, msg *message.Message) (*gofiv1.WorkerInvokeResponse, error) {
 	if err := ref.Validate(); err != nil {
 		return nil, err
 	}
-	bindings, err := Bindings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	binding, ok := bindings[ref.Library]
-	if !ok {
-		return nil, fmt.Errorf("Python library %q is not ready", ref.Library)
-	}
-	timeout := binding.TimeoutSeconds
-	if timeout <= 0 || timeout > 30 {
-		timeout = 5
-	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-	defer cancel()
 	fields, err := structpb.NewStruct(msg.Fields)
 	if err != nil {
 		return nil, err
@@ -103,12 +106,65 @@ func Invoke(ctx context.Context, ref *spec.PythonRef, kind string, msg *message.
 		meta[k] = v
 	}
 	metaValue, _ := structpb.NewStruct(meta)
-	req := connect.NewRequest(&gofiv1.WorkerInvokeRequest{Name: ref.Function, Kind: kind, Raw: msg.Raw, Fields: fields, Meta: metaValue})
+	// Each live invocation gets an id so its output can be followed in the
+	// worker's live log stream (WatchWorkerLogs).
+	request := &gofiv1.WorkerInvokeRequest{Name: ref.Function, Kind: kind, Raw: msg.Raw, Fields: fields, Meta: metaValue, InvocationId: NewInvocationID()}
+	if len(ref.Config) > 0 {
+		if request.Config, err = structpb.NewStruct(ref.Config); err != nil {
+			return nil, fmt.Errorf("python.config: %w", err)
+		}
+	}
+	label := ref.Library + "/" + ref.Function
+	var res *gofiv1.WorkerInvokeResponse
+	if ref.Library == "" && ref.InlineSource != "" {
+		resolverMu.RLock()
+		runner := inlineRunner
+		resolverMu.RUnlock()
+		if runner == nil {
+			return nil, fmt.Errorf("inline Python stage %q is not resolved to a managed library", ref.Function)
+		}
+		label = "inline " + ref.Function
+		ctx, cancel := context.WithTimeout(ctx, InlineRunTimeout)
+		defer cancel()
+		res, err = runner(ctx, ref, request)
+	} else {
+		bindings, bindErr := Bindings(ctx)
+		if bindErr != nil {
+			return nil, bindErr
+		}
+		binding, ok := bindings[ref.Library]
+		if !ok {
+			return nil, fmt.Errorf("Python library %q is not ready", ref.Library)
+		}
+		timeout := binding.TimeoutSeconds
+		if timeout <= 0 || timeout > 30 {
+			timeout = 5
+		}
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
+		res, err = Call(ctx, binding, request)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("Python %s %s: %w", kind, label, err)
+	}
+	if res.Error != "" {
+		location := ""
+		if res.ErrorLocation != nil && res.ErrorLocation.Line > 0 {
+			location = fmt.Sprintf(" (line %d)", res.ErrorLocation.Line)
+		}
+		return res, fmt.Errorf("Python %s %s: %s%s", kind, label, res.Error, location)
+	}
+	return res, nil
+}
+
+// Call sends one authenticated Invoke to a worker binding.
+func Call(ctx context.Context, binding Binding, request *gofiv1.WorkerInvokeRequest) (*gofiv1.WorkerInvokeResponse, error) {
+	req := connect.NewRequest(request)
 	req.Header().Set("Authorization", "Bearer "+binding.Token)
 	rpc := gofiv1connect.NewWorkerServiceClient(client, binding.Endpoint, connect.WithReadMaxBytes(2<<20), connect.WithSendMaxBytes(2<<20))
 	res, err := rpc.Invoke(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("Python %s %s/%s: %w", kind, ref.Library, ref.Function, err)
+		return nil, err
 	}
 	return res.Msg, nil
 }

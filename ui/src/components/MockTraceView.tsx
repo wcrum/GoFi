@@ -1,10 +1,12 @@
-import { Alert, Badge } from './primitives'
-import type { BadgeColor } from './primitives'
+import { css, cx } from '@emotion/css'
+import type { GrafanaTheme2 } from '@grafana/data'
+import { Alert, Badge, Stack, Text, useStyles2 } from '@grafana/ui'
 import type { SimulateResult } from '../types'
+import { formatDuration } from './python/RunResultView'
 
 // Presentational renderer for a SimulateResult dry-run trace. No data
-// fetching — both MockPanel (editor, stepping through with Next/Prev) and
-// ListenerStream (live replay, whole trace at once) feed it a result.
+// fetching — MockPanel (editor, stepping through with Next/Prev) and the
+// live traffic view's "Test captured frame" (whole trace) feed it a result.
 //
 // When `activeIndex` is provided, the stage row at that index is highlighted
 // (for the editor's step-through: index -1 = parse step, 0..n-1 = stages).
@@ -15,98 +17,67 @@ interface Props {
   activeIndex?: number
 }
 
-function passBadge(pass: boolean): { text: string; color: BadgeColor } {
-  return pass ? { text: 'pass', color: 'green' } : { text: 'drop', color: 'red' }
-}
-
 export function MockTraceView({ result, activeIndex }: Props) {
+  const styles = useStyles2(getStyles)
   const stepping = activeIndex !== undefined
+  return <Stack direction="column" gap={1}>
+    {result.parseError && <Alert severity="warning" title="Parse error" bottomSpacing={0}>{result.parseError}</Alert>}
 
-  return (
-    <div className="space-y-3 text-xs">
-      {result.parseError && (
-        <Alert severity="warning" title="Parse error">
-          {result.parseError}
-        </Alert>
-      )}
-
-      {/* Parse step: fields snapshot right after parsing, before any stage. */}
-      <div
-        className={`rounded border p-2 ${
-          stepping && activeIndex === -1
-            ? 'border-amber-400 bg-amber-400/10'
-            : 'border-g-border-weak bg-g-primary'
-        }`}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-semibold text-g-text">Parsed</span>
-          <Badge text="ingress" color="gray" />
-        </div>
-        <FieldsDump fields={result.parsedFields} />
-      </div>
-
-      {(result.stages ?? []).map((stage, i) => {
-        const badge = passBadge(stage.pass)
-        const active = stepping && activeIndex === i
-        return (
-          <div
-            key={stage.id}
-            className={`rounded border p-2 ${
-              active ? 'border-amber-400 bg-amber-400/10' : 'border-g-border-weak bg-g-primary'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-semibold text-g-text">{stage.kind}</span>
-              {stage.type && <Badge text={stage.type} color="blue" />}
-              <Badge text={badge.text} color={badge.color} className="ml-auto" />
-            </div>
-            {stage.error && (
-              <div className="text-red-400 font-mono mb-1 break-all">{stage.error}</div>
-            )}
-            <FieldsDump fields={stage.fields} />
-          </div>
-        )
-      })}
-
-      {/* Final outcome. */}
-      {result.dropped ? (
-        <div className="rounded border border-red-900/40 bg-red-950/30 p-2">
-          <div className="flex items-center gap-2">
-            <Badge text="dropped" color="red" />
-            {result.droppedBy && <span className="text-g-text-secondary">by {result.droppedBy}</span>}
-            {result.deadLetter && <Badge text="→ dead-letter sink" color="orange" className="ml-auto" />}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded border border-g-border-weak bg-g-primary p-2">
-          <div className="text-g-text-secondary mb-2">Dry run — nothing was actually sent.</div>
-          <div className="space-y-1">
-            {(result.sinks ?? []).map((s) => (
-              <div key={s.index} className="flex items-center gap-2">
-                <span className="text-g-text">{s.type}</span>
-                <Badge text={s.sent ? 'would send' : 'skipped'} color={s.sent ? 'green' : 'gray'} />
-                {!s.sent && s.reason && (
-                  <span className="text-g-text-secondary font-mono truncate" title={s.reason}>
-                    {s.reason}
-                  </span>
-                )}
-              </div>
-            ))}
-            {(result.sinks ?? []).length === 0 && (
-              <div className="text-g-text-secondary">No sinks matched.</div>
-            )}
-          </div>
-        </div>
-      )}
+    {/* Parse step: fields snapshot right after parsing, before any stage. */}
+    <div className={cx(styles.step, stepping && activeIndex === -1 && styles.active)}>
+      <Stack gap={1} alignItems="center"><Text weight="medium" variant="bodySmall">Parsed</Text><Badge text="ingress" color="darkgrey" /></Stack>
+      <FieldsDump fields={result.parsedFields} />
     </div>
-  )
+
+    {(result.stages ?? []).map((stage, index) => {
+      const duration = stage.durationUs ? Number(stage.durationUs) : 0
+      return <div key={stage.id} className={cx(styles.step, stepping && activeIndex === index && styles.active)}>
+        <div className={styles.stepHeader}>
+          <Stack gap={1} alignItems="center"><Text weight="medium" variant="bodySmall">{stage.kind}</Text>{stage.type && <Badge text={stage.type} color="blue" />}</Stack>
+          <Stack gap={1} alignItems="center">{duration > 0 && <Badge color="darkgrey" icon="clock-nine" text={formatDuration(duration)} />}<Badge text={stage.pass ? 'pass' : 'drop'} color={stage.pass ? 'green' : 'red'} /></Stack>
+        </div>
+        {stage.error && <pre className={styles.error}>{stage.error}</pre>}
+        {stage.stdout && <div className={styles.stdout}><Text variant="bodySmall" color="secondary">stdout</Text><pre className={styles.pre}>{stage.stdout}</pre></div>}
+        <FieldsDump fields={stage.fields} />
+      </div>
+    })}
+
+    {/* Final outcome. */}
+    {result.dropped ? <div className={cx(styles.step, styles.dropped)}>
+      <Stack gap={1} alignItems="center" wrap="wrap">
+        <Badge text="dropped" color="red" />
+        {result.droppedBy && <Text color="secondary" variant="bodySmall">by {result.droppedBy}</Text>}
+        {result.deadLetter && <Badge text="→ dead-letter sink" color="orange" />}
+      </Stack>
+    </div> : <div className={styles.step}>
+      <Text color="secondary" variant="bodySmall">Dry run — nothing was actually sent.</Text>
+      <Stack direction="column" gap={0.5}>
+        {(result.sinks ?? []).map(sink => <Stack key={sink.index} gap={1} alignItems="center">
+          <Text variant="bodySmall">{sink.type}</Text>
+          <Badge text={sink.sent ? 'would send' : 'skipped'} color={sink.sent ? 'green' : 'darkgrey'} />
+          {!sink.sent && sink.reason && <span className={styles.reason} title={sink.reason}>{sink.reason}</span>}
+        </Stack>)}
+        {(result.sinks ?? []).length === 0 && <Text color="secondary" variant="bodySmall">No sinks matched.</Text>}
+      </Stack>
+    </div>}
+  </Stack>
 }
 
-// Matches ListenerStream's EventRow JSON-dump styling for consistency.
 function FieldsDump({ fields }: { fields: Record<string, unknown> }) {
-  return (
-    <pre className="text-g-text-secondary whitespace-pre-wrap break-all font-mono">
-      {JSON.stringify(fields, null, 2)}
-    </pre>
-  )
+  const styles = useStyles2(getStyles)
+  return <pre className={styles.pre}>{JSON.stringify(fields, null, 2)}</pre>
+}
+
+const getStyles = (theme: GrafanaTheme2) => {
+  const mono = { margin: 0, fontFamily: theme.typography.fontFamilyMonospace, fontSize: theme.typography.bodySmall.fontSize, whiteSpace: 'pre-wrap' as const, wordBreak: 'break-all' as const }
+  return {
+    step: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(0.5), padding: theme.spacing(1), border: `1px solid ${theme.colors.border.weak}`, borderRadius: theme.shape.radius.default, background: theme.colors.background.primary }),
+    active: css({ borderColor: theme.colors.warning.border, background: theme.colors.warning.transparent }),
+    dropped: css({ borderColor: theme.colors.error.border, background: theme.colors.error.transparent }),
+    stepHeader: css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing(1) }),
+    pre: css({ ...mono, color: theme.colors.text.secondary }),
+    error: css({ ...mono, color: theme.colors.error.text }),
+    stdout: css({ padding: theme.spacing(0.5, 1), borderLeft: `2px solid ${theme.colors.border.medium}`, background: theme.colors.background.canvas }),
+    reason: css({ ...mono, color: theme.colors.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+  }
 }

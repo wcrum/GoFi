@@ -1,4 +1,4 @@
-import type { ListenerDefinition } from '../types'
+import type { FlowDefinition } from '../types'
 
 // Heuristic sample-data generator for mock mode.
 //
@@ -30,7 +30,7 @@ const FIELD_RE = /fields\[["']([^"']+)["']\]/g
 /** Collect every string on the definition that may contain CEL / field
  * references worth scanning: each stage's expression/valueExpr/keyExpr, each
  * sink's `when`, and (as bare field names) schema stages' requiredFields. */
-function collectExpressions(def: ListenerDefinition): { exprs: string[]; bareFields: string[] } {
+function collectExpressions(def: FlowDefinition): { exprs: string[]; bareFields: string[] } {
   const exprs: string[] = []
   const bareFields: string[] = []
   for (const stage of def.stages ?? []) {
@@ -83,7 +83,7 @@ function placeholderFor(field: string): string {
 /** Scan every CEL-bearing field in `def` and build a plausible placeholder
  * message object, then serialize it per `def.parser.format`. See the module
  * comment for the heuristic and its limits. */
-export function generateSampleRaw(def: ListenerDefinition): string {
+export function generateSampleRaw(def: FlowDefinition): string {
   const { exprs, bareFields } = collectExpressions(def)
   const fields: Record<string, unknown> = {}
 

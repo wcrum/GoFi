@@ -10,6 +10,10 @@ import (
 type stdoutSink struct{}
 
 func (s *stdoutSink) Send(msg *message.Message) error {
+	if msg.Payload != nil {
+		fmt.Println(string(msg.Payload))
+		return nil
+	}
 	out := map[string]interface{}{
 		"fields": msg.Fields,
 		"meta":   msg.Meta,

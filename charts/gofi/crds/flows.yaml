@@ -1,0 +1,277 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flows.gofi.wcrum.dev
+spec:
+  group: gofi.wcrum.dev
+  scope: Namespaced
+  names:
+    plural: flows
+    singular: flow
+    kind: Flow
+    listKind: FlowList
+    shortNames: [gofiflow]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Port
+          type: integer
+          jsonPath: .spec.source.listen.port
+        - name: Network
+          type: string
+          jsonPath: .spec.source.listen.network
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required: [source, framing, parser]
+              properties:
+                source:
+                  type: object
+                  # Exactly one source: listen, fetch, or subscribe (python is
+                  # planned, docs/flows.md). The controller validates fetch and
+                  # subscribe in full.
+                  minProperties: 1
+                  maxProperties: 1
+                  properties:
+                    fetch:
+                      type: object
+                      required: [http]
+                      properties:
+                        http:
+                          type: object
+                          required: [url]
+                          x-kubernetes-preserve-unknown-fields: true
+                          properties:
+                            url:
+                              type: string
+                              maxLength: 2048
+                        split:
+                          type: string
+                          maxLength: 256
+                    subscribe:
+                      type: object
+                      minProperties: 1
+                      maxProperties: 1
+                      properties:
+                        nats:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        mqtt:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        websocket:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        sse:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                    listen:
+                      type: object
+                      required: [port]
+                      properties:
+                        hook: &pythonRef
+                          type: object
+                          # A library function reference, or (stages only) inline
+                          # source whose managed library GoFi derives and fills in.
+                          x-kubernetes-validations:
+                            - rule: "has(self.inlineSource) && size(self.inlineSource) > 0 || (has(self.library) && size(self.library) > 0 && has(self.function) && size(self.function) > 0)"
+                              message: "python requires library and function, or inlineSource"
+                          properties:
+                            library:
+                              type: string
+                              maxLength: 40
+                            function:
+                              type: string
+                              maxLength: 80
+                            inlineSource:
+                              type: string
+                              maxLength: 16384
+                            config:
+                              type: object
+                              x-kubernetes-preserve-unknown-fields: true
+                        port:
+                          type: integer
+                          minimum: 1
+                          maximum: 65535
+                        network:
+                          type: string
+                          enum: [tcp, udp]
+                        service:
+                          type: object
+                          required: [type]
+                          properties:
+                            type:
+                              type: string
+                              enum: [ClusterIP, NodePort, LoadBalancer, Gateway]
+                            port:
+                              type: integer
+                              minimum: 0
+                              maximum: 65535
+                            nodePort:
+                              type: integer
+                              minimum: 0
+                              maximum: 65535
+                            externalTrafficPolicy:
+                              type: string
+                              enum: [Cluster, Local, ""]
+                            annotations:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            loadBalancer:
+                              type: object
+                              properties:
+                                class:
+                                  type: string
+                                addressPool:
+                                  type: string
+                                ip:
+                                  type: string
+                            allowFrom:
+                              type: array
+                              maxItems: 32
+                              items:
+                                type: object
+                                required: [namespace]
+                                properties:
+                                  namespace:
+                                    type: string
+                                  package:
+                                    type: string
+                                  selector:
+                                    type: object
+                                    additionalProperties:
+                                      type: string
+                            gateway:
+                              type: object
+                              required: [namespace, name]
+                              properties:
+                                namespace:
+                                  type: string
+                                name:
+                                  type: string
+                                listener:
+                                  type: string
+                                port:
+                                  type: integer
+                                  minimum: 0
+                                  maximum: 65535
+                          x-kubernetes-validations:
+                            - rule: "!has(self.nodePort) || self.nodePort == 0 || self.type == 'NodePort' || self.type == 'LoadBalancer'"
+                              message: nodePort requires type NodePort or LoadBalancer
+                            - rule: "self.type != 'Gateway' || has(self.gateway)"
+                              message: type Gateway requires gateway
+                framing:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                      enum: [line, delimited, length-prefix, raw, python, ""]
+                    python: *pythonRef
+                    delimiter:
+                      type: string
+                    prefixLen:
+                      type: integer
+                      enum: [0, 2, 4]
+                    maxBytes:
+                      type: integer
+                      minimum: 0
+                parser:
+                  type: object
+                  properties:
+                    python: *pythonRef
+                    format:
+                      type: string
+                      enum: [json, xml, none, python, ""]
+                    # Each step is a built-in name ("base64") or {type, python}.
+                    decoders:
+                      type: array
+                      maxItems: 16
+                      items:
+                        x-kubernetes-preserve-unknown-fields: true
+                    maxDecodedBytes:
+                      type: integer
+                      minimum: 0
+                    errorPolicy:
+                      type: string
+                      enum: [continue, drop, ""]
+                stages:
+                  type: array
+                  # Bounded so the per-item CEL rules fit the API server's cost budget.
+                  maxItems: 128
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                    properties:
+                      python: *pythonRef
+                      # Links the stage's CEL expression to a CelExpression
+                      # library entry; generation 0 follows the latest.
+                      expressionRef: &expressionRef
+                        type: object
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
+                            pattern: '^[a-z][a-z0-9-]{0,62}$'
+                          generation:
+                            type: integer
+                            minimum: 0
+                      onError:
+                        type: string
+                        enum: [pass, drop, ""]
+                sinks:
+                  type: array
+                  maxItems: 32
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                    properties:
+                      type:
+                        type: string
+                        enum: [stdout, http, tcp, udp, nats, aster, zenoh, loki, python, ""]
+                      python: *pythonRef
+                      whenRef: *expressionRef
+                      kubernetes:
+                        type: object
+                        required: [selector, port]
+                        properties:
+                          namespace:
+                            type: string
+                          selector:
+                            type: object
+                            minProperties: 1
+                            additionalProperties:
+                              type: string
+                          port:
+                            type: integer
+                            minimum: 1
+                            maximum: 65535
+                          delivery:
+                            type: string
+                            enum: [all, one, ""]
+                deadLetterSink:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                testCases:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, name, raw]
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      raw:
+                        type: string

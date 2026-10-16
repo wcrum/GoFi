@@ -21,7 +21,7 @@ func (*failedMetricSink) Send(*message.Message) error {
 }
 func (*failedMetricSink) Close() error { return nil }
 func TestPipelineMetricsMeasureFramesDropsAndDispatchCalls(t *testing.T) {
-	def := spec.ListenerDefinition{Name: "pipeline-metrics-test", Framing: spec.Framing{Mode: "line"}, Parser: spec.ParserCfg{Format: "json", ErrorPolicy: "drop"}, Stages: []spec.StageSpec{{ID: "successful", Kind: "filter", Type: "cel", Expression: `fields["status"] < 300`}}, Sinks: []spec.SinkCfg{{Type: "stdout"}, {Type: "http"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"}}
+	def := spec.FlowDefinition{Name: "pipeline-metrics-test", Framing: spec.Framing{Mode: "line"}, Parser: spec.ParserCfg{Format: "json", ErrorPolicy: "drop"}, Stages: []spec.StageSpec{{ID: "successful", Kind: "filter", Type: "cel", Expression: `fields["status"] < 300`}}, Sinks: []spec.SinkCfg{{Type: "stdout"}, {Type: "http"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"}}
 	chain, e := filter.NewChain(def.Stages)
 	if e != nil {
 		t.Fatal(e)

@@ -15,20 +15,22 @@ import (
 
 // ValidateDefinition checks the complete portable resource contract without
 // binding ports, contacting destinations, or reading listener-mounted files.
-func ValidateDefinition(def spec.ListenerDefinition) error {
+func ValidateDefinition(def spec.FlowDefinition) error {
 	if _, err := json.Marshal(def); err != nil {
-		return fmt.Errorf("invalid Listener configuration: %w", err)
+		return fmt.Errorf("invalid flow configuration: %w", err)
 	}
 	if errs := validation.IsDNS1123Subdomain(def.Name); len(errs) != 0 {
 		return fmt.Errorf("name must be a valid Kubernetes resource name: %s", strings.Join(errs, "; "))
 	}
-	if def.Source.Python != nil {
-		if err := def.Source.Python.Validate(); err != nil {
-			return err
+	// Every Python step (framer, decoders, parser, stages, encoders, sinks)
+	// must name a function, or carry inline source where that is allowed.
+	for _, use := range def.PythonRefs() {
+		if err := use.Ref.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", use.Path, err)
 		}
 	}
-	if def.Source.Port == 0 {
-		return fmt.Errorf("source.port is required")
+	if def.Source.Listen != nil && def.Source.Listening().Port == 0 {
+		return fmt.Errorf("source.listen.port is required")
 	}
 	if err := def.Source.Validate(); err != nil {
 		return err
@@ -52,9 +54,15 @@ func ValidateDefinition(def spec.ListenerDefinition) error {
 		if err := sink.Validate(cfg); err != nil {
 			return fmt.Errorf("sink %d: %w", i, err)
 		}
+		if err := cfg.Encoding.Validate(); err != nil {
+			return fmt.Errorf("sink %d: %w", i, err)
+		}
 	}
 	if def.DeadLetterSink != nil {
 		if err := sink.Validate(*def.DeadLetterSink); err != nil {
+			return fmt.Errorf("dead-letter sink: %w", err)
+		}
+		if err := def.DeadLetterSink.Encoding.Validate(); err != nil {
 			return fmt.Errorf("dead-letter sink: %w", err)
 		}
 	}
@@ -62,12 +70,18 @@ func ValidateDefinition(def spec.ListenerDefinition) error {
 }
 
 // Validate also enforces the capabilities of the selected deployment driver.
-func (c *Controller) Validate(def spec.ListenerDefinition) error {
+func (c *Controller) Validate(def spec.FlowDefinition) error {
+	return c.ValidateWith(def, c.library())
+}
+
+// validateResolved validates a definition whose CEL library references have
+// already been resolved to expression text.
+func (c *Controller) validateResolved(def spec.FlowDefinition) error {
 	if err := ValidateDefinition(def); err != nil {
 		return err
 	}
-	if def.Source.Service != nil && c.drv.Kind() != "kubernetes" {
-		return fmt.Errorf("source.service is supported only by the Kubernetes driver; use a host listener port in %s mode", c.drv.Kind())
+	if def.Source.Listening().Service != nil && c.drv.Kind() != "kubernetes" {
+		return fmt.Errorf("source.service is supported only by the Kubernetes driver; use the host port in %s mode", c.drv.Kind())
 	}
 	sinks := append([]spec.SinkCfg(nil), def.Sinks...)
 	if def.DeadLetterSink != nil {
@@ -80,8 +94,10 @@ func (c *Controller) Validate(def spec.ListenerDefinition) error {
 		if c.drv.Kind() != "kubernetes" {
 			return fmt.Errorf("Kubernetes selector targets require the Kubernetes driver")
 		}
-		if scoped, ok := c.drv.(interface{ Namespace() string }); ok && sink.Kubernetes.Namespace != "" && sink.Kubernetes.Namespace != scoped.Namespace() {
-			return fmt.Errorf("Kubernetes targets must use the controller namespace %q", scoped.Namespace())
+		if scoped, ok := c.drv.(interface{ AllowsTargetNamespace(string) error }); ok {
+			if err := scoped.AllowsTargetNamespace(sink.Kubernetes.Namespace); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

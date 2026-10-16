@@ -2,15 +2,16 @@ apiVersion: v1
 kind: List
 items:
   - apiVersion: gofi.wcrum.dev/v1alpha1
-    kind: Listener
+    kind: Flow
     metadata:
       name: real-events
       labels:
         app.kubernetes.io/part-of: gofi-test
     spec:
       source:
-        port: 17000
-        network: tcp
+        listen:
+          network: tcp
+          port: 17000
       framing:
         mode: line
         maxBytes: 1048576

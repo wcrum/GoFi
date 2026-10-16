@@ -24,16 +24,17 @@ def normalize(fields, meta):
 def debug(fields, meta):
     print(json.dumps(fields))
 
-@gofi.port(7000, "tcp")
-def clean_frame(raw: bytes):
-    return raw.removeprefix(b"prefix:")
+@gofi.decoder("clean_frame")
+def clean_frame(data: bytes):
+    return data.removeprefix(b"prefix:")
 ```
 
-`@gofi.listener("name")` and `@gofi.port(port, network)` register listener
-hooks. GoFi owns the TCP/UDP socket and invokes the hook on each framed
-message before the selected parser. Port annotations describe the hook;
-listener resources still declare their actual source port and exposure.
-Background fetchers and autonomous streaming listeners are not enabled.
+One decorator per flow step: `@gofi.framer` (Frame), `@gofi.decoder` (Decode),
+`@gofi.parser` (Parse), `@gofi.transformer` (Stages), `@gofi.encoder` (a sink's
+Encode), and `@gofi.sink`. GoFi owns the TCP/UDP socket; the Flow's `listen`
+source declares the port and exposure. See
+[docs/python.md](../docs/python.md#one-decorator-per-flow-step) for each
+contract.
 
 Parsers receive bytes and return a dictionary. Transformers and sinks receive
 fields and optional metadata dictionaries. A transformer or parser returning

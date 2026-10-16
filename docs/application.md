@@ -1,17 +1,17 @@
 # Work with live traffic
 
-## Sign in and see every listener
+## Sign in and see every flow
 
 For UDS, open `https://gofi.admin.uds.dev` and complete the identity-provider
 login. The portal, management RPCs, and live traffic stream share this protected
 origin. Standalone binary runs default to `http://localhost:9090`; Compose
 publishes `http://localhost:9091`.
 
-The left sidebar contains the primary tools. The all-listeners flow is the main
-perspective: inspect sources, processing stages, and destinations, then select a
-listener to edit its individual pipeline. Live inspection shows parsed fields,
-source metadata, and rejection attribution. The portal uses one ConnectRPC
-`WatchTraffic` stream for the overview, including listeners added after it opens.
+The side menu contains the primary tools. Home shows every flow's topology:
+inspect sources, processing stages, and destinations, then open a flow to edit
+its individual pipeline. Live inspection shows parsed fields, source metadata,
+and rejection attribution. The portal uses one ConnectRPC `WatchTraffic` stream
+for the overview, including flows added after it opens.
 Slow viewers can miss events; the stream is a live view, not a durable audit log.
 
 ## Receive → decode → filter → deliver
@@ -22,16 +22,17 @@ For a local walkthrough, start the receiver in another terminal:
 python3 examples/receiver.py
 ```
 
-Save this as `listeners.yaml` and start GoFi with
-`GOFI_CONFIG_FILE=./listeners.yaml GOFI_DRIVER=inprocess ./bin/gofi`:
+Save this as `flows.yaml` and start GoFi with
+`GOFI_CONFIG_FILE=./flows.yaml GOFI_DRIVER=inprocess ./bin/gofi`:
 
 ```yaml
 apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata:
   name: telemetry
 spec:
-  source: {port: 7000, network: tcp}
+  source:
+    listen: {network: tcp, port: 7000}
   framing: {mode: line}
   parser:
     format: json
@@ -98,8 +99,9 @@ checksum failures, and oversized results become parse errors.
 JSON flattens nested keys into dotted field names. XML extracts supported
 attributes and child text; `format: none` places decoded text in `fields.raw`.
 Built-in decoders preserve the incoming frame bytes: CEL `raw` and a raw sink
-still see those bytes. An explicitly configured Python listener hook or
-transformer can replace the bytes passed to subsequent processing.
+still see those bytes. Python decoders (and built-in codecs) in
+`parser.decoders` transform the bytes passed to the parser; a Python transformer
+can replace them later.
 
 Built-in parsers default to `errorPolicy: continue`, recording `meta.parseError`
 and continuing. Custom Python parsers fail closed by default; explicitly choose
@@ -124,7 +126,7 @@ expression: '"status" in fields && fields["status"] >= 200'
 Regex filters use Go's RE2-compatible syntax. Set `field` to match a parsed string
 or omit it to match the raw frame. Lookbehind and backreferences are unsupported.
 Transforms can set, rename, or remove fields. Schema stages check required fields;
-deduplication and rate limits hold state across connections to the same listener.
+deduplication and rate limits hold state across connections to the same flow.
 
 False filter results reject a message. Built-in runtime evaluation errors follow
 the filter chain's fail-open behavior; use schema and presence checks where
@@ -158,7 +160,7 @@ The optional `namespace` must be the controller's namespace. Empty selectors and
 cross-namespace selectors are rejected. GoFi creates a managed ClusterIP Service
 for the selector; Kubernetes updates its ready Pod membership. Normal sink
 traffic uses Service load balancing. Selector configuration remains in the
-Listener resource, and reconciliation repairs Service routing drift.
+Flow resource, and reconciliation repairs Service routing drift.
 
 Preview resolves the current ready, running matching Pods. Replay sends the
 selected raw bytes once to every resolved Pod, or to one explicit TCP/UDP URL.
@@ -174,26 +176,26 @@ Saved samples and unsaved drafts run through simulation without invoking real
 sinks. It reports parsing, stage decisions, conditional destination selection,
 and dead-letter routing. Stateful stages start fresh for each simulation, so a
 single sample cannot model sustained rate limits or deduplication windows.
-Configured Python parser/listener/transformer functions execute in their isolated
+Configured Python framer, decoder, parser, transformer, and encoder functions execute in their isolated
 worker during simulation; Python sinks are not dispatched.
 
 Use the Python libraries tool to create a Sandbox, save source, and inspect
-worker status. Its registered listener, parser, transformer, and sink functions
-can be selected in the flow editor. See [Python libraries](python.md) for the
+worker status. Its registered framers, decoders, parsers, transformers, encoders, and
+sinks can be selected in the flow editor. See [Python libraries](python.md) for the
 function contract and isolation requirements.
 
 ## Keep configuration declarative
 
-Listener files accept a single resource, `v1/List`, `ListenerList`, or multiple
-YAML documents. Kubernetes metadata such as namespace, labels, and annotations
-is supported; `metadata.name` owns identity, and a conflicting `spec.name` is
+Flow files accept a single `kind: Flow` resource, `v1/List`, `FlowList`, or
+multiple YAML documents. Kubernetes metadata such as namespace, labels, and
+annotations is supported; `metadata.name` owns identity, and a conflicting `spec.name` is
 rejected. Sandbox libraries use a separate single-resource or List file.
 
 Portal edits persist to the selected store. External file and CRD changes reload
-on the 30-second reconcile cycle. The entire Listener snapshot is validated
+on the 30-second reconcile cycle. The entire flow snapshot is validated
 before replacement. Invalid reads retain the last good desired state; missing
 last-good runtimes can recover while destructive changes wait for storage to
-recover. Replacing a listener interrupts existing connections and resets its
+recover. Replacing a flow interrupts its source's existing connections and resets its
 in-memory state.
 
 Choose one configuration authority per resource when using GitOps, since a

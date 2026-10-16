@@ -69,34 +69,6 @@
         }
       }
     },
-    "listeners": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "name",
-          "source",
-          "framing",
-          "parser"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 63,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-          },
-          "source": {
-            "type": "object"
-          },
-          "framing": {
-            "type": "object"
-          },
-          "parser": {
-            "type": "object"
-          }
-        }
-      }
-    },
     "listenerPodTemplate": {
       "type": "object",
       "additionalProperties": false,
@@ -138,6 +110,73 @@
               "name"
             ]
           }
+        }
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "framing",
+          "parser"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 63,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          },
+          "source": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "properties": {
+              "listen": {
+                "type": "object"
+              }
+            }
+          },
+          "framing": {
+            "type": "object"
+          },
+          "parser": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "nodePortRange": {
+      "type": "string",
+      "pattern": "^$|^[0-9]+-[0-9]+$",
+      "description": "NodePort range flow Services may request (min-max); empty means 30000-32767"
+    },
+    "discovery": {
+      "type": "object",
+      "properties": {
+        "clusterWide": {
+          "type": "boolean"
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "manageListeners": {
+          "type": "boolean"
+        }
+      }
+    },
+    "uds": {
+      "type": "object",
+      "properties": {
+        "manageAllows": {
+          "type": "boolean"
+        },
+        "packageBaseConfigMap": {
+          "type": "string"
         }
       }
     }

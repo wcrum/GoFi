@@ -9,11 +9,15 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  # WatchWorkerLogs follows Python worker Pod output.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["gofi.wcrum.dev"]
-    resources: ["listeners", "sandboxes"]
+    resources: ["flows", "sandboxes", "celexpressions"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["secrets"]
@@ -21,6 +25,25 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
     verbs: ["get", "list", "create", "update", "delete"]
+  # Cross-namespace selector destinations: GoFi publishes the target Pods'
+  # addresses as an EndpointSlice behind a selector-less Service.
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "create", "update", "delete"]
+  # Gateway exposure: each flow's TCPRoute/UDPRoute lives in this namespace.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["tcproutes", "udproutes"]
+    verbs: ["get", "list", "create", "update", "delete"]
+  {{- if .Values.uds.manageAllows }}
+  # GoFi keeps one UDS Package (gofi-flows) with the network allows its flows need.
+  - apiGroups: ["uds.dev"]
+    resources: ["packages"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ .Values.uds.packageBaseConfigMap | quote }}]
+    verbs: ["get"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -36,4 +59,85 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "gofi.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+{{- if .Values.discovery.clusterWide }}
+---
+# Read-only discovery for the Cluster page and the exposure and destination
+# pickers. Pods are read for selector destinations and to identify installed
+# components; Pod specs can carry inline env values, so disable this on
+# clusters where that matters (pickers then show this namespace only).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gofi.fullname" . }}-discovery
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "namespaces", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "gatewayclasses", "httproutes", "grpcroutes", "tlsroutes", "tcproutes", "udproutes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.istio.io"]
+    resources: ["gateways", "virtualservices", "serviceentries"]
+    verbs: ["get", "list"]
+  - apiGroups: ["security.istio.io"]
+    resources: ["authorizationpolicies", "peerauthentications"]
+    verbs: ["get", "list"]
+  - apiGroups: ["uds.dev"]
+    resources: ["packages"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metallb.io"]
+    resources: ["ipaddresspools", "l2advertisements"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gofi.fullname" . }}-discovery
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gofi.fullname" . }}-discovery
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gofi.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if .Values.gateway.manageListeners }}
+---
+# Gateway exposure may add a gofi-* listener to a chosen Gateway in another
+# namespace (and remove it when the flow goes away). GoFi only edits
+# listeners whose names start with gofi-.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gofi.fullname" . }}-gateway-listeners
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get", "list", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gofi.fullname" . }}-gateway-listeners
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gofi.fullname" . }}-gateway-listeners
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gofi.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
 {{- end }}

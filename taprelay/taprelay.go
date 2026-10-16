@@ -43,7 +43,7 @@ func (s *Server) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.W
 			if err != nil || converted == nil {
 				continue
 			}
-			if err := stream.Send(&gofiv1.WatchTrafficResponse{Listener: req.Msg.Name, Event: converted}); err != nil {
+			if err := stream.Send(&gofiv1.WatchTrafficResponse{Flow: req.Msg.Name, Event: converted}); err != nil {
 				return err
 			}
 		}

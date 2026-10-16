@@ -86,7 +86,9 @@ func newLoki(cfg spec.SinkCfg, listenerName string) (*lokiSink, error) {
 }
 func (s *lokiSink) Send(msg *message.Message) error {
 	var line string
-	if s.bodyMode == "raw" {
+	if msg.Payload != nil {
+		line = string(msg.Payload)
+	} else if s.bodyMode == "raw" {
 		line = string(msg.Raw)
 	} else {
 		b, e := json.Marshal(map[string]any{"id": msg.ID, "fields": msg.Fields, "meta": msg.Meta})

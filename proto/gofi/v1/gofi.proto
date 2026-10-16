@@ -4,16 +4,17 @@ package gofi.v1;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "gofi/v1/sandbox.proto";
 
 option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
 
 // All GoFi management and live traffic operations use ConnectRPC. Kubernetes
-// Listener resources remain the durable, declarative configuration boundary.
+// Flow resources remain the durable, declarative configuration boundary.
 service GoFiService {
-  rpc ListListeners(ListListenersRequest) returns (ListListenersResponse);
-  rpc GetListener(GetListenerRequest) returns (GetListenerResponse);
-  rpc UpsertListener(UpsertListenerRequest) returns (UpsertListenerResponse);
-  rpc DeleteListener(DeleteListenerRequest) returns (DeleteListenerResponse);
+  rpc ListFlows(ListFlowsRequest) returns (ListFlowsResponse);
+  rpc GetFlow(GetFlowRequest) returns (GetFlowResponse);
+  rpc UpsertFlow(UpsertFlowRequest) returns (UpsertFlowResponse);
+  rpc DeleteFlow(DeleteFlowRequest) returns (DeleteFlowResponse);
   rpc GetRuntimeStatus(GetRuntimeStatusRequest) returns (GetRuntimeStatusResponse);
   rpc ListEndpoints(ListEndpointsRequest) returns (ListEndpointsResponse);
   rpc ResolveTargets(ResolveTargetsRequest) returns (ResolveTargetsResponse);
@@ -21,42 +22,174 @@ service GoFiService {
   rpc GetConfiguration(GetConfigurationRequest) returns (GetConfigurationResponse);
   rpc GetMode(GetModeRequest) returns (GetModeResponse);
   rpc Simulate(SimulateRequest) returns (SimulateResponse);
-  // Empty name watches every configured listener over one connection. The
-  // inventory is refreshed continuously as listeners are added or replaced.
+  // DebugFrame runs a captured frame through the flow (simulation only,
+  // nothing is sent) up to a Python step, then records that step's execution
+  // with the exact input it received there.
+  rpc DebugFrame(DebugFrameRequest) returns (DebugFrameResponse);
+  // Empty name watches every configured flow over one connection. The
+  // inventory is refreshed continuously as flows are added or replaced.
   rpc WatchTraffic(WatchTrafficRequest) returns (stream WatchTrafficResponse);
 }
 
-message Listener {
+// Flow is GoFi's top-level object: where data comes from (source), how
+// frames are decoded and processed, and where messages go.
+message Flow {
   string name = 1;
-  Source source = 2;
+  FlowSource source = 2;
   Framing framing = 3;
   ParserConfig parser = 4;
   repeated Stage stages = 5;
   repeated Sink sinks = 6;
   Sink dead_letter_sink = 7;
   repeated TestCase test_cases = 8;
+  // Removed: legacy Listener compatibility (docs/flows.md).
+  reserved 9;
+  reserved "legacy";
 }
-message Source {
-  int32 port = 1;
-  string network = 2;
+// FlowSource says how data arrives. Exactly one field is set.
+message FlowSource {
+  ListenSource listen = 1;
+  FetchSource fetch = 2;
+  SubscribeSource subscribe = 3;
+  // Planned (docs/flows.md, R4): python @gofi.fetcher / @gofi.streamer.
+  reserved 4;
+  reserved "python";
+}
+// FetchSource: GoFi pulls on an interval.
+message FetchSource {
+  HTTPFetch http = 1;
+  // Optional JSON path ("$.items[*]") splitting one response into one frame
+  // per element.
+  string split = 2;
+}
+message HTTPFetch {
+  string url = 1;
+  string method = 2;
+  map<string, string> headers = 3;
+  HTTPAuth auth = 4;
+  // Go duration strings ("10s"); defaults 30s and 10s.
+  string every = 5;
+  string timeout = 6;
+  // Optional request body (for POST queries).
+  string body = 7;
+}
+// SubscribeSource: GoFi attaches to a stream. Exactly one field is set.
+message SubscribeSource {
+  NATSSubscribe nats = 1;
+  MQTTSubscribe mqtt = 2;
+  StreamSubscribe websocket = 3;
+  StreamSubscribe sse = 4;
+}
+message NATSSubscribe {
+  string url = 1;
+  string subject = 2;
+  string queue = 3;
+  NATSAuth auth = 4;
+}
+message MQTTSubscribe {
+  string url = 1;
+  string topic = 2;
+  int32 qos = 3;
+  string client_id = 4;
+  string username = 5;
+  string password = 6;
+}
+// A WebSocket or Server-Sent Events stream; each message or event is a frame.
+message StreamSubscribe {
+  string url = 1;
+  map<string, string> headers = 2;
+  HTTPAuth auth = 3;
+  // WebSocket only: a text message sent after connecting (e.g. a subscribe request).
+  string send = 4;
+}
+// ListenSource: senders push to a GoFi TCP/UDP port.
+message ListenSource {
+  string network = 1;
+  int32 port = 2;
   ServiceExposure service = 3;
-  PythonRef python = 4;
+  // Removed: the Python ingress hook. Each pipeline step has its own Python
+  // option instead (framer, decoder, parser, transformer, encoder, sink).
+  reserved 4;
+  reserved "hook";
 }
-message PythonRef { string library = 1; string function = 2; }
+// PythonRef names a function in a durable, isolated Python library. Inline
+// stages carry their own source instead: the controller folds every inline
+// source of a flow into one auto-managed library (managed_by "flow:<name>")
+// and fills `library`/`function`; inline source never runs in the controller.
+message PythonRef {
+  string library = 1;
+  string function = 2;
+  string inline_source = 3;
+  // Per-node configuration passed to the function as keyword arguments.
+  google.protobuf.Struct config = 4;
+}
+// ExpressionRef links a stage or sink to a CEL library entry. generation 0
+// follows the latest generation; a positive value pins that generation.
+message ExpressionRef {
+  string name = 1;
+  int64 generation = 2;
+}
 message ServiceExposure {
+  // "ClusterIP" | "NodePort" | "LoadBalancer" | "Gateway"
   string type = 1;
   int32 port = 2;
   int32 node_port = 3;
+  // "Cluster" (default) | "Local" (keeps the sender's source IP).
+  string external_traffic_policy = 4;
+  map<string, string> annotations = 5;
+  LoadBalancerOptions load_balancer = 6;
+  GatewayExposure gateway = 7;
+  // Limit in-cluster senders to these workloads (UDS Packages).
+  repeated PeerRef allow_from = 8;
+}
+message PeerRef {
+  string namespace = 1;
+  string package = 2;
+  map<string, string> selector = 3;
+}
+message LoadBalancerOptions {
+  string class = 1;
+  // MetalLB IPAddressPool.
+  string address_pool = 2;
+  string ip = 3 [json_name = "ip"];
+}
+// Attach the flow to a Gateway API Gateway with a TCPRoute or UDPRoute. An
+// empty listener asks GoFi to add a gofi-<flow> listener on `port`.
+message GatewayExposure {
+  string namespace = 1;
+  string name = 2;
+  string listener = 3;
+  int32 port = 4;
 }
 message Framing {
+  // "line" | "delimited" | "length-prefix" | "raw" (whole connection or
+  // datagram) | "python" (a @gofi.framer function).
   string mode = 1;
   string delimiter = 2;
   int32 prefix_len = 3;
   int32 max_bytes = 4;
+  PythonRef python = 5;
+}
+// CodecStep is one decoding or encoding step: a built-in byte transformation
+// ("base64", "base64url", "hex", "gzip", "zlib", "url") or a Python function
+// (type "python": @gofi.decoder for decoding, @gofi.encoder for encoding).
+message CodecStep {
+  string type = 1;
+  PythonRef python = 2;
+}
+// Encoding turns a message into the bytes a sink sends: a format, then
+// encoders in order. Unset keeps the sink's default payload.
+message Encoding {
+  // "wrapped" (JSON of id, fields, and meta) | "fields" (JSON of fields) |
+  // "raw" (the original frame bytes).
+  string format = 1;
+  repeated CodecStep encoders = 2;
 }
 message ParserConfig {
   string format = 1;
-  repeated string decoders = 2;
+  reserved 2;
+  // Ordered decoding steps applied before parsing.
+  repeated CodecStep decoders = 6;
   int32 max_decoded_bytes = 3;
   string error_policy = 4;
   PythonRef python = 5;
@@ -75,11 +208,18 @@ message Stage {
   string window = 11;
   repeated string required_fields = 12;
   PythonRef python = 13;
+  // Replaces this kind's expression (filter expression, transform value_expr,
+  // dedup key_expr) with a library entry. A literal expression takes precedence.
+  ExpressionRef expression_ref = 14;
+  // CEL evaluation errors: "pass" (default; the message continues) or "drop".
+  string on_error = 15;
 }
 message KubernetesTarget {
  string namespace = 1;
  map<string,string> selector = 2;
  int32 port = 3;
+ // "all" (default): every ready Pod gets each message. "one": load-balanced.
+ string delivery = 4;
 }
 message Sink {
   string type = 1;
@@ -97,6 +237,10 @@ message Sink {
   KubernetesTarget kubernetes = 14;
   PythonRef python = 13;
   map<string,string> labels = 15;
+  // Library-linked sink condition; `when` takes precedence when set.
+  ExpressionRef when_ref = 16;
+  // How the message is serialized and encoded before this sink sends it.
+  Encoding encoding = 17;
 }
 message HTTPAuth {
   string type = 1;
@@ -139,6 +283,8 @@ message RuntimeInfo {
   google.protobuf.Timestamp started_at = 4;
   string node = 5;
   string ip = 6 [json_name = "ip"];
+  // The controller's last failure to start this flow's runtime.
+  string error = 7;
 }
 message Endpoint {
   string name = 1;
@@ -182,6 +328,9 @@ message StageTrace {
   string error = 5;
   string note = 6;
   google.protobuf.Struct fields = 7;
+  // Python stages: captured print/stdout (bounded) and execution time.
+  string stdout = 8;
+  int64 duration_us = 9;
 }
 message SinkOutcome {
   int32 index = 1;
@@ -199,14 +348,14 @@ message SimulateResult {
   repeated SinkOutcome sinks = 7;
 }
 
-message ListListenersRequest {}
-message ListListenersResponse { repeated Listener listeners = 1; }
-message GetListenerRequest { string name = 1; }
-message GetListenerResponse { Listener listener = 1; }
-message UpsertListenerRequest { Listener listener = 1; }
-message UpsertListenerResponse { Listener listener = 1; }
-message DeleteListenerRequest { string name = 1; }
-message DeleteListenerResponse {}
+message ListFlowsRequest {}
+message ListFlowsResponse { repeated Flow flows = 1; }
+message GetFlowRequest { string name = 1; }
+message GetFlowResponse { Flow flow = 1; }
+message UpsertFlowRequest { Flow flow = 1; }
+message UpsertFlowResponse { Flow flow = 1; }
+message DeleteFlowRequest { string name = 1; }
+message DeleteFlowResponse {}
 message GetRuntimeStatusRequest { string name = 1; }
 message GetRuntimeStatusResponse { RuntimeInfo runtime = 1; }
 message ListEndpointsRequest {}
@@ -218,15 +367,18 @@ message GetModeResponse {
   string mode = 1;
   string process_role = 2;
   string driver_kind = 3;
+  // Kubernetes NodePort range accepted for flow Services (GOFI_NODE_PORT_RANGE).
+  int32 node_port_min = 4;
+  int32 node_port_max = 5;
 }
 message SimulateRequest {
-  Listener listener = 1;
+  Flow flow = 1;
   string raw = 2;
 }
 message SimulateResponse { SimulateResult result = 1; }
 message WatchTrafficRequest { string name = 1; }
 message WatchTrafficResponse {
-  string listener = 1;
+  string flow = 1;
   TrafficEvent event = 2;
   bool heartbeat = 3;
 }
@@ -235,7 +387,32 @@ message WatchTrafficResponse {
 message ResolveTargetsRequest { KubernetesTarget target = 1; string network = 2; }
 message ResolveTargetsResponse { repeated Endpoint endpoints = 1; }
 // Replay transmits exactly raw, including any framing bytes, to a direct URL
-// or every ready Pod in a selector. It does not alter Listener resources.
+// or every ready Pod in a selector. It does not alter Flow resources.
 message ReplayRequest { KubernetesTarget target = 1; string network = 2; string url = 3; bytes raw = 4; }
 message ReplayDelivery { Endpoint endpoint = 1; bool sent = 2; string error = 3; }
 message ReplayResponse { repeated ReplayDelivery deliveries = 1; }
+
+message DebugFrameRequest {
+  // A configured flow by name, or an unsaved definition.
+  string flow_name = 1;
+  Flow flow = 2;
+  bytes raw = 3;
+  // The Python step to debug: "framer", "decoder:<index>", "parser", a stage id,
+  // or "sink:<index>". Empty selects the first Python step in the flow.
+  string step = 4;
+  repeated string watches = 5;
+  int32 max_steps = 6;
+}
+message DebugFrameResponse {
+  // The simulation up to and including the debugged step.
+  SimulateResult simulation = 1;
+  // The resolved step and the input it received.
+  string step = 2;
+  PythonRef function = 3;
+  google.protobuf.Struct input_fields = 4;
+  map<string, string> input_meta = 5;
+  bytes input_raw = 6;
+  DebugRecording recording = 7;
+  // Set when the frame never reached the step (dropped earlier, etc.).
+  string not_reached = 8;
+}

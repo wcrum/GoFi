@@ -80,7 +80,9 @@ func newHTTP(cfg spec.SinkCfg) (*httpSink, error) {
 
 func (s *httpSink) Send(msg *message.Message) error {
 	var body []byte
-	if s.bodyMode == "raw" {
+	if msg.Payload != nil {
+		body = msg.Payload
+	} else if s.bodyMode == "raw" {
 		body = msg.Raw
 	} else {
 		payload := map[string]interface{}{

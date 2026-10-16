@@ -14,10 +14,10 @@ import (
 // listener with its currently ready workers. In-process listeners resolve
 // bindings on each call and do not need restarting.
 type PythonBindingsChecker interface {
-	PythonBindingsCurrent(context.Context, spec.ListenerDefinition) (bool, error)
+	PythonBindingsCurrent(context.Context, spec.FlowDefinition) (bool, error)
 }
 
-func (d *Docker) PythonBindingsCurrent(ctx context.Context, def spec.ListenerDefinition) (bool, error) {
+func (d *Docker) PythonBindingsCurrent(ctx context.Context, def spec.FlowDefinition) (bool, error) {
 	expected, err := functionrpc.Environment(ctx, def)
 	if err != nil {
 		return false, err
@@ -27,7 +27,7 @@ func (d *Docker) PythonBindingsCurrent(ctx context.Context, def spec.ListenerDef
 		return false, err
 	}
 	if !d.owns(info, def.Name) {
-		return false, fmt.Errorf("listener runtime is outside this deployment")
+		return false, fmt.Errorf("flow runtime is outside this deployment")
 	}
 	for _, env := range info.Config.Env {
 		if value, ok := strings.CutPrefix(env, "GOFI_PYTHON_BINDINGS="); ok {
@@ -37,7 +37,7 @@ func (d *Docker) PythonBindingsCurrent(ctx context.Context, def spec.ListenerDef
 	return false, nil
 }
 
-func (k *Kube) PythonBindingsCurrent(ctx context.Context, def spec.ListenerDefinition) (bool, error) {
+func (k *Kube) PythonBindingsCurrent(ctx context.Context, def spec.FlowDefinition) (bool, error) {
 	expected, err := functionrpc.Environment(ctx, def)
 	if err != nil {
 		return false, err
@@ -47,7 +47,7 @@ func (k *Kube) PythonBindingsCurrent(ctx context.Context, def spec.ListenerDefin
 		return false, err
 	}
 	if pod.Labels[kubeLabelManaged] != "true" || pod.Labels[kubeLabelListener] != def.Name {
-		return false, fmt.Errorf("listener runtime is outside this deployment")
+		return false, fmt.Errorf("flow runtime is outside this deployment")
 	}
 	for _, container := range pod.Spec.Containers {
 		if container.Name != "gofi-listener" {

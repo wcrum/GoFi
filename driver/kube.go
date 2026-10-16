@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -19,14 +20,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/wcrum/gofi/clusterinfo"
 	"github.com/wcrum/gofi/functionrpc"
 	"github.com/wcrum/gofi/spec"
 )
 
-// Kube creates one bare Pod per ListenerDefinition, plus an optional
+// Kube creates one bare Pod per FlowDefinition, plus an optional
 // ClusterIP or NodePort Service when source.service is configured.
 //
 // Deliberately bare Pods, not Deployment+Service: a Deployment's own
@@ -35,7 +38,7 @@ import (
 // alive, double-managing recreation on crash). Services provide stable DNS
 // and optional NodePort ingress; tap traffic still uses the private Pod IP.
 //
-// The spec is injected directly as a Pod env var (LISTENER_SPEC), not via a
+// The spec is injected directly as a Pod env var (FLOW_SPEC), not via a
 // ConfigMap — a ConfigMap per listener would be one more object for the
 // controller to garbage-collect in lockstep with the Pod, for no benefit
 // over an inline env var.
@@ -44,7 +47,17 @@ type Kube struct {
 	namespace   string
 	image       string
 	podTemplate ListenerPodTemplate
+	// dyn reads and writes CRD-backed objects (Gateway API routes and
+	// listeners, UDS Packages); cluster describes cluster networking.
+	dyn     dynamic.Interface
+	cluster *clusterinfo.Client
+
+	errMu            sync.Mutex
+	networkingErrors map[string]string
 }
+
+// Cluster returns the read-only cluster networking client.
+func (k *Kube) Cluster() *clusterinfo.Client { return k.cluster }
 
 // ListenerPodTemplate adds operator-supplied protocol sidecars and their
 // volumes to each listener Pod. Use per-Pod ephemeral volumes for state;
@@ -53,7 +66,7 @@ type ListenerPodTemplate struct {
 	Containers   []corev1.Container   `json:"containers,omitempty"`
 	Volumes      []corev1.Volume      `json:"volumes,omitempty"`
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"` // mounted into the main GoFi listener
-	Env          []corev1.EnvVar      `json:"env,omitempty"`          // added to the main listener, never overrides LISTENER_SPEC
+	Env          []corev1.EnvVar      `json:"env,omitempty"`          // added to the main listener, never overrides FLOW_SPEC
 }
 
 func parseListenerPodTemplate(raw string) (ListenerPodTemplate, error) {
@@ -84,7 +97,7 @@ func parseListenerPodTemplate(raw string) (ListenerPodTemplate, error) {
 		names[v.Name] = true
 	}
 	for _, e := range template.Env {
-		if e.Name == "LISTENER_SPEC" || e.Name == "GOFI_K8S_NAMESPACE" || e.Name == "GOFI_PYTHON_BINDINGS" {
+		if e.Name == spec.FlowSpecEnv || e.Name == "GOFI_K8S_NAMESPACE" || e.Name == "GOFI_PYTHON_BINDINGS" {
 			return template, fmt.Errorf("GOFI_LISTENER_POD_TEMPLATE: %s is reserved", e.Name)
 		}
 	}
@@ -130,7 +143,15 @@ func NewKube(namespace, image string) (*Kube, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kube driver: clientset: %w", err)
 	}
-	return &Kube{cs: cs, namespace: namespace, image: image, podTemplate: template}, nil
+	dyn, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kube driver: dynamic client: %w", err)
+	}
+	cluster := clusterinfo.New(cs, dyn, clusterinfo.Options{Namespace: namespace, NodePortMin: spec.MinNodePort, NodePortMax: spec.MaxNodePort,
+		ClusterWide:            envBool("GOFI_CLUSTER_DISCOVERY", true),
+		ManageGatewayListeners: envBool("GOFI_MANAGE_GATEWAY_LISTENERS", false),
+		ManageUDSAllows:        envBool("GOFI_MANAGE_UDS_ALLOWS", false)})
+	return &Kube{cs: cs, namespace: namespace, image: image, podTemplate: template, dyn: dyn, cluster: cluster}, nil
 }
 
 // podName derives a stable, valid Pod name for a listener.
@@ -144,7 +165,7 @@ func podName(name string) string {
 }
 
 // Create starts a new bare Pod running the given listener definition.
-func (k *Kube) Create(ctx context.Context, def spec.ListenerDefinition) error {
+func (k *Kube) Create(ctx context.Context, def spec.FlowDefinition) error {
 	if err := def.Source.Validate(); err != nil {
 		return err
 	}
@@ -182,13 +203,15 @@ func (k *Kube) Create(ctx context.Context, def spec.ListenerDefinition) error {
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
-					Name:            "gofi-listener",
-					Ports:           []corev1.ContainerPort{{Name: "metrics", ContainerPort: 9091, Protocol: corev1.ProtocolTCP}},
-					Image:           k.image,
+					Name:  "gofi-listener",
+					Ports: []corev1.ContainerPort{{Name: "metrics", ContainerPort: 9091, Protocol: corev1.ProtocolTCP}},
+					Image: k.image,
+					// Empty keeps the Kubernetes default; dev installs reusing one tag set Always.
+					ImagePullPolicy: corev1.PullPolicy(os.Getenv("GOFI_IMAGE_PULL_POLICY")),
 					SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: boolPtr(false), ReadOnlyRootFilesystem: boolPtr(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
 					Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m"), corev1.ResourceMemory: resource.MustParse("64Mi")}, Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("512Mi")}},
 					Env: []corev1.EnvVar{
-						{Name: "LISTENER_SPEC", Value: string(raw)},
+						{Name: spec.FlowSpecEnv, Value: string(raw)},
 						{Name: "GOFI_K8S_NAMESPACE", Value: k.namespace},
 					},
 				},
@@ -253,6 +276,9 @@ func (k *Kube) Delete(ctx context.Context, name string) error {
 	if err := k.deleteTargetServices(ctx, name); err != nil {
 		return err
 	}
+	if err := k.deleteGatewayRoute(ctx, name); err != nil {
+		return err
+	}
 	if err := k.deleteService(ctx, name); err != nil {
 		return err
 	}
@@ -284,8 +310,8 @@ func (k *Kube) Delete(ctx context.Context, name string) error {
 }
 
 // List returns the definitions of all gofi-managed Pods that are Pending or
-// Running, decoded back from each Pod's LISTENER_SPEC env var.
-func (k *Kube) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
+// Running, decoded back from each Pod's FLOW_SPEC env var.
+func (k *Kube) List(ctx context.Context) ([]spec.FlowDefinition, error) {
 	list, err := k.cs.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: kubeLabelManaged + "=true",
 	})
@@ -293,44 +319,45 @@ func (k *Kube) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 		return nil, fmt.Errorf("kube driver: list pods: %w", err)
 	}
 
-	out := make([]spec.ListenerDefinition, 0, len(list.Items))
+	out := make([]spec.FlowDefinition, 0, len(list.Items))
 	for _, pod := range list.Items {
 		if pod.Status.Phase != corev1.PodPending && pod.Status.Phase != corev1.PodRunning {
 			continue
 		}
 		def, ok := decodePodListenerSpec(&pod)
 		if !ok {
-			slog.Warn("kube driver: managed pod missing/invalid LISTENER_SPEC, skipping", "pod", pod.Name)
+			slog.Warn("kube driver: managed pod missing/invalid flow spec, skipping", "pod", pod.Name)
 			continue
 		}
-		if err := k.reconcileService(ctx, def, &pod); err != nil {
-			return nil, err
+		// A Service, route, or destination problem belongs to this flow: it is
+		// reported on the flow, and the rest keep reconciling.
+		err := k.reconcileService(ctx, def, &pod)
+		if err == nil {
+			err = k.reconcileTargetServices(ctx, def, &pod)
 		}
-		if err := k.reconcileTargetServices(ctx, def, &pod); err != nil {
-			return nil, err
-		}
+		k.recordNetworking(def.Name, err)
 		out = append(out, def)
 	}
 	return out, nil
 }
 
-// decodePodListenerSpec extracts and decodes the LISTENER_SPEC env var from
+// decodePodListenerSpec extracts and decodes the flow spec env var from
 // a Pod's first container.
-func decodePodListenerSpec(pod *corev1.Pod) (spec.ListenerDefinition, bool) {
+func decodePodListenerSpec(pod *corev1.Pod) (spec.FlowDefinition, bool) {
 	if len(pod.Spec.Containers) == 0 {
-		return spec.ListenerDefinition{}, false
+		return spec.FlowDefinition{}, false
 	}
 	for _, e := range pod.Spec.Containers[0].Env {
-		if e.Name != "LISTENER_SPEC" {
+		if e.Name != spec.FlowSpecEnv {
 			continue
 		}
-		var def spec.ListenerDefinition
+		var def spec.FlowDefinition
 		if err := json.Unmarshal([]byte(e.Value), &def); err != nil {
-			return spec.ListenerDefinition{}, false
+			return spec.FlowDefinition{}, false
 		}
 		return def, true
 	}
-	return spec.ListenerDefinition{}, false
+	return spec.FlowDefinition{}, false
 }
 
 // Tap returns the listener Pod's IP as the tap relay address, if the Pod is
@@ -370,7 +397,34 @@ func (k *Kube) RuntimeStatus(ctx context.Context, name string) (RuntimeInfo, boo
 	if pod.Status.StartTime != nil {
 		out.StartedAt = pod.Status.StartTime.Time
 	}
+	out.Error = k.networkingError(name)
 	return out, true, nil
+}
+
+// recordNetworking keeps the last exposure/destination error of a flow.
+func (k *Kube) recordNetworking(name string, err error) {
+	k.errMu.Lock()
+	defer k.errMu.Unlock()
+	if err == nil {
+		delete(k.networkingErrors, name)
+		return
+	}
+	if k.networkingErrors == nil {
+		k.networkingErrors = map[string]string{}
+	}
+	if k.networkingErrors[name] != err.Error() {
+		slog.Warn("kube driver: flow networking failed", "name", name, "error", err)
+	}
+	k.networkingErrors[name] = err.Error()
+}
+
+func (k *Kube) networkingError(name string) string {
+	k.errMu.Lock()
+	defer k.errMu.Unlock()
+	if message := k.networkingErrors[name]; message != "" {
+		return "Networking: " + message
+	}
+	return ""
 }
 
 // Kind identifies this driver implementation.
@@ -399,17 +453,20 @@ func (k *Kube) deleteService(ctx context.Context, name string) error {
 	return err
 }
 
-func (k *Kube) reconcileService(ctx context.Context, def spec.ListenerDefinition, pod *corev1.Pod) error {
-	if def.Source.Service == nil {
+func (k *Kube) reconcileService(ctx context.Context, def spec.FlowDefinition, pod *corev1.Pod) error {
+	if def.Source.Listening().Service == nil {
+		if err := k.deleteGatewayRoute(ctx, def.Name); err != nil {
+			return err
+		}
 		return k.deleteService(ctx, def.Name)
 	}
-	cfg := def.Source.Service
+	cfg := def.Source.Listening().Service
 	port := cfg.Port
 	if port == 0 {
-		port = def.Source.Port
+		port = def.Source.Listening().Port
 	}
 	protocol := corev1.ProtocolTCP
-	if def.Source.Network == "udp" {
+	if def.Source.Listening().Network == "udp" {
 		protocol = corev1.ProtocolUDP
 	}
 	desired := &corev1.Service{
@@ -418,13 +475,16 @@ func (k *Kube) reconcileService(ctx context.Context, def spec.ListenerDefinition
 			OwnerReferences: []metav1.OwnerReference{{APIVersion: "v1", Kind: "Pod", Name: pod.Name, UID: pod.UID}}},
 		Spec: corev1.ServiceSpec{Type: corev1.ServiceType(cfg.Type),
 			Selector: map[string]string{kubeLabelManaged: "true", kubeLabelListener: def.Name},
-			Ports:    []corev1.ServicePort{{Name: "data", Protocol: protocol, Port: int32(port), TargetPort: intstr.FromInt(def.Source.Port), NodePort: int32(cfg.NodePort)}}},
+			Ports:    []corev1.ServicePort{{Name: "data", Protocol: protocol, Port: int32(port), TargetPort: intstr.FromInt(def.Source.Listening().Port), NodePort: int32(cfg.NodePort)}}},
 	}
+	applyExposure(desired, cfg)
 	services := k.cs.CoreV1().Services(k.namespace)
 	current, err := services.Get(ctx, desired.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		_, err = services.Create(ctx, desired, metav1.CreateOptions{})
-		return err
+		if _, err = services.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			return err
+		}
+		return k.reconcileGatewayRoute(ctx, def, pod)
 	}
 	if err != nil {
 		return err
@@ -432,7 +492,7 @@ func (k *Kube) reconcileService(ctx context.Context, def spec.ListenerDefinition
 	if current.Labels[kubeLabelManaged] != "true" || current.Labels[kubeLabelListener] != def.Name {
 		return fmt.Errorf("kube driver: service %q already exists and is unmanaged", desired.Name)
 	}
-	if cfg.Type == "NodePort" && cfg.NodePort == 0 && len(current.Spec.Ports) == 1 {
+	if cfg.Type != "ClusterIP" && cfg.NodePort == 0 && len(current.Spec.Ports) == 1 {
 		desired.Spec.Ports[0].NodePort = current.Spec.Ports[0].NodePort
 	}
 	// Preserve allocated IPs and admission/defaulted fields while restoring
@@ -441,8 +501,11 @@ func (k *Kube) reconcileService(ctx context.Context, def spec.ListenerDefinition
 	current.Spec.Selector = desired.Spec.Selector
 	current.Spec.Ports = desired.Spec.Ports
 	current.OwnerReferences = desired.OwnerReferences
-	_, err = services.Update(ctx, current, metav1.UpdateOptions{})
-	return err
+	updateExposure(current, desired)
+	if _, err = services.Update(ctx, current, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	return k.reconcileGatewayRoute(ctx, def, pod)
 }
 
 func (k *Kube) Endpoints(ctx context.Context) ([]Endpoint, error) {

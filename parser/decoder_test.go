@@ -48,7 +48,7 @@ func TestDecodersParseAndPreserveOriginalFrame(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := New(spec.ParserCfg{Format: "json", Decoders: []string{tc.name}})
+			p, err := New(spec.ParserCfg{Format: "json", Decoders: []spec.CodecStep{{Type: tc.name}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +71,7 @@ func TestDecoderChainOrderAndPassthrough(t *testing.T) {
 	payload := []byte("text with a plus + and newline\n")
 	compressed := compressForTest(t, payload, true)
 	raw := []byte(base64.StdEncoding.EncodeToString(compressed))
-	p, err := New(spec.ParserCfg{Format: "none", Decoders: []string{"base64", "gzip"}})
+	p, err := New(spec.ParserCfg{Format: "none", Decoders: []spec.CodecStep{{Type: "base64"}, {Type: "gzip"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestDecoderChainOrderAndPassthrough(t *testing.T) {
 	if msg.Fields["raw"] != string(payload) || !bytes.Equal(msg.Raw, raw) {
 		t.Fatalf("unexpected decoded message: %#v", msg)
 	}
-	p, err = New(spec.ParserCfg{Format: "none", Decoders: []string{"gzip", "base64"}})
+	p, err = New(spec.ParserCfg{Format: "none", Decoders: []spec.CodecStep{{Type: "gzip"}, {Type: "base64"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestDecoderChainOrderAndPassthrough(t *testing.T) {
 
 func TestDecodersRejectInvalidConfiguration(t *testing.T) {
 	for _, cfg := range []spec.ParserCfg{
-		{Decoders: []string{"unknown"}},
+		{Decoders: []spec.CodecStep{{Type: "unknown"}}},
 		{MaxDecodedBytes: -1},
 		{ErrorPolicy: "typo"},
 	} {
@@ -121,7 +121,7 @@ func TestDecodersRejectMalformedOrOversizedOutput(t *testing.T) {
 		{"url", []byte(strings.Repeat("%78", 65))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := New(spec.ParserCfg{Decoders: []string{tc.name}, MaxDecodedBytes: 64})
+			p, err := New(spec.ParserCfg{Decoders: []spec.CodecStep{{Type: tc.name}}, MaxDecodedBytes: 64})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,7 +139,7 @@ func TestDecodersRejectMalformedOrOversizedOutput(t *testing.T) {
 func TestDecoderExactLimitAndChecksum(t *testing.T) {
 	payload := []byte(strings.Repeat("x", 64))
 	raw := compressForTest(t, payload, true)
-	p, err := New(spec.ParserCfg{Decoders: []string{"gzip"}, MaxDecodedBytes: 64})
+	p, err := New(spec.ParserCfg{Decoders: []spec.CodecStep{{Type: "gzip"}}, MaxDecodedBytes: 64})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,5 +149,28 @@ func TestDecoderExactLimitAndChecksum(t *testing.T) {
 	raw[len(raw)-8] ^= 0xff // corrupt the checksum, preserving the gzip header
 	if err := p.Parse(message.New(raw, "test", "test")); err == nil {
 		t.Fatal("expected gzip checksum error")
+	}
+}
+
+// A parser that replaces the fields map must still deliver its result when
+// decoders run first (the Python parser does this).
+type replacingParser struct{}
+
+func (replacingParser) Parse(msg *message.Message) error {
+	msg.Fields = map[string]any{"decoded": string(msg.Raw)}
+	return nil
+}
+
+func TestDecodedParserResultReachesTheMessage(t *testing.T) {
+	p, err := withDecoders(replacingParser{}, spec.ParserCfg{Decoders: []spec.CodecStep{{Type: "base64"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := message.New([]byte("aGVsbG8="), "test", "local")
+	if err := p.Parse(msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Fields["decoded"] != "hello" || string(msg.Raw) != "aGVsbG8=" {
+		t.Fatalf("fields %v raw %q", msg.Fields, msg.Raw)
 	}
 }

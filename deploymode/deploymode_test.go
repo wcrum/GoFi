@@ -37,7 +37,7 @@ func TestDetect(t *testing.T) {
 		{
 			name: "explicit override wins over k8s auto-detect",
 			env: map[string]string{
-				"GOFI_DEPLOY_MODE":         "binary",
+				"GOFI_DEPLOY_MODE":        "binary",
 				"KUBERNETES_SERVICE_HOST": "10.0.0.1",
 			},
 			want: ModeBinary,
@@ -45,7 +45,7 @@ func TestDetect(t *testing.T) {
 		{
 			name: "invalid override falls through to auto-detect",
 			env: map[string]string{
-				"GOFI_DEPLOY_MODE":         "nonsense",
+				"GOFI_DEPLOY_MODE":        "nonsense",
 				"KUBERNETES_SERVICE_HOST": "10.0.0.1",
 			},
 			want: ModeKubernetes,

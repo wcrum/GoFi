@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -20,6 +19,9 @@ type StageTrace struct {
 	Error  string                 `json:"error,omitempty"`
 	Note   string                 `json:"note,omitempty"`
 	Fields map[string]interface{} `json:"fields"` // snapshot of msg.Fields AFTER this stage ran
+	// Python stages: captured print output and execution time.
+	Stdout     string `json:"stdout,omitempty"`
+	DurationUs int64  `json:"durationUs,omitempty"`
 }
 
 // SinkOutcome reports whether a sink WOULD have received the message.
@@ -33,7 +35,7 @@ type SinkOutcome struct {
 }
 
 // SimulateResult is the full trace of one dry-run message through a
-// ListenerDefinition's parser + stage chain (+ sink `when` evaluation).
+// FlowDefinition's parser + stage chain (+ sink `when` evaluation).
 type SimulateResult struct {
 	ParseError   string                 `json:"parseError,omitempty"`
 	ParsedFields map[string]interface{} `json:"parsedFields"`
@@ -52,33 +54,64 @@ type SimulateResult struct {
 // live listener's chain — each simulation starts clean, which is correct
 // for independent test-case playback (a test case shouldn't be affected by
 // how many times it, or another test case, was played before).
-func Simulate(def spec.ListenerDefinition, raw []byte) (*SimulateResult, error) {
+func Simulate(def spec.FlowDefinition, raw []byte) (*SimulateResult, error) {
+	result, _, err := simulate(def, raw, "")
+	return result, err
+}
+
+// simulate runs the dry run; with a non-empty stop (a resolved DebugStep) it
+// halts just before that Python step and returns the exact input it would
+// receive. A nil target with a nil error means the frame never reached it.
+func simulate(def spec.FlowDefinition, raw []byte, stop string) (*SimulateResult, *DebugTarget, error) {
+	// Inline stages always run the source being simulated (possibly unsaved),
+	// never a managed library that may still hold the previous version.
+	def.Stages = append([]spec.StageSpec(nil), def.Stages...)
+	for i := range def.Stages {
+		if ref := def.Stages[i].Python; ref != nil && ref.InlineSource != "" {
+			copied := *ref
+			def.Stages[i].Python = &copied
+		}
+	}
+	def.UnresolveInlinePython()
 	// Validate the chain up front (dup/empty IDs, unknown kinds, bad CEL)
 	// via filter.NewChain — the built Chain itself is discarded; we drive
 	// stages individually below via filter.New for per-stage tracing, since
 	// Chain's internals are unexported.
 	if _, err := filter.NewChain(def.Stages); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	pr, err := parser.New(def.Parser)
 	if err != nil {
-		return nil, fmt.Errorf("simulate: parser: %w", err)
+		return nil, nil, fmt.Errorf("simulate: parser: %w", err)
 	}
 
 	msg := message.New(raw, def.Name, "mock")
 	result := &SimulateResult{}
-	if drop, hookErr := applySourceHook(context.Background(), def.Source.Python, msg); drop || hookErr != nil {
-		result.Dropped = true
-		result.DroppedBy = "listener"
-		msg.Meta["droppedBy"] = "listener"
-		if hookErr != nil {
-			result.ParseError = hookErr.Error()
-			msg.Meta["sourceError"] = hookErr.Error()
+	if stop == "framer" {
+		return result, capture(stop, def.Framing.Python, "framer", msg.Raw, msg), nil
+	}
+	// A Python decoder is debugged with the bytes the steps before it produce.
+	for i, d := range def.Parser.Decoders {
+		if stop != DecoderStep(i) {
+			continue
 		}
-		result.ParsedFields = cloneFields(msg.Fields)
-		result.DeadLetter = simulateDeadLetter(def.DeadLetterSink, msg)
-		return result, nil
+		before := def.Parser
+		before.Decoders = def.Parser.Decoders[:i]
+		input, derr := parser.DecodeFrame(before, msg.Raw)
+		if derr != nil {
+			result.ParseError = derr.Error()
+			return result, nil, nil
+		}
+		return result, capture(stop, d.Python, "decoder", input, msg), nil
+	}
+	if stop == "parser" {
+		decoded, derr := parser.DecodeFrame(def.Parser, msg.Raw)
+		if derr != nil {
+			result.ParseError = derr.Error()
+			return result, nil, nil
+		}
+		return result, capture(stop, def.Parser.Python, "parser", decoded, msg), nil
 	}
 	if perr := pr.Parse(msg); perr != nil {
 		if !errors.Is(perr, parser.ErrRejected) {
@@ -91,20 +124,26 @@ func Simulate(def spec.ListenerDefinition, raw []byte) (*SimulateResult, error) 
 			result.DroppedBy = "parser"
 			msg.Meta["droppedBy"] = result.DroppedBy
 			result.DeadLetter = simulateDeadLetter(def.DeadLetterSink, msg)
-			return result, nil
+			return result, nil, nil
 		}
 	}
 	result.ParsedFields = cloneFields(msg.Fields)
 
 	for _, s := range def.Stages {
+		if stop != "" && s.ID == stop {
+			return result, capture(stop, s.Python, "transformer", msg.Raw, msg), nil
+		}
 		st, err := filter.New(s)
 		if err != nil {
-			return nil, fmt.Errorf("simulate: build stage %q: %w", s.ID, err)
+			return nil, nil, fmt.Errorf("simulate: build stage %q: %w", s.ID, err)
 		}
 		pass, perr := st.Process(msg)
 		trace := StageTrace{ID: s.ID, Kind: s.Kind, Type: s.Type, Pass: pass, Fields: cloneFields(msg.Fields)}
 		if perr != nil {
 			trace.Error = perr.Error()
+		}
+		if observed, ok := st.(filter.Observed); ok {
+			trace.Stdout, trace.DurationUs = observed.Observation()
 		}
 		if s.Kind == "rate-limit" || s.Kind == "dedup" {
 			trace.Note = "This stage holds state shared across live traffic (a running per-second counter or dedup window) " +
@@ -117,10 +156,11 @@ func Simulate(def spec.ListenerDefinition, raw []byte) (*SimulateResult, error) 
 			result.DroppedBy = s.ID
 			msg.Meta["droppedBy"] = result.DroppedBy
 			result.DeadLetter = simulateDeadLetter(def.DeadLetterSink, msg)
-			return result, nil
+			return result, nil, nil
 		}
 	}
 
+	var target *DebugTarget
 	for i, sk := range def.Sinks {
 		outcome := SinkOutcome{Index: i, Type: sk.Type, Sent: true}
 		if sk.When != "" {
@@ -139,8 +179,11 @@ func Simulate(def spec.ListenerDefinition, raw []byte) (*SimulateResult, error) 
 			}
 		}
 		result.Sinks = append(result.Sinks, outcome)
+		if stop == SinkStep(i) && outcome.Sent {
+			target = capture(stop, sk.Python, "sink", msg.Raw, msg)
+		}
 	}
-	return result, nil
+	return result, target, nil
 }
 
 func cloneFields(f map[string]interface{}) map[string]interface{} {

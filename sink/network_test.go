@@ -84,18 +84,22 @@ func TestNetworkSinkRejectsMalformedEndpoints(t *testing.T) {
 
 func TestNetworkSinkUsesDeclarativeSelectorService(t *testing.T) {
 	t.Setenv("GOFI_K8S_NAMESPACE", "apps")
-	target := &spec.KubernetesTarget{Selector: map[string]string{"app": "receiver"}, Port: 7777}
+	target := &spec.KubernetesTarget{Selector: map[string]string{"app": "receiver"}, Port: 7777, Delivery: "one"}
 	cfg := spec.SinkCfg{Type: "tcp", Kubernetes: target}
 	sk, err := newNetwork(cfg, "route")
 	want := spec.KubernetesServiceName("route", "tcp", target) + ".apps.svc.cluster.local:7777"
-	if err != nil || sk.address != want {
+	if single, ok := sk.(*networkSink); err != nil || !ok || single.address != want {
 		t.Fatalf("selector route: %+v %v", sk, err)
 	}
 	if cfg.URL != "" {
 		t.Fatal("runtime addressing mutated desired resource")
 	}
+	// Pods in another namespace sit behind the same GoFi-namespace Service.
 	target.Namespace = "outside"
-	if _, err := newNetwork(cfg, "route"); err == nil {
-		t.Fatal("cross-namespace target accepted")
+	target.Delivery = ""
+	sk, err = newNetwork(cfg, "route")
+	fan, ok := sk.(*fanoutSink)
+	if err != nil || !ok || fan.host != spec.KubernetesServiceName("route", "tcp", target)+".apps.svc.cluster.local" || fan.port != "7777" {
+		t.Fatalf("cross-namespace fan-out target: %+v %v", sk, err)
 	}
 }

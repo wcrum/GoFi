@@ -29,9 +29,9 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	slog.Info("=== gofi starting ===")
 
-	// Listener mode: run a single pipeline defined by the LISTENER_SPEC env var.
-	// This is how Docker/Kubernetes drivers spawn independent listener instances.
-	if raw := os.Getenv("LISTENER_SPEC"); raw != "" {
+	// Runtime mode: run a single flow defined by the FLOW_SPEC env var. This is
+	// how the Docker/Kubernetes drivers spawn independent flow runtimes.
+	if raw := os.Getenv(spec.FlowSpecEnv); raw != "" {
 		runListenerMode(raw)
 		return
 	}
@@ -40,20 +40,20 @@ func main() {
 	runControllerMode()
 }
 
-// runListenerMode decodes a single ListenerDefinition from JSON and runs it
+// runListenerMode decodes a single FlowDefinition from JSON and runs it
 // until the process receives SIGTERM/SIGINT. Used by Docker and K8s drivers.
 func runListenerMode(raw string) {
-	var def spec.ListenerDefinition
+	var def spec.FlowDefinition
 	if err := json.Unmarshal([]byte(raw), &def); err != nil {
-		slog.Error("listener mode: invalid LISTENER_SPEC", "error", err)
+		slog.Error("runtime mode: invalid flow spec", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("listener mode", "name", def.Name, "port", def.Source.Port)
+	slog.Info("runtime mode", "flow", def.Name, "port", def.Source.Listening().Port)
 
 	ln, err := listener.New(def)
 	if err != nil {
-		slog.Error("listener mode: failed to start", "error", err)
+		slog.Error("runtime mode: failed to start", "error", err)
 		os.Exit(1)
 	}
 
@@ -78,7 +78,7 @@ func runListenerMode(raw string) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
-	slog.Info("listener mode: shutting down", "name", def.Name)
+	slog.Info("runtime mode: shutting down", "flow", def.Name)
 }
 
 // runControllerMode starts the event loop and ConnectRPC services.
@@ -114,6 +114,11 @@ func runControllerMode() {
 	if err != nil {
 		slog.Error("desired state initialization failed", "error", err)
 		os.Exit(1)
+	}
+	// The CEL library must be connected before listeners load, because
+	// stored listeners may link library entries.
+	if lib := newExpressionLibrary(ctx, d.Kind(), store); lib != nil {
+		ctrl.SetExpressions(lib)
 	}
 	if store != nil {
 		if err = ctrl.WithStore(ctx, store); err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/wcrum/gofi/clusterinfo"
 	"github.com/wcrum/gofi/spec"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -117,5 +118,50 @@ func TestKubernetesRejectsCrossNamespaceTargetBeforePodCreation(t *testing.T) {
 	pods, err := cs.CoreV1().Pods("apps").List(ctx, metav1.ListOptions{})
 	if err != nil || len(pods.Items) != 0 {
 		t.Fatalf("invalid definition created a Pod: %+v %v", pods, err)
+	}
+}
+
+func TestCrossNamespaceTargetPublishesEndpointSliceWithClusterDiscovery(t *testing.T) {
+	ctx := context.Background()
+	k, cs := newTestKube("gofi")
+	target := &spec.KubernetesTarget{Namespace: "apps", Selector: map[string]string{"app": "receiver"}, Port: 7777}
+	if err := k.AllowsTargetNamespace("apps"); err == nil {
+		t.Fatal("another namespace allowed without cluster discovery")
+	}
+	k.cluster = clusterinfo.New(cs, nil, clusterinfo.Options{Namespace: "gofi", ClusterWide: true})
+	for _, pod := range []*corev1.Pod{receiverPod("first", "10.0.0.1", true), receiverPod("second", "10.0.0.2", true), receiverPod("not-ready", "10.0.0.3", false)} {
+		if _, err := cs.CoreV1().Pods("apps").Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	def := testDef("fanout", 9000)
+	def.Sinks = []spec.SinkCfg{{Type: "udp", Kubernetes: target}}
+	if err := k.Create(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	name := spec.KubernetesServiceName(def.Name, "udp", target)
+	service, err := cs.CoreV1().Services("gofi").Get(ctx, name, metav1.GetOptions{})
+	if err != nil || service.Spec.Selector != nil || service.Spec.ClusterIP != corev1.ClusterIPNone {
+		t.Fatalf("want a selector-less headless Service: %+v %v", service, err)
+	}
+	slice, err := cs.DiscoveryV1().EndpointSlices("gofi").Get(ctx, name, metav1.GetOptions{})
+	if err != nil || len(slice.Endpoints) != 2 || slice.Endpoints[0].Addresses[0] != "10.0.0.1" || *slice.Ports[0].Port != 7777 || slice.Labels["kubernetes.io/service-name"] != name {
+		t.Fatalf("EndpointSlice: %+v %v", slice, err)
+	}
+	// A Pod going away is reflected on the next reconcile of the running flow.
+	if err := cs.CoreV1().Pods("apps").Delete(ctx, "second", metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	runtime, _ := cs.CoreV1().Pods("gofi").Get(ctx, podName(def.Name), metav1.GetOptions{})
+	runtime.Status.Phase = corev1.PodRunning
+	if _, err := cs.CoreV1().Pods("gofi").UpdateStatus(ctx, runtime, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.List(ctx); err != nil {
+		t.Fatal(err)
+	}
+	slice, _ = cs.DiscoveryV1().EndpointSlices("gofi").Get(ctx, name, metav1.GetOptions{})
+	if len(slice.Endpoints) != 1 {
+		t.Fatalf("EndpointSlice not refreshed: %+v", slice.Endpoints)
 	}
 }

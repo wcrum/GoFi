@@ -2,6 +2,7 @@ syntax = "proto3";
 package gofi.v1;
 option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
 import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 
 // Sandboxes are durable Python function libraries executed in separate workers.
 service SandboxService {
@@ -13,8 +14,130 @@ service SandboxService {
  rpc FormatSource(FormatSourceRequest) returns (FormatSourceResponse);
  rpc ValidateSource(ValidateSourceRequest) returns (ValidateSourceResponse);
  rpc RunFunction(RunFunctionRequest) returns (RunFunctionResponse);
+ // RunSource executes unsaved source in a short-lived worker with the same
+ // isolation and limits as a saved library. The controller never runs it.
+ rpc RunSource(RunSourceRequest) returns (RunFunctionResponse);
+ // DescribeEnvironment reports the worker runtime: Python version, installed
+ // packages, SDK decorators, and the default network policy.
+ rpc DescribeEnvironment(DescribePythonEnvironmentRequest) returns (DescribePythonEnvironmentResponse);
+ // WatchWorkerLogs follows a worker's output live: a saved library's worker
+ // (`library`) or the short-lived worker of one RunSource call (`run_id`).
+ rpc WatchWorkerLogs(WatchWorkerLogsRequest) returns (stream WorkerLogEntry);
+ // DebugFunction records one bounded, traced execution for step-through
+ // replay: every executed line with its call stack, variables, library
+ // globals, watch values, and output so far. Saved (`library`) or unsaved
+ // (`source`) code; runs in an isolated worker under the normal deadline.
+ rpc DebugFunction(DebugFunctionRequest) returns (DebugRecording);
 }
-message SandboxDefinition { string name=1; string source_code=2; int32 timeout_seconds=3; int32 memory_mib=4; }
+message DebugFunctionRequest {
+ string library = 1;        // saved library, or
+ string source = 2;         // unsaved source (short-lived worker)
+ string name = 3;
+ string kind = 4;
+ bytes raw = 5;
+ google.protobuf.Struct fields = 6;
+ google.protobuf.Struct meta = 7;
+ google.protobuf.Struct config = 8;
+ // Python expressions evaluated against each step's frame (read-only intent;
+ // evaluated in the isolated worker).
+ repeated string watches = 9;
+ int32 max_steps = 10;      // default 5000, max 20000
+ string run_id = 11;        // correlates WatchWorkerLogs lines
+ int32 timeout_seconds = 12;
+}
+message DebugRecording {
+ repeated DebugStep steps = 1;
+ // The final outcome, exactly as RunFunction would report it.
+ RunFunctionResponse result = 2;
+ // Library module globals after loading, before the call (functions,
+ // modules, and dunder names omitted).
+ repeated DebugVariable initial_globals = 3;
+ bool truncated = 4;
+ string truncation_reason = 5;  // "max_steps" | "size" | "deadline"
+ int32 entry_line = 6;
+ string run_id = 7;
+}
+message DebugStep {
+ int32 index = 1;
+ string event = 2;          // "call" | "line" | "return" | "exception"
+ int32 line = 3;            // source line about to execute (library coordinates)
+ string function = 4;
+ int32 depth = 5;           // 0 = the invoked function
+ repeated DebugFrame stack = 6;   // innermost last
+ repeated DebugVariable locals = 7;
+ // Module globals that changed since the previous step.
+ repeated DebugVariable changed_globals = 8;
+ repeated DebugWatch watches = 9;
+ // Length of the run's stdout at this step (prefix of result.stdout).
+ int32 stdout_length = 10;
+ DebugVariable return_value = 11; // event "return"
+ string exception = 12;           // event "exception": "Type: message"
+}
+message DebugFrame { string function = 1; int32 line = 2; }
+message DebugVariable {
+ string name = 1;
+ string type = 2;
+ string repr = 3;           // truncated representation
+ // Containers expanded to bounded depth and width.
+ repeated DebugVariable children = 4;
+ bool changed = 5;          // value differs from the previous step
+ bool truncated = 6;
+}
+message DebugWatch { string expression = 1; string repr = 2; string error = 3; }
+message WatchWorkerLogsRequest {
+ string library = 1;
+ // Client-chosen id also sent in RunSourceRequest.run_id; the stream waits
+ // briefly for that worker to start and ends when it exits.
+ string run_id = 2;
+ // Recent lines to replay before following (default 100, max 1000).
+ int32 tail_lines = 3;
+}
+message WorkerLogEntry {
+ google.protobuf.Timestamp time = 1;
+ string stream = 2;         // "stdout" | "stderr" | "system"
+ string line = 3;
+ string invocation_id = 4;  // empty for worker lifecycle lines
+ string function = 5;
+ string kind = 6;
+ string level = 7;          // system lines: "info" | "warn" | "error"
+}
+message SandboxDefinition {
+ string name=1;
+ string source_code=2;
+ int32 timeout_seconds=3;
+ int32 memory_mib=4;
+ // Saved sample inputs for this library's functions.
+ repeated FunctionTest tests=5;
+ // Empty for user libraries; "flow:<flow>" for libraries the controller
+ // generates from inline flow stages. Managed libraries are read-only.
+ string managed_by=6;
+ // Outbound destinations this library may reach. Empty = no egress (default).
+ repeated EgressRule egress=7;
+}
+// EgressRule allows outbound traffic from a library's worker. Kubernetes
+// enforces each rule with NetworkPolicy (cidr and/or namespace+pod_selector;
+// DNS to cluster DNS is added automatically). Docker cannot filter by
+// destination: any rule attaches the worker to an egress-capable network.
+message EgressRule {
+ string cidr=1;
+ int32 port=2;
+ string protocol=3;
+ string namespace=4;
+ map<string,string> pod_selector=5;
+ string description=6;
+}
+message FunctionTest {
+ string name=1;
+ string function=2;
+ string kind=3;
+ bytes raw=4;
+ google.protobuf.Struct fields=5;
+ google.protobuf.Struct meta=6;
+ google.protobuf.Struct config=7;
+ // Optional expectations; unset means "record only".
+ google.protobuf.Struct expect_fields=8;
+ optional bool expect_drop=9;
+}
 message SandboxStatus { string name=1; string phase=2; string error=3; }
 message ListSandboxesRequest {}
 message ListSandboxesResponse { repeated SandboxDefinition sandboxes=1; repeated SandboxStatus statuses=2; }
@@ -25,7 +148,23 @@ message ApplySandboxResponse { SandboxDefinition sandbox=1; SandboxStatus status
 message DeleteSandboxRequest { string name=1; }
 message DeleteSandboxResponse {}
 message ListLibraryFunctionsRequest { string library=1; }
-message LibraryFunction { string library=1; string name=2; string kind=3; string description=4; }
+message LibraryFunction {
+ string library=1;
+ string name=2;
+ string kind=3;
+ string description=4;
+ reserved 5;
+ reserved "ingress";
+ // Keyword parameters accepted as per-node configuration.
+ repeated FunctionParam params=6;
+}
+message FunctionParam {
+ string name=1;
+ string type=2;          // "str" | "int" | "float" | "bool" | "list" | "dict" | "any"
+ google.protobuf.Value default=3;
+ bool required=4;
+ string description=5;
+}
 message ListLibraryFunctionsResponse { repeated LibraryFunction functions=1; }
 
 // WorkerService is private: the supervisor supplies authentication metadata.
@@ -35,12 +174,43 @@ service WorkerService {
  rpc Listen(WorkerListenRequest) returns (stream WorkerListenResponse);
  rpc FormatSource(WorkerFormatSourceRequest) returns (WorkerFormatSourceResponse);
  rpc ValidateSource(WorkerValidateSourceRequest) returns (WorkerValidateSourceResponse);
+ rpc DescribeEnvironment(DescribePythonEnvironmentRequest) returns (DescribePythonEnvironmentResponse);
+ rpc Debug(WorkerDebugRequest) returns (DebugRecording);
 }
-message WorkerFunction { string name=1; string kind=2; string description=3; }
+message WorkerDebugRequest {
+ string name = 1;
+ string kind = 2;
+ bytes raw = 3;
+ google.protobuf.Struct fields = 4;
+ google.protobuf.Struct meta = 5;
+ google.protobuf.Struct config = 6;
+ repeated string watches = 7;
+ int32 max_steps = 8;
+ string invocation_id = 9;
+}
+message WorkerFunction { string name=1; string kind=2; string description=3; reserved 4; reserved "ingress"; repeated FunctionParam params=5; }
 message WorkerListFunctionsRequest {}
 message WorkerListFunctionsResponse { repeated WorkerFunction functions=1; }
-message WorkerInvokeRequest { string name=1; string kind=2; bytes raw=3; google.protobuf.Struct fields=4; google.protobuf.Struct meta=5; }
-message WorkerInvokeResponse { google.protobuf.Struct fields=1; optional bytes raw=2; bool drop=3; }
+message WorkerInvokeRequest { string name=1; string kind=2; bytes raw=3; google.protobuf.Struct fields=4; google.protobuf.Struct meta=5; google.protobuf.Struct config=6; string invocation_id=7; bool trace_lines=8; }
+message WorkerInvokeResponse {
+ google.protobuf.Struct fields=1;
+ optional bytes raw=2;
+ bool drop=3;
+ // Captured print/stdout and stderr, each capped at 64 KiB.
+ string stdout=4;
+ string stderr=5;
+ int64 duration_us=6;
+ // A user-code exception: message plus the source location when known. The
+ // RPC still succeeds so stdout and timing are preserved.
+ string error=7;
+ SourceDiagnostic error_location=8;
+ // Line of the `def` that received the input, in the library source.
+ int32 entry_line=9;
+ // With trace_lines: source lines executed for this input, in first-hit order
+ // (bounded to 2000 entries).
+ repeated int32 executed_lines=10;
+ string invocation_id=11;
+}
 message WorkerListenRequest { string name=1; }
 message WorkerListenResponse { bytes raw=1; google.protobuf.Struct fields=2; google.protobuf.Struct meta=3; }
 
@@ -68,9 +238,46 @@ message RunFunctionRequest {
  bytes raw = 4;
  google.protobuf.Struct fields = 5;
  google.protobuf.Struct meta = 6;
+ google.protobuf.Struct config = 7;
+ // Correlates live WorkerLogEntry lines with this run (server generates one if empty).
+ string run_id = 8;
+ bool trace_lines = 9;
 }
 message RunFunctionResponse {
  google.protobuf.Struct fields = 1;
  optional bytes raw = 2;
  bool drop = 3;
+ string stdout = 4;
+ string stderr = 5;
+ int64 duration_us = 6;
+ string error = 7;
+ SourceDiagnostic error_location = 8;
+ int32 entry_line = 9;
+ repeated int32 executed_lines = 10;
+ string run_id = 11;
+}
+message RunSourceRequest {
+ string source = 1;
+ string name = 2;
+ string kind = 3;
+ bytes raw = 4;
+ google.protobuf.Struct fields = 5;
+ google.protobuf.Struct meta = 6;
+ google.protobuf.Struct config = 7;
+ int32 timeout_seconds = 8;
+ int32 memory_mib = 9;
+ // Names the short-lived worker so WatchWorkerLogs(run_id) can attach to it.
+ string run_id = 10;
+ bool trace_lines = 11;
+}
+message DescribePythonEnvironmentRequest {}
+message PythonPackage { string name = 1; string version = 2; string summary = 3; }
+message PythonDecorator { string name = 1; string signature = 2; string description = 3; }
+message DescribePythonEnvironmentResponse {
+ string python_version = 1;
+ repeated PythonPackage packages = 2;
+ repeated PythonDecorator decorators = 3;
+ string network_policy = 4;
+ int32 max_timeout_seconds = 5;
+ int32 max_memory_mib = 6;
 }

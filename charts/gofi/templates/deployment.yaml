@@ -2,7 +2,7 @@
 {{- fail "GoFi requires replicaCount=1 because controller leader election is not implemented" }}
 {{- end }}
 {{- range .Values.env }}
-{{- if has .name (list "GOFI_DEPLOY_MODE" "GOFI_IMAGE" "GOFI_K8S_NAMESPACE" "INGRESS_API_ADDR" "GOFI_LISTENER_POD_TEMPLATE" "LISTENER_SPEC") }}
+{{- if has .name (list "GOFI_DEPLOY_MODE" "GOFI_IMAGE" "GOFI_K8S_NAMESPACE" "INGRESS_API_ADDR" "GOFI_LISTENER_POD_TEMPLATE" "FLOW_SPEC") }}
 {{- fail (printf "env.%s is reserved by the GoFi chart" .name) }}
 {{- end }}
 {{- end }}
@@ -41,8 +41,8 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           # This Deployment runs the controller itself (ConnectRPC + embedded
           # SPA + operator reconciliation loop). It deliberately does NOT set
-          # LISTENER_SPEC - that env var is only injected into Pods spawned
-          # by the Kubernetes operator driver for individual listeners.
+          # FLOW_SPEC - that env var is only injected into the runtime Pods
+          # the Kubernetes driver creates for individual flows.
           env:
             - name: GOFI_DEPLOY_MODE
               value: "kubernetes"
@@ -54,6 +54,22 @@ spec:
             # to configure it twice / risk drift.
             - name: GOFI_IMAGE
               value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            {{- with .Values.nodePortRange }}
+            - name: GOFI_NODE_PORT_RANGE
+              value: {{ . | quote }}
+            {{- end }}
+            - name: GOFI_CLUSTER_DISCOVERY
+              value: {{ .Values.discovery.clusterWide | quote }}
+            - name: GOFI_MANAGE_GATEWAY_LISTENERS
+              value: {{ .Values.gateway.manageListeners | quote }}
+            - name: GOFI_MANAGE_UDS_ALLOWS
+              value: {{ .Values.uds.manageAllows | quote }}
+            {{- if .Values.uds.manageAllows }}
+            - name: GOFI_UDS_PACKAGE_BASE
+              value: {{ .Values.uds.packageBaseConfigMap | quote }}
+            {{- end }}
+            - name: GOFI_IMAGE_PULL_POLICY
+              value: {{ .Values.image.pullPolicy | quote }}
             - name: GOFI_SANDBOX_IMAGE
               value: "{{ .Values.sandboxImage.repository }}:{{ .Values.sandboxImage.tag }}"
             - name: GOFI_K8S_NAMESPACE

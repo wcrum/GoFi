@@ -36,16 +36,16 @@ func newTestClient() (gofiv1connect.GoFiServiceClient, *controller.Controller, h
 	handler := New(ctrl, nil, deploymode.ModeBinary)
 	return gofiv1connect.NewGoFiServiceClient(handlerClient{handler}, "http://gofi.test"), ctrl, handler
 }
-func listenerMessage(t *testing.T, def spec.ListenerDefinition) *gofiv1.Listener {
+func flowMessage(t *testing.T, def spec.FlowDefinition) *gofiv1.Flow {
 	t.Helper()
-	value := &gofiv1.Listener{}
+	value := &gofiv1.Flow{}
 	if err := toProto(def, value); err != nil {
 		t.Fatal(err)
 	}
 	return value
 }
-func basicDefinition() spec.ListenerDefinition {
-	return spec.ListenerDefinition{Name: "route", Source: spec.Source{Port: 9000, Network: "tcp"}, Framing: spec.Framing{Mode: "line"}, Parser: spec.ParserCfg{Format: "json"}}
+func basicDefinition() spec.FlowDefinition {
+	return spec.FlowDefinition{Name: "route", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 9000, Network: "tcp"}}, Framing: spec.Framing{Mode: "line"}, Parser: spec.ParserCfg{Format: "json"}}
 }
 func TestConnectBinaryDiscoveryAndConfiguration(t *testing.T) {
 	client, _, _ := newTestClient()
@@ -67,73 +67,73 @@ func TestConnectCRUDRoundTripsFullTypedDefinition(t *testing.T) {
 	client, ctrl, _ := newTestClient()
 	ctx := context.Background()
 	def := basicDefinition()
-	def.Parser.Decoders = []string{"base64"}
+	def.Parser.Decoders = []spec.CodecStep{{Type: "base64"}}
 	def.Parser.ErrorPolicy = "drop"
 	def.Stages = []spec.StageSpec{{ID: "app", Kind: "filter", Type: "regex", Field: "app", Expression: "^payments$"}, {ID: "status", Kind: "filter", Type: "cel", Expression: `fields["status"] >= 200`}}
 	def.Sinks = []spec.SinkCfg{{Type: "http", URL: "https://receiver.example/ingest", Headers: map[string]string{"X-App": "GoFi"}, Auth: &spec.HTTPAuth{Type: "apiKey", HeaderName: "X-Token", APIKey: "example"}, When: `fields["app"] == "payments"`}}
 	def.DeadLetterSink = &spec.SinkCfg{Type: "stdout", When: `meta["droppedBy"] != ""`}
 	def.TestCases = []spec.TestCase{{ID: "sample", Name: "Sample event", Raw: `{"app":"payments"}`}}
-	saved, err := client.UpsertListener(ctx, connect.NewRequest(&gofiv1.UpsertListenerRequest{Listener: listenerMessage(t, def)}))
+	saved, err := client.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def)}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var roundTrip spec.ListenerDefinition
-	if err := fromProto(saved.Msg.Listener, &roundTrip); err != nil {
+	var roundTrip spec.FlowDefinition
+	if err := fromProto(saved.Msg.Flow, &roundTrip); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(def, roundTrip) {
 		t.Fatalf("typed contract lost fields:\nwant %+v\ngot %+v", def, roundTrip)
 	}
-	got, err := client.GetListener(ctx, connect.NewRequest(&gofiv1.GetListenerRequest{Name: def.Name}))
-	if err != nil || len(got.Msg.Listener.Stages) != 2 || got.Msg.Listener.Stages[1].Expression != def.Stages[1].Expression {
+	got, err := client.GetFlow(ctx, connect.NewRequest(&gofiv1.GetFlowRequest{Name: def.Name}))
+	if err != nil || len(got.Msg.Flow.Stages) != 2 || got.Msg.Flow.Stages[1].Expression != def.Stages[1].Expression {
 		t.Fatalf("get: %v %v", got, err)
 	}
-	list, err := client.ListListeners(ctx, connect.NewRequest(&gofiv1.ListListenersRequest{}))
-	if err != nil || len(list.Msg.Listeners) != 1 {
+	list, err := client.ListFlows(ctx, connect.NewRequest(&gofiv1.ListFlowsRequest{}))
+	if err != nil || len(list.Msg.Flows) != 1 {
 		t.Fatalf("list: %v %v", list, err)
 	}
 	if _, err := client.GetRuntimeStatus(ctx, connect.NewRequest(&gofiv1.GetRuntimeStatusRequest{Name: def.Name})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Fatalf("runtime not yet reconciled must be NotFound: %v", err)
 	}
-	if _, err := client.DeleteListener(ctx, connect.NewRequest(&gofiv1.DeleteListenerRequest{Name: def.Name})); err != nil {
+	if _, err := client.DeleteFlow(ctx, connect.NewRequest(&gofiv1.DeleteFlowRequest{Name: def.Name})); err != nil {
 		t.Fatal(err)
 	}
 	if len(ctrl.List()) != 0 {
 		t.Fatal("delete retained desired resource")
 	}
-	if _, err := client.GetListener(ctx, connect.NewRequest(&gofiv1.GetListenerRequest{Name: def.Name})); connect.CodeOf(err) != connect.CodeNotFound {
+	if _, err := client.GetFlow(ctx, connect.NewRequest(&gofiv1.GetFlowRequest{Name: def.Name})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Fatalf("deleted resource get: %v", err)
 	}
 }
 func TestConnectRejectsInvalidConfigurationBeforePersistence(t *testing.T) {
-	invalid := map[string]func(*spec.ListenerDefinition){
-		"empty name":            func(d *spec.ListenerDefinition) { d.Name = "" },
-		"invalid resource name": func(d *spec.ListenerDefinition) { d.Name = "has spaces" },
-		"missing port":          func(d *spec.ListenerDefinition) { d.Source.Port = 0 },
-		"negative port":         func(d *spec.ListenerDefinition) { d.Source.Port = -1 },
-		"oversized port":        func(d *spec.ListenerDefinition) { d.Source.Port = 65536 },
-		"invalid network":       func(d *spec.ListenerDefinition) { d.Source.Network = "sctp" },
-		"binary ClusterIP":      func(d *spec.ListenerDefinition) { d.Source.Service = &spec.ServiceExposure{Type: "ClusterIP"} },
-		"unknown parser":        func(d *spec.ListenerDefinition) { d.Parser.Format = "unknown" },
-		"invalid decoder":       func(d *spec.ListenerDefinition) { d.Parser.Decoders = []string{"unknown"} },
-		"invalid framing":       func(d *spec.ListenerDefinition) { d.Framing.Mode = "unknown" },
-		"duplicate stage IDs": func(d *spec.ListenerDefinition) {
+	invalid := map[string]func(*spec.FlowDefinition){
+		"empty name":            func(d *spec.FlowDefinition) { d.Name = "" },
+		"invalid resource name": func(d *spec.FlowDefinition) { d.Name = "has spaces" },
+		"missing port":          func(d *spec.FlowDefinition) { d.Source.Listen.Port = 0 },
+		"negative port":         func(d *spec.FlowDefinition) { d.Source.Listen.Port = -1 },
+		"oversized port":        func(d *spec.FlowDefinition) { d.Source.Listen.Port = 65536 },
+		"invalid network":       func(d *spec.FlowDefinition) { d.Source.Listen.Network = "sctp" },
+		"binary ClusterIP":      func(d *spec.FlowDefinition) { d.Source.Listen.Service = &spec.ServiceExposure{Type: "ClusterIP"} },
+		"unknown parser":        func(d *spec.FlowDefinition) { d.Parser.Format = "unknown" },
+		"invalid decoder":       func(d *spec.FlowDefinition) { d.Parser.Decoders = []spec.CodecStep{{Type: "unknown"}} },
+		"invalid framing":       func(d *spec.FlowDefinition) { d.Framing.Mode = "unknown" },
+		"duplicate stage IDs": func(d *spec.FlowDefinition) {
 			d.Stages = []spec.StageSpec{{ID: "same", Kind: "filter", Type: "cel", Expression: "true"}, {ID: "same", Kind: "filter", Type: "cel", Expression: "false"}}
 		},
-		"unknown stage": func(d *spec.ListenerDefinition) {
+		"unknown stage": func(d *spec.FlowDefinition) {
 			d.Stages = []spec.StageSpec{{ID: "bad", Kind: "filter", Type: "unknown"}}
 		},
-		"invalid sink type":    func(d *spec.ListenerDefinition) { d.Sinks = []spec.SinkCfg{{Type: "unknown"}} },
-		"invalid sink address": func(d *spec.ListenerDefinition) { d.Sinks = []spec.SinkCfg{{Type: "tcp", URL: "tcp://receiver"}} },
-		"invalid HTTP address": func(d *spec.ListenerDefinition) { d.Sinks = []spec.SinkCfg{{Type: "http", URL: "relative"}} },
-		"invalid HTTP method": func(d *spec.ListenerDefinition) {
+		"invalid sink type":    func(d *spec.FlowDefinition) { d.Sinks = []spec.SinkCfg{{Type: "unknown"}} },
+		"invalid sink address": func(d *spec.FlowDefinition) { d.Sinks = []spec.SinkCfg{{Type: "tcp", URL: "tcp://receiver"}} },
+		"invalid HTTP address": func(d *spec.FlowDefinition) { d.Sinks = []spec.SinkCfg{{Type: "http", URL: "relative"}} },
+		"invalid HTTP method": func(d *spec.FlowDefinition) {
 			d.Sinks = []spec.SinkCfg{{Type: "http", URL: "https://receiver.example", Method: "INVALID"}}
 		},
-		"invalid sink condition": func(d *spec.ListenerDefinition) { d.Sinks = []spec.SinkCfg{{Type: "stdout", When: "invalid syntax !"}} },
-		"invalid dead letter": func(d *spec.ListenerDefinition) {
+		"invalid sink condition": func(d *spec.FlowDefinition) { d.Sinks = []spec.SinkCfg{{Type: "stdout", When: "invalid syntax !"}} },
+		"invalid dead letter": func(d *spec.FlowDefinition) {
 			d.DeadLetterSink = &spec.SinkCfg{Type: "stdout", When: "invalid syntax !"}
 		},
-		"invalid python sink": func(d *spec.ListenerDefinition) {
+		"invalid python sink": func(d *spec.FlowDefinition) {
 			d.Sinks = []spec.SinkCfg{{Type: "python", Python: &spec.PythonRef{Library: "library"}}}
 		},
 	}
@@ -142,7 +142,7 @@ func TestConnectRejectsInvalidConfigurationBeforePersistence(t *testing.T) {
 			client, ctrl, _ := newTestClient()
 			def := basicDefinition()
 			mutate(&def)
-			_, err := client.UpsertListener(context.Background(), connect.NewRequest(&gofiv1.UpsertListenerRequest{Listener: listenerMessage(t, def)}))
+			_, err := client.UpsertFlow(context.Background(), connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def)}))
 			if connect.CodeOf(err) != connect.CodeInvalidArgument {
 				t.Fatalf("expected invalid_argument: %v", err)
 			}
@@ -161,7 +161,7 @@ func TestConnectPersistsResourcesAndValidatesAsterWithoutMountedSecret(t *testin
 	client := gofiv1connect.NewGoFiServiceClient(handlerClient{New(ctrl, nil, deploymode.ModeBinary)}, "http://gofi.test")
 	def := basicDefinition()
 	def.Sinks = []spec.SinkCfg{{Type: "aster", URL: "http://127.0.0.1:8181", Aster: &spec.AsterCfg{Topic: "events", Scope: "test", TokenFile: "/worker-only-mount/token"}}}
-	if _, err := client.UpsertListener(context.Background(), connect.NewRequest(&gofiv1.UpsertListenerRequest{Listener: listenerMessage(t, def)})); err != nil {
+	if _, err := client.UpsertFlow(context.Background(), connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def)})); err != nil {
 		t.Fatal(err)
 	}
 	defs, err := file.Load(context.Background())
@@ -181,7 +181,7 @@ func TestConnectSimulationRunsUnsavedDraftWithoutDelivery(t *testing.T) {
 			if match {
 				raw = `{"app":"payments"}`
 			}
-			response, err := client.Simulate(context.Background(), connect.NewRequest(&gofiv1.SimulateRequest{Listener: listenerMessage(t, def), Raw: raw}))
+			response, err := client.Simulate(context.Background(), connect.NewRequest(&gofiv1.SimulateRequest{Flow: flowMessage(t, def), Raw: raw}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -203,7 +203,7 @@ func TestConnectSimulationRunsUnsavedDraftWithoutDelivery(t *testing.T) {
 }
 func TestConnectRejectsMalformedOrMissingRequests(t *testing.T) {
 	client, _, handler := newTestClient()
-	if _, err := client.UpsertListener(context.Background(), connect.NewRequest(&gofiv1.UpsertListenerRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+	if _, err := client.UpsertFlow(context.Background(), connect.NewRequest(&gofiv1.UpsertFlowRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("missing listener: %v", err)
 	}
 	if _, err := client.Simulate(context.Background(), connect.NewRequest(&gofiv1.SimulateRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {

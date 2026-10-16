@@ -1,17 +1,22 @@
 import './index.css'
 import { StrictMode } from 'react'
-import { ThemeContext } from '@grafana/data'
-import { gofiTheme } from './grafana-theme'
+import { ThemeProvider } from './theme/ThemeProvider'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { ToastProvider } from './components/Toast'
+import { GoFiProvider } from './state'
+import { HashRouter } from 'react-router-dom-v5-compat'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeContext.Provider value={gofiTheme}>
+    <ThemeProvider>
     <ToastProvider>
-      <App />
+      <HashRouter>
+        <GoFiProvider>
+          <App />
+        </GoFiProvider>
+      </HashRouter>
     </ToastProvider>
-    </ThemeContext.Provider>
+    </ThemeProvider>
   </StrictMode>,
 )

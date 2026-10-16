@@ -32,28 +32,27 @@ Authservice selector aligned with the actual controller labels. Disabling SSO
 removes this package's authentication declaration; it does not create an
 alternative application login service.
 
-The controller Service remains ClusterIP. Listener data sockets are separate
+The controller Service remains ClusterIP. Flow `listen` data sockets are separate
 application endpoints and do not inherit browser login semantics.
 
 ## Durable resources
 
-`Listener` and `Sandbox` are namespaced resources in
-`gofi.wcrum.dev/v1alpha1`. Portal changes persist through the Kubernetes API,
+`Flow` and `Sandbox` are namespaced resources in
+`gofi.wcrum.dev/v1alpha1`. GoFi reads only `kind: Flow` resources. Portal changes persist through the Kubernetes API,
 and declarative changes reload during reconciliation. No application Postgres,
 Valkey, or object-store dependency is required: Kubernetes stores desired
 configuration, and live traffic state remains in process. This is not a durable
 message queue or historical traffic database.
 
 Run one controller. The application chart rejects a different replica count
-until controller leader election exists. Listener Pods have no service-account
+until controller leader election exists. Flow runtime Pods have no service-account
 token; their Kubernetes selector targets are represented by controller-managed
 Services, so the data path does not require Kubernetes API credentials.
 
 ## NodePort and data networking
 
 The UDS config chart can enable the `DisallowNodePortServices` exemption only for
-Services named `gofi-listener-*` in the GoFi namespace. It covers explicitly
-configured Listener data ingress. It does not exempt the controller Service or
+Services named `gofi-listener-*` (flow runtime Services) in the GoFi namespace. It covers explicitly configured flow `listen` ingress. It does not exempt the controller Service or
 Services in other namespaces. Set `nodePort.enabled: false` when NodePort is not
 needed.
 
@@ -73,7 +72,7 @@ additionalNetworkAllow:
     port: 7000
 ```
 
-Use the backend Pod listener port (`7000` here), not the allocated NodePort
+Use the flow runtime Pod's `listen` port (`7000` here), not the allocated NodePort
 (`31080`). For UDP use a separate entry with `remoteProtocol: UDP`. Cross-namespace
 or external destinations also need explicit rules; selector destinations
 currently remain in GoFi's namespace. For an external HTTP receiver, declare its
@@ -89,7 +88,7 @@ are additive. Review generated UDS policies alongside worker policies. Test
 NodePort traffic against your installed mesh and admission configuration before
 treating a rendered manifest as operational evidence.
 
-Aster application traffic stays inside the listener's dedicated loopback
+Aster application traffic stays inside the flow runtime's dedicated loopback
 namespace; do not expose the agent with a Service or NodePort. Agent mesh
 connectivity and provisioning remain deployment-owner responsibilities.
 

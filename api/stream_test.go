@@ -26,9 +26,9 @@ type streamDriver struct {
 	targets map[string]driver.TapTarget
 }
 
-func (d *streamDriver) Create(context.Context, spec.ListenerDefinition) error   { return nil }
-func (d *streamDriver) Delete(context.Context, string) error                    { return nil }
-func (d *streamDriver) List(context.Context) ([]spec.ListenerDefinition, error) { return nil, nil }
+func (d *streamDriver) Create(context.Context, spec.FlowDefinition) error   { return nil }
+func (d *streamDriver) Delete(context.Context, string) error                { return nil }
+func (d *streamDriver) List(context.Context) ([]spec.FlowDefinition, error) { return nil, nil }
 func (d *streamDriver) Tap(_ context.Context, name string) (driver.TapTarget, bool, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -55,7 +55,7 @@ func publishTraffic(t *testing.T, ctx context.Context, taps map[string]*pipeline
 				return
 			case <-tick.C:
 				for name, tap := range taps {
-					def := spec.ListenerDefinition{Name: name, Parser: spec.ParserCfg{Format: "json"}}
+					def := spec.FlowDefinition{Name: name, Parser: spec.ParserCfg{Format: "json"}}
 					p, err := pipeline.New(def, strings.NewReader(`{"route":"`+name+`"}`), nil, nil, chain, tap)
 					if err == nil {
 						p.Run(ctx, "test")
@@ -75,7 +75,7 @@ func TestConnectWatchTrafficMultiplexesMoreThanSixListeners(t *testing.T) {
 		name := fmt.Sprintf("route-%d", i)
 		taps[name] = pipeline.NewTap()
 		d.targets[name] = driver.TapTarget{Local: taps[name]}
-		if err := ctrl.Add(spec.ListenerDefinition{Name: name, Source: spec.Source{Port: 9000 + i}}); err != nil {
+		if err := ctrl.Add(spec.FlowDefinition{Name: name, Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 9000 + i}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -97,10 +97,10 @@ func TestConnectWatchTrafficMultiplexesMoreThanSixListeners(t *testing.T) {
 		if event.Event == nil {
 			continue
 		}
-		if event.Event.Fields.AsMap()["route"] != event.Listener {
+		if event.Event.Fields.AsMap()["route"] != event.Flow {
 			t.Fatalf("traffic mislabeled: %+v", event)
 		}
-		seen[event.Listener] = true
+		seen[event.Flow] = true
 	}
 	if len(seen) != len(taps) {
 		t.Fatalf("received %d/%d listeners: %v", len(seen), len(taps), stream.Err())
@@ -119,7 +119,7 @@ func TestConnectWatchTrafficUsesConnectListenerRelayAndNamedFilter(t *testing.T)
 	d := &streamDriver{targets: map[string]driver.TapTarget{"remote": {Addr: strings.TrimPrefix(relay.URL, "http://")}, "other": {Local: pipeline.NewTap()}}}
 	ctrl := controller.New(d)
 	for _, name := range []string{"remote", "other"} {
-		if err := ctrl.Add(spec.ListenerDefinition{Name: name, Source: spec.Source{Port: 9000}}); err != nil {
+		if err := ctrl.Add(spec.FlowDefinition{Name: name, Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 9000}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -137,7 +137,7 @@ func TestConnectWatchTrafficUsesConnectListenerRelayAndNamedFilter(t *testing.T)
 		if event.Event == nil {
 			continue
 		}
-		if event.Listener != "remote" || event.Event.Fields.AsMap()["route"] != "remote" {
+		if event.Flow != "remote" || event.Event.Fields.AsMap()["route"] != "remote" {
 			t.Fatalf("named filter crossed listeners: %+v", event)
 		}
 		return

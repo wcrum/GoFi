@@ -15,7 +15,7 @@ func TestFileRoundTripAndMissingConfiguration(t *testing.T) {
 	if defs, err := f.Load(ctx); err != nil || len(defs) != 0 {
 		t.Fatalf("first missing file should initialize empty: %v", err)
 	}
-	def := spec.ListenerDefinition{Name: "ingest", Source: spec.Source{Port: 9000}, Parser: spec.ParserCfg{Format: "none"}}
+	def := spec.FlowDefinition{Name: "ingest", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 9000}}, Parser: spec.ParserCfg{Format: "none"}}
 	if err := f.Save(ctx, def); err != nil {
 		t.Fatal(err)
 	}
@@ -35,12 +35,13 @@ func TestFileReadsSingleDeclarativeResourceAndRejectsDuplicates(t *testing.T) {
 	f := &File{Path: filepath.Join(t.TempDir(), "listeners.yaml")}
 	ctx := context.Background()
 	raw := `apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata:
   name: declarative
 spec:
   source:
-    port: 9000
+    listen:
+      port: 9000
   framing:
     mode: line
   parser:
@@ -68,7 +69,7 @@ spec:
 func TestFilePreservesKubernetesMetadataAndReadsEveryDocument(t *testing.T) {
 	f := &File{Path: filepath.Join(t.TempDir(), "listeners.yaml")}
 	raw := `apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata:
   name: first
   namespace: gofi
@@ -77,13 +78,13 @@ metadata:
   annotations:
     owner: platform
 spec:
-  source: {port: 9000}
+  source: {listen: {port: 9000}}
 ---
 apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata: {name: second}
 spec:
-  source: {port: 9001}
+  source: {listen: {port: 9001}}
 `
 	if err := os.WriteFile(f.Path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)
@@ -93,7 +94,7 @@ spec:
 	if err != nil || len(defs) != 2 {
 		t.Fatalf("multidocument load: %+v %v", defs, err)
 	}
-	defs[0].Source.Port = 9100
+	defs[0].Source.Listen.Port = 9100
 	if err := f.Save(ctx, defs[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -113,22 +114,27 @@ spec:
 func TestFileRejectsInvalidOrDuplicateSnapshots(t *testing.T) {
 	for _, raw := range []string{
 		`apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata: {name: route}
 spec: {name: other}
 `,
 		`apiVersion: v1
 kind: List
 items:
-- {apiVersion: gofi.wcrum.dev/v1alpha1, kind: Listener, metadata: {name: route}, spec: {}}
-- {apiVersion: gofi.wcrum.dev/v1alpha1, kind: Listener, metadata: {name: route}, spec: {}}
+- {apiVersion: gofi.wcrum.dev/v1alpha1, kind: Flow, metadata: {name: route}, spec: {}}
+- {apiVersion: gofi.wcrum.dev/v1alpha1, kind: Flow, metadata: {name: route}, spec: {}}
+`,
+		`apiVersion: gofi.wcrum.dev/v1alpha1
+kind: Listener
+metadata: {name: retired}
+spec: {source: {port: 9000}}
 `,
 		`apiVersion: v1
 kind: List
 items: []
 ---
 apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata: {name: broken}
 spec: {typo: true}
 `,

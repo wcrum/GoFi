@@ -17,7 +17,10 @@
   --xy-background-pattern-dots-color-default: rgb(var(--g-border-medium));
 }
 
-/* React Flow's explicit dark mode must use the same GoFi surface tokens. */
+/* React Flow's light and dark color modes must both use the GoFi tokens,
+ * which index.css switches per theme. */
+.react-flow,
+.react-flow.light,
 .react-flow.dark {
   --xy-background-color: rgb(var(--g-canvas));
   --xy-edge-stroke: rgb(var(--g-border-medium));

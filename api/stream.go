@@ -24,7 +24,7 @@ type tapSubscription struct {
 func (h *Handler) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.WatchTrafficRequest], stream *connect.ServerStream[gofiv1.WatchTrafficResponse]) error {
 	if req.Msg.Name != "" {
 		if _, found := h.ctrl.Get(req.Msg.Name); !found {
-			return rpcError(connect.CodeNotFound, errors.New("listener not found"))
+			return rpcError(connect.CodeNotFound, errors.New("flow not found"))
 		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -81,7 +81,7 @@ func (h *Handler) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.
 						case event := <-ch:
 							converted, err := tapstream.Event(event)
 							if err == nil && converted != nil {
-								send(&gofiv1.WatchTrafficResponse{Listener: name, Event: converted})
+								send(&gofiv1.WatchTrafficResponse{Flow: name, Event: converted})
 							}
 						}
 					}
@@ -93,7 +93,7 @@ func (h *Handler) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.
 						for relay.Receive() {
 							event := relay.Msg()
 							if event.Event != nil {
-								event.Listener = name
+								event.Flow = name
 								send(event)
 							}
 						}
@@ -135,7 +135,7 @@ func (h *Handler) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.
 				return err
 			}
 		case event := <-events:
-			if _, exists := subscriptions[event.Listener]; !exists {
+			if _, exists := subscriptions[event.Flow]; !exists {
 				continue
 			}
 			if err := stream.Send(event); err != nil {

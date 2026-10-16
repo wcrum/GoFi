@@ -43,7 +43,7 @@ curl -sS http://localhost:19080/events \
 curl -sS http://localhost:19081/events
 ```
 
-Open the `real-events` listener in the GoFi flow to watch that request. The
+Open the `real-events` flow in GoFi (its Live traffic tab) to watch that request. The
 receiver record contains the original event fields plus `observedBy: gofi`.
 The sender's HTTP 202 means it wrote to the TCP source; inspect the receiver
 to confirm delivery through the complete pipeline.
@@ -77,8 +77,10 @@ python3 testenv/manage.py stop
 Use the helper because GoFi manages the listener child outside Compose. It
 stops the controller before removing the stack's managed listener, then shuts
 down Compose. Named volumes preserve configuration, receiver JSONL, and Prometheus history across
-starts. Initialization copies `testenv/listeners.yaml` only when the config
-volume is empty; later changes made through GoFi remain durable. To begin with
+starts. Initialization copies `testenv/listeners.yaml` (a `kind: Flow` list) only
+when the config volume is empty; later changes made through GoFi remain durable.
+GoFi reads only `kind: Flow` resources, so a volume seeded with older
+`kind: Listener` configuration must be reset. To begin with
 empty configuration and records, deliberately remove the named volumes with
 `docker compose -f compose.test.yaml down -v` after stopping the stack.
 

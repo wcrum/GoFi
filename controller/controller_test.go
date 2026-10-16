@@ -11,12 +11,16 @@ import (
 )
 
 type fakeDriver struct {
-	definitions      map[string]spec.ListenerDefinition
+	definitions      map[string]spec.FlowDefinition
 	creates, deletes int
 	deleteErr        error
+	createErr        error
 }
 
-func (d *fakeDriver) Create(_ context.Context, def spec.ListenerDefinition) error {
+func (d *fakeDriver) Create(_ context.Context, def spec.FlowDefinition) error {
+	if d.createErr != nil {
+		return d.createErr
+	}
 	d.definitions[def.Name] = def
 	d.creates++
 	return nil
@@ -29,8 +33,8 @@ func (d *fakeDriver) Delete(_ context.Context, name string) error {
 	delete(d.definitions, name)
 	return nil
 }
-func (d *fakeDriver) List(context.Context) ([]spec.ListenerDefinition, error) {
-	out := []spec.ListenerDefinition{}
+func (d *fakeDriver) List(context.Context) ([]spec.FlowDefinition, error) {
+	out := []spec.FlowDefinition{}
 	for _, def := range d.definitions {
 		out = append(out, def)
 	}
@@ -44,29 +48,46 @@ func (d *fakeDriver) RuntimeStatus(context.Context, string) (driver.RuntimeInfo,
 }
 func (d *fakeDriver) Kind() string { return "test" }
 
-func controllerDef() spec.ListenerDefinition {
-	return spec.ListenerDefinition{Name: "route", Source: spec.Source{Port: 9000}, Parser: spec.ParserCfg{Format: "none"}}
+func controllerDef() spec.FlowDefinition {
+	return spec.FlowDefinition{Name: "route", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 9000}}, Parser: spec.ParserCfg{Format: "none"}}
 }
 
 func TestControllerRepairsRuntimeDefinitionDriftAndRetriesDelete(t *testing.T) {
 	def := controllerDef()
-	drifted := def
-	drifted.Source.Port = 1234
-	d := &fakeDriver{definitions: map[string]spec.ListenerDefinition{def.Name: drifted}, deleteErr: errors.New("temporarily unavailable")}
+	drifted := cloneDefinition(def) // deep copy: Source.Listen is a pointer
+	drifted.Source.Listen.Port = 1234
+	d := &fakeDriver{definitions: map[string]spec.FlowDefinition{def.Name: drifted}, deleteErr: errors.New("temporarily unavailable")}
 	c := New(d)
 	c.desired[def.Name] = def
 	c.sync(context.Background())
-	if d.creates != 0 || d.definitions[def.Name].Source.Port != 1234 {
+	if d.creates != 0 || d.definitions[def.Name].Source.Listen.Port != 1234 {
 		t.Fatal("must not create over a failed delete")
 	}
 	d.deleteErr = nil
 	c.sync(context.Background())
-	if d.creates != 1 || d.definitions[def.Name].Source.Port != 9000 {
+	if d.creates != 1 || d.definitions[def.Name].Source.Listen.Port != 9000 {
 		t.Fatal("drift not repaired after delete recovered")
 	}
 	c.sync(context.Background())
 	if d.creates != 1 {
 		t.Fatal("unchanged definition restarted")
+	}
+}
+
+func TestControllerReportsRuntimeStartFailureUntilItStarts(t *testing.T) {
+	def := controllerDef()
+	d := &fakeDriver{definitions: map[string]spec.FlowDefinition{}, createErr: errors.New("Service is invalid")}
+	c := New(d)
+	c.desired[def.Name] = def
+	c.sync(context.Background())
+	info, found, err := c.RuntimeStatus(context.Background(), def.Name)
+	if err != nil || !found || info.Status != "failed" || info.Error != "Service is invalid" {
+		t.Fatalf("start failure not reported: %+v %v %v", info, found, err)
+	}
+	d.createErr = nil
+	c.sync(context.Background())
+	if info, _, _ := c.RuntimeStatus(context.Background(), def.Name); info.Error != "" {
+		t.Fatalf("error kept after a successful start: %+v", info)
 	}
 }
 
@@ -81,18 +102,18 @@ func TestEquivalentDefinitionsNormalizesEmptyCollections(t *testing.T) {
 }
 
 type memoryStore struct {
-	defs             []spec.ListenerDefinition
+	defs             []spec.FlowDefinition
 	loadErr, saveErr error
 }
 
-func (s *memoryStore) Load(context.Context) ([]spec.ListenerDefinition, error) {
+func (s *memoryStore) Load(context.Context) ([]spec.FlowDefinition, error) {
 	return s.defs, s.loadErr
 }
-func (s *memoryStore) Save(_ context.Context, def spec.ListenerDefinition) error {
+func (s *memoryStore) Save(_ context.Context, def spec.FlowDefinition) error {
 	if s.saveErr != nil {
 		return s.saveErr
 	}
-	s.defs = []spec.ListenerDefinition{def}
+	s.defs = []spec.FlowDefinition{def}
 	return nil
 }
 func (s *memoryStore) Delete(context.Context, string) error { return s.saveErr }
@@ -102,8 +123,8 @@ func (s *memoryStore) Configuration() desired.Configuration {
 
 func TestControllerRetainsLastGoodStateWhenStoreFails(t *testing.T) {
 	def := controllerDef()
-	d := &fakeDriver{definitions: map[string]spec.ListenerDefinition{}}
-	s := &memoryStore{defs: []spec.ListenerDefinition{def}}
+	d := &fakeDriver{definitions: map[string]spec.FlowDefinition{}}
+	s := &memoryStore{defs: []spec.FlowDefinition{def}}
 	c := New(d)
 	if err := c.WithStore(context.Background(), s); err != nil {
 		t.Fatal(err)
@@ -116,54 +137,65 @@ func TestControllerRetainsLastGoodStateWhenStoreFails(t *testing.T) {
 	}
 	s.loadErr = nil
 	s.saveErr = errors.New("read only")
-	updated := def
-	updated.Source.Port = 9001
+	updated := cloneDefinition(def)
+	updated.Source.Listen.Port = 9001
 	if err := c.Add(updated); err == nil {
 		t.Fatal("save failure not reported")
 	}
-	if got, _ := c.Get(def.Name); got.Source.Port != 9000 {
+	if got, _ := c.Get(def.Name); got.Source.Listen.Port != 9000 {
 		t.Fatal("failed persistence mutated desired state")
 	}
 }
 
-func TestControllerRejectsInvalidSnapshotAtomicallyAndRecoversMissingRuntime(t *testing.T) {
+func TestControllerSkipsInvalidFlowsAndKeepsTheLastGoodVersion(t *testing.T) {
 	ctx := context.Background()
 	def := controllerDef()
-	d := &fakeDriver{definitions: map[string]spec.ListenerDefinition{}}
-	s := &memoryStore{defs: []spec.ListenerDefinition{def}}
+	broken := cloneDefinition(def)
+	broken.Name = "broken"
+	broken.DeadLetterSink = &spec.SinkCfg{Type: "stdout", When: "123"}
+	d := &fakeDriver{definitions: map[string]spec.FlowDefinition{}}
+	s := &memoryStore{defs: []spec.FlowDefinition{def, broken}}
 	c := New(d)
+	// An invalid stored flow must not stop the controller from starting.
 	if err := c.WithStore(ctx, s); err != nil {
 		t.Fatal(err)
 	}
 	c.sync(ctx)
-	invalid := def
-	invalid.Name = "broken"
-	invalid.DeadLetterSink = &spec.SinkCfg{Type: "stdout", When: "123"}
-	updated := def
-	updated.Source.Port = 9100
-	s.defs = []spec.ListenerDefinition{updated, invalid}
+	if _, running := d.definitions["broken"]; running || d.definitions[def.Name].Name == "" {
+		t.Fatalf("expected only the valid flow to run: %+v", d.definitions)
+	}
+	if got, ok := c.Get("broken"); !ok || got.Name != "broken" || len(c.List()) != 2 {
+		t.Fatal("invalid flow must stay listed so it can be fixed or deleted")
+	}
+	if info, found, _ := c.RuntimeStatus(ctx, "broken"); !found || info.Status != "invalid" || info.Error == "" {
+		t.Fatalf("invalid flow not reported: %+v", info)
+	}
+	// An invalid edit of a running flow keeps its last valid version running.
+	invalid := cloneDefinition(def)
+	invalid.Source.Listen.Port = 9100
+	invalid.DeadLetterSink = broken.DeadLetterSink
+	s.defs = []spec.FlowDefinition{invalid}
 	delete(d.definitions, def.Name) // Runtime crashed while config was invalid.
 	c.sync(ctx)
-	got, ok := c.Get(def.Name)
-	if !ok || got.Source.Port != 9000 || len(c.List()) != 1 {
-		t.Fatalf("partial invalid snapshot installed: %+v", c.List())
+	if d.definitions[def.Name].Source.Listen.Port != 9000 {
+		t.Fatal("invalid edit stopped recovery of the last good runtime")
 	}
-	if d.definitions[def.Name].Source.Port != 9000 {
-		t.Fatal("invalid snapshot stopped recovery of last good runtime")
+	if info, _, _ := c.RuntimeStatus(ctx, def.Name); info.Error == "" {
+		t.Fatal("invalid edit of a running flow not reported")
 	}
 	// Store outage keeps existing runtimes intact, including uncertain changes.
 	s.loadErr = errors.New("unavailable")
-	d.definitions["unknown"] = spec.ListenerDefinition{Name: "unknown"}
+	d.definitions["unknown"] = spec.FlowDefinition{Name: "unknown"}
 	drifted := def
-	drifted.Source.Port = 9200
+	drifted.Source.Listen.Port = 9200
 	d.definitions[def.Name] = drifted
 	c.sync(ctx)
-	if _, found := d.definitions["unknown"]; !found || d.definitions[def.Name].Source.Port != 9200 {
+	if _, found := d.definitions["unknown"]; !found || d.definitions[def.Name].Source.Listen.Port != 9200 {
 		t.Fatal("store outage caused destructive changes to uncertain runtime state")
 	}
 }
 func TestControllerAddValidatesBeforeSavingAndOwnsDefinitionCopies(t *testing.T) {
-	d := &fakeDriver{definitions: map[string]spec.ListenerDefinition{}}
+	d := &fakeDriver{definitions: map[string]spec.FlowDefinition{}}
 	store := &memoryStore{}
 	c := New(d)
 	if err := c.WithStore(context.Background(), store); err != nil {

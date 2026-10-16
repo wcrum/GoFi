@@ -18,9 +18,9 @@ import (
 // connection's messages are still subject to the SAME shared counter — i.e.
 // the limit is listener-wide, not per-connection.
 func TestListener_StatefulStageSharedAcrossConnections(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:    "ratelimit-regression",
-		Source:  spec.Source{Port: 0, Network: "tcp"},
+		Source:  spec.FlowSource{Listen: &spec.ListenSource{Port: 0, Network: "tcp"}},
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -84,7 +84,7 @@ func TestListener_StatefulStageSharedAcrossConnections(t *testing.T) {
 }
 
 func TestUDPDatagramsReachLiveTap(t *testing.T) {
-	l, err := New(spec.ListenerDefinition{Name: "udp-ingest", Source: spec.Source{Network: "udp"}, Framing: spec.Framing{Mode: "raw"}, Parser: spec.ParserCfg{Format: "json"}})
+	l, err := New(spec.FlowDefinition{Name: "udp-ingest", Source: spec.FlowSource{Listen: &spec.ListenSource{Network: "udp"}}, Framing: spec.Framing{Mode: "raw"}, Parser: spec.ParserCfg{Format: "json"}})
 	if err != nil {
 		t.Fatal(err)
 	}

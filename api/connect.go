@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"github.com/wcrum/gofi/controller"
 	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
 	"github.com/wcrum/gofi/pipeline"
 	"github.com/wcrum/gofi/spec"
@@ -32,61 +33,65 @@ func fromProto(value proto.Message, out any) error {
 }
 func rpcError(code connect.Code, err error) error { return connect.NewError(code, err) }
 
-func (h *Handler) ListListeners(_ context.Context, _ *connect.Request[gofiv1.ListListenersRequest]) (*connect.Response[gofiv1.ListListenersResponse], error) {
-	response := &gofiv1.ListListenersResponse{}
+func (h *Handler) ListFlows(_ context.Context, _ *connect.Request[gofiv1.ListFlowsRequest]) (*connect.Response[gofiv1.ListFlowsResponse], error) {
+	response := &gofiv1.ListFlowsResponse{}
 	for _, def := range h.ctrl.List() {
-		item := &gofiv1.Listener{}
+		item := &gofiv1.Flow{}
 		if err := toProto(def, item); err != nil {
 			return nil, rpcError(connect.CodeInternal, err)
 		}
-		response.Listeners = append(response.Listeners, item)
+		response.Flows = append(response.Flows, item)
 	}
 	return connect.NewResponse(response), nil
 }
-func (h *Handler) GetListener(_ context.Context, req *connect.Request[gofiv1.GetListenerRequest]) (*connect.Response[gofiv1.GetListenerResponse], error) {
+func (h *Handler) GetFlow(_ context.Context, req *connect.Request[gofiv1.GetFlowRequest]) (*connect.Response[gofiv1.GetFlowResponse], error) {
 	def, found := h.ctrl.Get(req.Msg.Name)
 	if !found {
-		return nil, rpcError(connect.CodeNotFound, errors.New("listener not found"))
+		return nil, rpcError(connect.CodeNotFound, errors.New("flow not found"))
 	}
-	item := &gofiv1.Listener{}
+	item := &gofiv1.Flow{}
 	if err := toProto(def, item); err != nil {
 		return nil, rpcError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&gofiv1.GetListenerResponse{Listener: item}), nil
+	return connect.NewResponse(&gofiv1.GetFlowResponse{Flow: item}), nil
 }
-func (h *Handler) UpsertListener(_ context.Context, req *connect.Request[gofiv1.UpsertListenerRequest]) (*connect.Response[gofiv1.UpsertListenerResponse], error) {
-	if req.Msg.Listener == nil {
-		return nil, rpcError(connect.CodeInvalidArgument, errors.New("listener is required"))
+func (h *Handler) UpsertFlow(_ context.Context, req *connect.Request[gofiv1.UpsertFlowRequest]) (*connect.Response[gofiv1.UpsertFlowResponse], error) {
+	if req.Msg.Flow == nil {
+		return nil, rpcError(connect.CodeInvalidArgument, errors.New("flow is required"))
 	}
-	var def spec.ListenerDefinition
-	if err := fromProto(req.Msg.Listener, &def); err != nil {
+	var def spec.FlowDefinition
+	if err := fromProto(req.Msg.Flow, &def); err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}
 	if err := h.ctrl.Validate(def); err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}
 	if err := h.ctrl.Add(def); err != nil {
+		if errors.As(err, new(controller.InvalidInlineError)) {
+			return nil, rpcError(connect.CodeInvalidArgument, err)
+		}
 		return nil, rpcError(connect.CodeInternal, err)
 	}
-	slog.Info("listener configured via ConnectRPC", "name", def.Name, "port", def.Source.Port)
-	return connect.NewResponse(&gofiv1.UpsertListenerResponse{Listener: req.Msg.Listener}), nil
+	slog.Info("flow configured via ConnectRPC", "name", def.Name)
+	return connect.NewResponse(&gofiv1.UpsertFlowResponse{Flow: req.Msg.Flow}), nil
 }
-func (h *Handler) DeleteListener(_ context.Context, req *connect.Request[gofiv1.DeleteListenerRequest]) (*connect.Response[gofiv1.DeleteListenerResponse], error) {
+func (h *Handler) DeleteFlow(_ context.Context, req *connect.Request[gofiv1.DeleteFlowRequest]) (*connect.Response[gofiv1.DeleteFlowResponse], error) {
 	if _, found := h.ctrl.Get(req.Msg.Name); !found {
-		return nil, rpcError(connect.CodeNotFound, errors.New("listener not found"))
+		return nil, rpcError(connect.CodeNotFound, errors.New("flow not found"))
 	}
 	if err := h.ctrl.Remove(req.Msg.Name); err != nil {
 		return nil, rpcError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&gofiv1.DeleteListenerResponse{}), nil
+	return connect.NewResponse(&gofiv1.DeleteFlowResponse{}), nil
 }
+
 func (h *Handler) GetRuntimeStatus(ctx context.Context, req *connect.Request[gofiv1.GetRuntimeStatusRequest]) (*connect.Response[gofiv1.GetRuntimeStatusResponse], error) {
 	runtime, found, err := h.ctrl.RuntimeStatus(ctx, req.Msg.Name)
 	if err != nil {
 		return nil, rpcError(connect.CodeUnavailable, err)
 	}
 	if !found {
-		return nil, rpcError(connect.CodeNotFound, errors.New("listener runtime not found"))
+		return nil, rpcError(connect.CodeNotFound, errors.New("flow runtime not found"))
 	}
 	item := &gofiv1.RuntimeInfo{}
 	if err := toProto(runtime, item); err != nil {
@@ -117,17 +122,23 @@ func (h *Handler) GetConfiguration(_ context.Context, _ *connect.Request[gofiv1.
 	return connect.NewResponse(&gofiv1.GetConfigurationResponse{Configuration: configuration}), nil
 }
 func (h *Handler) GetMode(_ context.Context, _ *connect.Request[gofiv1.GetModeRequest]) (*connect.Response[gofiv1.GetModeResponse], error) {
-	return connect.NewResponse(&gofiv1.GetModeResponse{Mode: string(h.mode), ProcessRole: "controller", DriverKind: h.ctrl.DriverKind()}), nil
+	return connect.NewResponse(&gofiv1.GetModeResponse{Mode: string(h.mode), ProcessRole: "controller", DriverKind: h.ctrl.DriverKind(), NodePortMin: int32(spec.MinNodePort), NodePortMax: int32(spec.MaxNodePort)}), nil
 }
 func (h *Handler) Simulate(_ context.Context, req *connect.Request[gofiv1.SimulateRequest]) (*connect.Response[gofiv1.SimulateResponse], error) {
-	if req.Msg.Listener == nil {
-		return nil, rpcError(connect.CodeInvalidArgument, errors.New("listener is required"))
+	if req.Msg.Flow == nil {
+		return nil, rpcError(connect.CodeInvalidArgument, errors.New("flow is required"))
 	}
-	var def spec.ListenerDefinition
-	if err := fromProto(req.Msg.Listener, &def); err != nil {
+	var def spec.FlowDefinition
+	if err := fromProto(req.Msg.Flow, &def); err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}
-	result, err := pipeline.Simulate(def, []byte(req.Msg.Raw))
+	// Simulate exactly what the runtime would run: linked CEL library entries
+	// are resolved to their current (or pinned) text first.
+	resolved, err := h.ctrl.Resolve(def)
+	if err != nil {
+		return nil, rpcError(connect.CodeInvalidArgument, err)
+	}
+	result, err := pipeline.Simulate(resolved, []byte(req.Msg.Raw))
 	if err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}

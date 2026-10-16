@@ -16,15 +16,17 @@ GoFi's own operational logs.
 ## Prometheus
 
 The controller exposes `/metrics` on its API port (default `9090`). Each
-managed listener exposes `/metrics` on its tap/RPC relay port (`9091`, named
-`metrics` in Kubernetes Pods). Binary mode hosts listener pipelines in the
+managed flow runtime exposes `/metrics` on its tap/RPC relay port (`9091`, named
+`metrics` in Kubernetes Pods). Binary mode hosts flow pipelines in the
 controller, so scrape its API endpoint. Docker/Kubernetes deployments run
-separate listener processes; scrape their relay endpoints to collect their
+separate flow runtime processes; scrape their relay endpoints to collect their
 pipeline counters as well as the controller's process metrics.
+
+The `listener` label on each metric holds the flow name.
 
 | Metric | Meaning |
 | --- | --- |
-| `gofi_frames_received_total{listener}` | Frames read before source hooks or decoding |
+| `gofi_frames_received_total{listener}` | Frames read before decoding |
 | `gofi_source_bytes_total{listener}` | Original framed bytes, excluding framing delimiters |
 | `gofi_parser_errors_total{listener}` | Parser failures under both continue and drop policies |
 | `gofi_messages_rejected_total{listener,stage}` | Messages rejected by a stage, listener hook, or parser |

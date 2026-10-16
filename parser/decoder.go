@@ -1,25 +1,17 @@
 package parser
 
 import (
-	"bytes"
-	"compress/gzip"
-	"compress/zlib"
-	"encoding/base64"
-	"encoding/hex"
+	"context"
 	"fmt"
-	"io"
-	"net/url"
-	"strings"
 
+	"github.com/wcrum/gofi/codec"
 	"github.com/wcrum/gofi/message"
 	"github.com/wcrum/gofi/spec"
 )
 
-const defaultMaxDecodedBytes = 1 << 20
-
 type decodingParser struct {
 	parser Parser
-	steps  []string
+	steps  []spec.CodecStep
 	max    int
 }
 
@@ -28,94 +20,36 @@ func withDecoders(p Parser, cfg spec.ParserCfg) (Parser, error) {
 		return p, nil
 	}
 	for _, step := range cfg.Decoders {
-		switch step {
-		case "base64", "base64url", "hex", "gzip", "zlib", "url":
-		default:
-			return nil, fmt.Errorf("parser: unknown decoder %q", step)
+		if err := step.Validate("decoder"); err != nil {
+			return nil, fmt.Errorf("parser: %w", err)
 		}
 	}
-	max := cfg.MaxDecodedBytes
-	if max == 0 {
-		max = defaultMaxDecodedBytes
-	}
-	return &decodingParser{parser: p, steps: append([]string(nil), cfg.Decoders...), max: max}, nil
+	return &decodingParser{parser: p, steps: append([]spec.CodecStep(nil), cfg.Decoders...), max: cfg.MaxDecodedBytes}, nil
 }
 
 // Parse uses a temporary message so parsers see the decoded payload, while
 // taps, routing expressions' raw variable, and sinks retain the source bytes.
 // Failed decoding never exposes partially decoded fields.
 func (p *decodingParser) Parse(msg *message.Message) error {
-	decoded := msg.Raw
-	for i, step := range p.steps {
-		var err error
-		decoded, err = decode(step, decoded, p.max)
-		if err != nil {
-			return fmt.Errorf("parser: decoder %d (%s): %w", i+1, step, err)
-		}
+	decoded, err := codec.Decode(context.Background(), p.steps, msg.Raw, p.max, msg)
+	if err != nil {
+		return fmt.Errorf("parser: %w", err)
 	}
 	parsed := *msg
 	parsed.Raw = decoded
-	return p.parser.Parse(&parsed)
+	err = p.parser.Parse(&parsed)
+	// Parsers may replace the fields map (the Python parser does) rather than
+	// fill it in place, so carry the result back to the original message.
+	msg.Fields = parsed.Fields
+	return err
 }
 
-func decode(step string, data []byte, max int) ([]byte, error) {
-	var reader io.Reader
-	var closer io.Closer
-	switch step {
-	case "base64", "base64url":
-		encoding := base64.StdEncoding
-		if step == "base64url" {
-			encoding = base64.URLEncoding
-		}
-		// Both padded and unpadded representations are common in protocols.
-		if !bytes.ContainsRune(data, '=') {
-			encoding = encoding.WithPadding(base64.NoPadding)
-		}
-		reader = base64.NewDecoder(encoding.Strict(), bytes.NewReader(data))
-	case "hex":
-		reader = hex.NewDecoder(bytes.NewReader(data))
-	case "gzip":
-		r, err := gzip.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, err
-		}
-		reader, closer = r, r
-	case "zlib":
-		r, err := zlib.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, err
-		}
-		reader, closer = r, r
-	case "url":
-		// Query decoding never expands input. Limit the input first so a
-		// deliberately oversized frame cannot allocate an unbounded string.
-		if max <= int(^uint(0)>>1)/3 && len(data) > max*3 {
-			return nil, fmt.Errorf("decoded payload exceeds %d bytes", max)
-		}
-		value, err := url.QueryUnescape(string(data))
-		if err != nil {
-			return nil, err
-		}
-		reader = strings.NewReader(value)
-	default:
-		return nil, fmt.Errorf("unknown decoder %q", step)
-	}
-	if closer != nil {
-		defer closer.Close()
-	}
-	// Read at most the cap, then probe one byte rather than adding one to
-	// max (which could overflow for an explicitly configured large limit).
-	out, err := io.ReadAll(io.LimitReader(reader, int64(max)))
+// DecodeFrame applies cfg's decoder steps to raw exactly as the parser
+// would, returning the payload a Python parser receives.
+func DecodeFrame(cfg spec.ParserCfg, raw []byte) ([]byte, error) {
+	decoded, err := codec.Decode(context.Background(), cfg.Decoders, raw, cfg.MaxDecodedBytes, &message.Message{Raw: raw, Fields: map[string]any{}, Meta: map[string]string{}})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parser: %w", err)
 	}
-	var extra [1]byte
-	n, err := io.ReadFull(reader, extra[:])
-	if n != 0 {
-		return nil, fmt.Errorf("decoded payload exceeds %d bytes", max)
-	}
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	return out, nil
+	return decoded, nil
 }

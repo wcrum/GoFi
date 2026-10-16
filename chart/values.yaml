@@ -18,3 +18,7 @@ nodePort:
 # Add least-privilege data ingress/egress rules for your actual endpoints.
 # Use backend listener ports, not the allocated NodePort number.
 additionalNetworkAllow: []
+# The GoFi controller owns the UDS Package (this chart ships its base in the
+# gofi-uds-package ConfigMap) so it can add each flow's network allows.
+# Must match the gofi chart's uds.manageAllows.
+gofiManagesPackage: false

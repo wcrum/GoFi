@@ -59,6 +59,18 @@ const (
 	// SandboxServiceRunFunctionProcedure is the fully-qualified name of the SandboxService's
 	// RunFunction RPC.
 	SandboxServiceRunFunctionProcedure = "/gofi.v1.SandboxService/RunFunction"
+	// SandboxServiceRunSourceProcedure is the fully-qualified name of the SandboxService's RunSource
+	// RPC.
+	SandboxServiceRunSourceProcedure = "/gofi.v1.SandboxService/RunSource"
+	// SandboxServiceDescribeEnvironmentProcedure is the fully-qualified name of the SandboxService's
+	// DescribeEnvironment RPC.
+	SandboxServiceDescribeEnvironmentProcedure = "/gofi.v1.SandboxService/DescribeEnvironment"
+	// SandboxServiceWatchWorkerLogsProcedure is the fully-qualified name of the SandboxService's
+	// WatchWorkerLogs RPC.
+	SandboxServiceWatchWorkerLogsProcedure = "/gofi.v1.SandboxService/WatchWorkerLogs"
+	// SandboxServiceDebugFunctionProcedure is the fully-qualified name of the SandboxService's
+	// DebugFunction RPC.
+	SandboxServiceDebugFunctionProcedure = "/gofi.v1.SandboxService/DebugFunction"
 	// WorkerServiceListFunctionsProcedure is the fully-qualified name of the WorkerService's
 	// ListFunctions RPC.
 	WorkerServiceListFunctionsProcedure = "/gofi.v1.WorkerService/ListFunctions"
@@ -72,6 +84,11 @@ const (
 	// WorkerServiceValidateSourceProcedure is the fully-qualified name of the WorkerService's
 	// ValidateSource RPC.
 	WorkerServiceValidateSourceProcedure = "/gofi.v1.WorkerService/ValidateSource"
+	// WorkerServiceDescribeEnvironmentProcedure is the fully-qualified name of the WorkerService's
+	// DescribeEnvironment RPC.
+	WorkerServiceDescribeEnvironmentProcedure = "/gofi.v1.WorkerService/DescribeEnvironment"
+	// WorkerServiceDebugProcedure is the fully-qualified name of the WorkerService's Debug RPC.
+	WorkerServiceDebugProcedure = "/gofi.v1.WorkerService/Debug"
 )
 
 // SandboxServiceClient is a client for the gofi.v1.SandboxService service.
@@ -84,6 +101,20 @@ type SandboxServiceClient interface {
 	FormatSource(context.Context, *connect.Request[v1.FormatSourceRequest]) (*connect.Response[v1.FormatSourceResponse], error)
 	ValidateSource(context.Context, *connect.Request[v1.ValidateSourceRequest]) (*connect.Response[v1.ValidateSourceResponse], error)
 	RunFunction(context.Context, *connect.Request[v1.RunFunctionRequest]) (*connect.Response[v1.RunFunctionResponse], error)
+	// RunSource executes unsaved source in a short-lived worker with the same
+	// isolation and limits as a saved library. The controller never runs it.
+	RunSource(context.Context, *connect.Request[v1.RunSourceRequest]) (*connect.Response[v1.RunFunctionResponse], error)
+	// DescribeEnvironment reports the worker runtime: Python version, installed
+	// packages, SDK decorators, and the default network policy.
+	DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error)
+	// WatchWorkerLogs follows a worker's output live: a saved library's worker
+	// (`library`) or the short-lived worker of one RunSource call (`run_id`).
+	WatchWorkerLogs(context.Context, *connect.Request[v1.WatchWorkerLogsRequest]) (*connect.ServerStreamForClient[v1.WorkerLogEntry], error)
+	// DebugFunction records one bounded, traced execution for step-through
+	// replay: every executed line with its call stack, variables, library
+	// globals, watch values, and output so far. Saved (`library`) or unsaved
+	// (`source`) code; runs in an isolated worker under the normal deadline.
+	DebugFunction(context.Context, *connect.Request[v1.DebugFunctionRequest]) (*connect.Response[v1.DebugRecording], error)
 }
 
 // NewSandboxServiceClient constructs a client for the gofi.v1.SandboxService service. By default,
@@ -145,19 +176,47 @@ func NewSandboxServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sandboxServiceMethods.ByName("RunFunction")),
 			connect.WithClientOptions(opts...),
 		),
+		runSource: connect.NewClient[v1.RunSourceRequest, v1.RunFunctionResponse](
+			httpClient,
+			baseURL+SandboxServiceRunSourceProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("RunSource")),
+			connect.WithClientOptions(opts...),
+		),
+		describeEnvironment: connect.NewClient[v1.DescribePythonEnvironmentRequest, v1.DescribePythonEnvironmentResponse](
+			httpClient,
+			baseURL+SandboxServiceDescribeEnvironmentProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("DescribeEnvironment")),
+			connect.WithClientOptions(opts...),
+		),
+		watchWorkerLogs: connect.NewClient[v1.WatchWorkerLogsRequest, v1.WorkerLogEntry](
+			httpClient,
+			baseURL+SandboxServiceWatchWorkerLogsProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("WatchWorkerLogs")),
+			connect.WithClientOptions(opts...),
+		),
+		debugFunction: connect.NewClient[v1.DebugFunctionRequest, v1.DebugRecording](
+			httpClient,
+			baseURL+SandboxServiceDebugFunctionProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("DebugFunction")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // sandboxServiceClient implements SandboxServiceClient.
 type sandboxServiceClient struct {
-	listSandboxes  *connect.Client[v1.ListSandboxesRequest, v1.ListSandboxesResponse]
-	getSandbox     *connect.Client[v1.GetSandboxRequest, v1.GetSandboxResponse]
-	applySandbox   *connect.Client[v1.ApplySandboxRequest, v1.ApplySandboxResponse]
-	deleteSandbox  *connect.Client[v1.DeleteSandboxRequest, v1.DeleteSandboxResponse]
-	listFunctions  *connect.Client[v1.ListLibraryFunctionsRequest, v1.ListLibraryFunctionsResponse]
-	formatSource   *connect.Client[v1.FormatSourceRequest, v1.FormatSourceResponse]
-	validateSource *connect.Client[v1.ValidateSourceRequest, v1.ValidateSourceResponse]
-	runFunction    *connect.Client[v1.RunFunctionRequest, v1.RunFunctionResponse]
+	listSandboxes       *connect.Client[v1.ListSandboxesRequest, v1.ListSandboxesResponse]
+	getSandbox          *connect.Client[v1.GetSandboxRequest, v1.GetSandboxResponse]
+	applySandbox        *connect.Client[v1.ApplySandboxRequest, v1.ApplySandboxResponse]
+	deleteSandbox       *connect.Client[v1.DeleteSandboxRequest, v1.DeleteSandboxResponse]
+	listFunctions       *connect.Client[v1.ListLibraryFunctionsRequest, v1.ListLibraryFunctionsResponse]
+	formatSource        *connect.Client[v1.FormatSourceRequest, v1.FormatSourceResponse]
+	validateSource      *connect.Client[v1.ValidateSourceRequest, v1.ValidateSourceResponse]
+	runFunction         *connect.Client[v1.RunFunctionRequest, v1.RunFunctionResponse]
+	runSource           *connect.Client[v1.RunSourceRequest, v1.RunFunctionResponse]
+	describeEnvironment *connect.Client[v1.DescribePythonEnvironmentRequest, v1.DescribePythonEnvironmentResponse]
+	watchWorkerLogs     *connect.Client[v1.WatchWorkerLogsRequest, v1.WorkerLogEntry]
+	debugFunction       *connect.Client[v1.DebugFunctionRequest, v1.DebugRecording]
 }
 
 // ListSandboxes calls gofi.v1.SandboxService.ListSandboxes.
@@ -200,6 +259,26 @@ func (c *sandboxServiceClient) RunFunction(ctx context.Context, req *connect.Req
 	return c.runFunction.CallUnary(ctx, req)
 }
 
+// RunSource calls gofi.v1.SandboxService.RunSource.
+func (c *sandboxServiceClient) RunSource(ctx context.Context, req *connect.Request[v1.RunSourceRequest]) (*connect.Response[v1.RunFunctionResponse], error) {
+	return c.runSource.CallUnary(ctx, req)
+}
+
+// DescribeEnvironment calls gofi.v1.SandboxService.DescribeEnvironment.
+func (c *sandboxServiceClient) DescribeEnvironment(ctx context.Context, req *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error) {
+	return c.describeEnvironment.CallUnary(ctx, req)
+}
+
+// WatchWorkerLogs calls gofi.v1.SandboxService.WatchWorkerLogs.
+func (c *sandboxServiceClient) WatchWorkerLogs(ctx context.Context, req *connect.Request[v1.WatchWorkerLogsRequest]) (*connect.ServerStreamForClient[v1.WorkerLogEntry], error) {
+	return c.watchWorkerLogs.CallServerStream(ctx, req)
+}
+
+// DebugFunction calls gofi.v1.SandboxService.DebugFunction.
+func (c *sandboxServiceClient) DebugFunction(ctx context.Context, req *connect.Request[v1.DebugFunctionRequest]) (*connect.Response[v1.DebugRecording], error) {
+	return c.debugFunction.CallUnary(ctx, req)
+}
+
 // SandboxServiceHandler is an implementation of the gofi.v1.SandboxService service.
 type SandboxServiceHandler interface {
 	ListSandboxes(context.Context, *connect.Request[v1.ListSandboxesRequest]) (*connect.Response[v1.ListSandboxesResponse], error)
@@ -210,6 +289,20 @@ type SandboxServiceHandler interface {
 	FormatSource(context.Context, *connect.Request[v1.FormatSourceRequest]) (*connect.Response[v1.FormatSourceResponse], error)
 	ValidateSource(context.Context, *connect.Request[v1.ValidateSourceRequest]) (*connect.Response[v1.ValidateSourceResponse], error)
 	RunFunction(context.Context, *connect.Request[v1.RunFunctionRequest]) (*connect.Response[v1.RunFunctionResponse], error)
+	// RunSource executes unsaved source in a short-lived worker with the same
+	// isolation and limits as a saved library. The controller never runs it.
+	RunSource(context.Context, *connect.Request[v1.RunSourceRequest]) (*connect.Response[v1.RunFunctionResponse], error)
+	// DescribeEnvironment reports the worker runtime: Python version, installed
+	// packages, SDK decorators, and the default network policy.
+	DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error)
+	// WatchWorkerLogs follows a worker's output live: a saved library's worker
+	// (`library`) or the short-lived worker of one RunSource call (`run_id`).
+	WatchWorkerLogs(context.Context, *connect.Request[v1.WatchWorkerLogsRequest], *connect.ServerStream[v1.WorkerLogEntry]) error
+	// DebugFunction records one bounded, traced execution for step-through
+	// replay: every executed line with its call stack, variables, library
+	// globals, watch values, and output so far. Saved (`library`) or unsaved
+	// (`source`) code; runs in an isolated worker under the normal deadline.
+	DebugFunction(context.Context, *connect.Request[v1.DebugFunctionRequest]) (*connect.Response[v1.DebugRecording], error)
 }
 
 // NewSandboxServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -267,6 +360,30 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sandboxServiceMethods.ByName("RunFunction")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sandboxServiceRunSourceHandler := connect.NewUnaryHandler(
+		SandboxServiceRunSourceProcedure,
+		svc.RunSource,
+		connect.WithSchema(sandboxServiceMethods.ByName("RunSource")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sandboxServiceDescribeEnvironmentHandler := connect.NewUnaryHandler(
+		SandboxServiceDescribeEnvironmentProcedure,
+		svc.DescribeEnvironment,
+		connect.WithSchema(sandboxServiceMethods.ByName("DescribeEnvironment")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sandboxServiceWatchWorkerLogsHandler := connect.NewServerStreamHandler(
+		SandboxServiceWatchWorkerLogsProcedure,
+		svc.WatchWorkerLogs,
+		connect.WithSchema(sandboxServiceMethods.ByName("WatchWorkerLogs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sandboxServiceDebugFunctionHandler := connect.NewUnaryHandler(
+		SandboxServiceDebugFunctionProcedure,
+		svc.DebugFunction,
+		connect.WithSchema(sandboxServiceMethods.ByName("DebugFunction")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gofi.v1.SandboxService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SandboxServiceListSandboxesProcedure:
@@ -285,6 +402,14 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 			sandboxServiceValidateSourceHandler.ServeHTTP(w, r)
 		case SandboxServiceRunFunctionProcedure:
 			sandboxServiceRunFunctionHandler.ServeHTTP(w, r)
+		case SandboxServiceRunSourceProcedure:
+			sandboxServiceRunSourceHandler.ServeHTTP(w, r)
+		case SandboxServiceDescribeEnvironmentProcedure:
+			sandboxServiceDescribeEnvironmentHandler.ServeHTTP(w, r)
+		case SandboxServiceWatchWorkerLogsProcedure:
+			sandboxServiceWatchWorkerLogsHandler.ServeHTTP(w, r)
+		case SandboxServiceDebugFunctionProcedure:
+			sandboxServiceDebugFunctionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -326,6 +451,22 @@ func (UnimplementedSandboxServiceHandler) RunFunction(context.Context, *connect.
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.SandboxService.RunFunction is not implemented"))
 }
 
+func (UnimplementedSandboxServiceHandler) RunSource(context.Context, *connect.Request[v1.RunSourceRequest]) (*connect.Response[v1.RunFunctionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.SandboxService.RunSource is not implemented"))
+}
+
+func (UnimplementedSandboxServiceHandler) DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.SandboxService.DescribeEnvironment is not implemented"))
+}
+
+func (UnimplementedSandboxServiceHandler) WatchWorkerLogs(context.Context, *connect.Request[v1.WatchWorkerLogsRequest], *connect.ServerStream[v1.WorkerLogEntry]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.SandboxService.WatchWorkerLogs is not implemented"))
+}
+
+func (UnimplementedSandboxServiceHandler) DebugFunction(context.Context, *connect.Request[v1.DebugFunctionRequest]) (*connect.Response[v1.DebugRecording], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.SandboxService.DebugFunction is not implemented"))
+}
+
 // WorkerServiceClient is a client for the gofi.v1.WorkerService service.
 type WorkerServiceClient interface {
 	ListFunctions(context.Context, *connect.Request[v1.WorkerListFunctionsRequest]) (*connect.Response[v1.WorkerListFunctionsResponse], error)
@@ -333,6 +474,8 @@ type WorkerServiceClient interface {
 	Listen(context.Context, *connect.Request[v1.WorkerListenRequest]) (*connect.ServerStreamForClient[v1.WorkerListenResponse], error)
 	FormatSource(context.Context, *connect.Request[v1.WorkerFormatSourceRequest]) (*connect.Response[v1.WorkerFormatSourceResponse], error)
 	ValidateSource(context.Context, *connect.Request[v1.WorkerValidateSourceRequest]) (*connect.Response[v1.WorkerValidateSourceResponse], error)
+	DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error)
+	Debug(context.Context, *connect.Request[v1.WorkerDebugRequest]) (*connect.Response[v1.DebugRecording], error)
 }
 
 // NewWorkerServiceClient constructs a client for the gofi.v1.WorkerService service. By default, it
@@ -376,16 +519,30 @@ func NewWorkerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(workerServiceMethods.ByName("ValidateSource")),
 			connect.WithClientOptions(opts...),
 		),
+		describeEnvironment: connect.NewClient[v1.DescribePythonEnvironmentRequest, v1.DescribePythonEnvironmentResponse](
+			httpClient,
+			baseURL+WorkerServiceDescribeEnvironmentProcedure,
+			connect.WithSchema(workerServiceMethods.ByName("DescribeEnvironment")),
+			connect.WithClientOptions(opts...),
+		),
+		debug: connect.NewClient[v1.WorkerDebugRequest, v1.DebugRecording](
+			httpClient,
+			baseURL+WorkerServiceDebugProcedure,
+			connect.WithSchema(workerServiceMethods.ByName("Debug")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // workerServiceClient implements WorkerServiceClient.
 type workerServiceClient struct {
-	listFunctions  *connect.Client[v1.WorkerListFunctionsRequest, v1.WorkerListFunctionsResponse]
-	invoke         *connect.Client[v1.WorkerInvokeRequest, v1.WorkerInvokeResponse]
-	listen         *connect.Client[v1.WorkerListenRequest, v1.WorkerListenResponse]
-	formatSource   *connect.Client[v1.WorkerFormatSourceRequest, v1.WorkerFormatSourceResponse]
-	validateSource *connect.Client[v1.WorkerValidateSourceRequest, v1.WorkerValidateSourceResponse]
+	listFunctions       *connect.Client[v1.WorkerListFunctionsRequest, v1.WorkerListFunctionsResponse]
+	invoke              *connect.Client[v1.WorkerInvokeRequest, v1.WorkerInvokeResponse]
+	listen              *connect.Client[v1.WorkerListenRequest, v1.WorkerListenResponse]
+	formatSource        *connect.Client[v1.WorkerFormatSourceRequest, v1.WorkerFormatSourceResponse]
+	validateSource      *connect.Client[v1.WorkerValidateSourceRequest, v1.WorkerValidateSourceResponse]
+	describeEnvironment *connect.Client[v1.DescribePythonEnvironmentRequest, v1.DescribePythonEnvironmentResponse]
+	debug               *connect.Client[v1.WorkerDebugRequest, v1.DebugRecording]
 }
 
 // ListFunctions calls gofi.v1.WorkerService.ListFunctions.
@@ -413,6 +570,16 @@ func (c *workerServiceClient) ValidateSource(ctx context.Context, req *connect.R
 	return c.validateSource.CallUnary(ctx, req)
 }
 
+// DescribeEnvironment calls gofi.v1.WorkerService.DescribeEnvironment.
+func (c *workerServiceClient) DescribeEnvironment(ctx context.Context, req *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error) {
+	return c.describeEnvironment.CallUnary(ctx, req)
+}
+
+// Debug calls gofi.v1.WorkerService.Debug.
+func (c *workerServiceClient) Debug(ctx context.Context, req *connect.Request[v1.WorkerDebugRequest]) (*connect.Response[v1.DebugRecording], error) {
+	return c.debug.CallUnary(ctx, req)
+}
+
 // WorkerServiceHandler is an implementation of the gofi.v1.WorkerService service.
 type WorkerServiceHandler interface {
 	ListFunctions(context.Context, *connect.Request[v1.WorkerListFunctionsRequest]) (*connect.Response[v1.WorkerListFunctionsResponse], error)
@@ -420,6 +587,8 @@ type WorkerServiceHandler interface {
 	Listen(context.Context, *connect.Request[v1.WorkerListenRequest], *connect.ServerStream[v1.WorkerListenResponse]) error
 	FormatSource(context.Context, *connect.Request[v1.WorkerFormatSourceRequest]) (*connect.Response[v1.WorkerFormatSourceResponse], error)
 	ValidateSource(context.Context, *connect.Request[v1.WorkerValidateSourceRequest]) (*connect.Response[v1.WorkerValidateSourceResponse], error)
+	DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error)
+	Debug(context.Context, *connect.Request[v1.WorkerDebugRequest]) (*connect.Response[v1.DebugRecording], error)
 }
 
 // NewWorkerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -459,6 +628,18 @@ func NewWorkerServiceHandler(svc WorkerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(workerServiceMethods.ByName("ValidateSource")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workerServiceDescribeEnvironmentHandler := connect.NewUnaryHandler(
+		WorkerServiceDescribeEnvironmentProcedure,
+		svc.DescribeEnvironment,
+		connect.WithSchema(workerServiceMethods.ByName("DescribeEnvironment")),
+		connect.WithHandlerOptions(opts...),
+	)
+	workerServiceDebugHandler := connect.NewUnaryHandler(
+		WorkerServiceDebugProcedure,
+		svc.Debug,
+		connect.WithSchema(workerServiceMethods.ByName("Debug")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gofi.v1.WorkerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WorkerServiceListFunctionsProcedure:
@@ -471,6 +652,10 @@ func NewWorkerServiceHandler(svc WorkerServiceHandler, opts ...connect.HandlerOp
 			workerServiceFormatSourceHandler.ServeHTTP(w, r)
 		case WorkerServiceValidateSourceProcedure:
 			workerServiceValidateSourceHandler.ServeHTTP(w, r)
+		case WorkerServiceDescribeEnvironmentProcedure:
+			workerServiceDescribeEnvironmentHandler.ServeHTTP(w, r)
+		case WorkerServiceDebugProcedure:
+			workerServiceDebugHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -498,4 +683,12 @@ func (UnimplementedWorkerServiceHandler) FormatSource(context.Context, *connect.
 
 func (UnimplementedWorkerServiceHandler) ValidateSource(context.Context, *connect.Request[v1.WorkerValidateSourceRequest]) (*connect.Response[v1.WorkerValidateSourceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.ValidateSource is not implemented"))
+}
+
+func (UnimplementedWorkerServiceHandler) DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.DescribeEnvironment is not implemented"))
+}
+
+func (UnimplementedWorkerServiceHandler) Debug(context.Context, *connect.Request[v1.WorkerDebugRequest]) (*connect.Response[v1.DebugRecording], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.Debug is not implemented"))
 }

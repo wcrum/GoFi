@@ -108,8 +108,12 @@ func newNATS(cfg spec.SinkCfg, listenerName string) (*natsSink, error) {
 	return &natsSink{nc: nc, subject: subj}, nil
 }
 
-// Send publishes the message as JSON containing both fields and meta.
+// Send publishes the message as JSON containing both fields and meta, or the
+// encoded Payload verbatim when the sink has an Encoding.
 func (s *natsSink) Send(msg *message.Message) error {
+	if msg.Payload != nil {
+		return s.nc.Publish(s.subject, msg.Payload)
+	}
 	payload := map[string]interface{}{
 		"fields": msg.Fields,
 		"meta":   msg.Meta,

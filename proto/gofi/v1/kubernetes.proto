@@ -1,0 +1,269 @@
+syntax = "proto3";
+
+package gofi.v1;
+
+import "gofi/v1/gofi.proto";
+
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+
+// KubernetesService explains what a flow becomes in Kubernetes and what may
+// block its traffic. Every RPC is read-only: rendering builds objects with the
+// driver's own builders, and a dry run submits them with dryRun=All. Outside
+// Kubernetes mode each RPC returns FailedPrecondition.
+service KubernetesService {
+  rpc RenderFlowResources(RenderFlowResourcesRequest) returns (RenderFlowResourcesResponse);
+  rpc PreviewSelector(PreviewSelectorRequest) returns (PreviewSelectorResponse);
+  rpc AnalyzeConnectivity(AnalyzeConnectivityRequest) returns (AnalyzeConnectivityResponse);
+  rpc ListNetworkPolicies(ListNetworkPoliciesRequest) returns (ListNetworkPoliciesResponse);
+  // What the cluster offers for networking: Istio (and ambient), Gateway API
+  // implementations (Envoy Gateway, Istio), MetalLB, UDS Core, and the
+  // Gateways, address pools, and load balancers GoFi can use for exposure.
+  rpc DescribeCluster(DescribeClusterRequest) returns (DescribeClusterResponse);
+  // Every object that shapes traffic, across namespaces GoFi may read.
+  rpc ListClusterNetworking(ListClusterNetworkingRequest) returns (ListClusterNetworkingResponse);
+  // UDS Packages as connection endpoints: the workloads and ports each one
+  // exposes or admits, for choosing a Package as a flow's source or destination.
+  rpc ListUDSPackages(ListUDSPackagesRequest) returns (ListUDSPackagesResponse);
+}
+
+message RenderFlowResourcesRequest {
+  Flow flow = 1;
+  // Also submit each object with dryRun=All to surface admission results
+  // (Pod Security, validating webhooks such as UDS/Pepr, quota).
+  bool dry_run = 2;
+}
+message RenderedObject {
+  string api_version = 1;
+  string kind = 2;
+  string name = 3;
+  string namespace = 4;
+  // YAML with secret-bearing values redacted (see redacted_fields).
+  string yaml = 5;
+  // Why GoFi creates it, e.g. "flow runtime", "ingress Service".
+  string purpose = 6;
+  repeated string redacted_fields = 7;
+  DryRunResult dry_run = 8;
+}
+message DryRunResult {
+  bool accepted = 1;
+  string error = 2;
+  repeated string warnings = 3;
+}
+message RenderFlowResourcesResponse {
+  string namespace = 1;
+  repeated RenderedObject objects = 2;
+  repeated string notes = 3;
+}
+
+message PreviewSelectorRequest {
+  // Label selector syntax ("app=nats,tier in (a,b)"), or match_labels.
+  string selector = 1;
+  map<string, string> match_labels = 2;
+  string kind = 3;       // "pods" (default) | "services"
+}
+message SelectorMatch {
+  string kind = 1;
+  string name = 2;
+  string namespace = 3;
+  map<string, string> labels = 4;
+  bool ready = 5;
+  repeated string addresses = 6;
+  repeated string ports = 7;
+}
+message PreviewSelectorResponse {
+  // Canonical form of the parsed selector.
+  string normalized = 1;
+  repeated SelectorMatch matches = 2;
+  int32 total = 3;
+  bool truncated = 4;
+  // Parse error, with the 0-based character offset when known (-1 otherwise).
+  string error = 5;
+  int32 error_offset = 6;
+}
+
+message AnalyzeConnectivityRequest { Flow flow = 1; }
+message PolicyEngine {
+  string name = 1;       // "networkpolicy" | "istio" | "uds"
+  bool present = 2;
+  string note = 3;
+}
+message PolicyFinding {
+  string engine = 1;
+  string kind = 2;
+  string name = 3;
+  string namespace = 4;
+  // "allows" | "blocks" | "isolates" | "unknown" | "not-applicable"
+  string effect = 5;
+  string detail = 6;
+}
+message SuggestedFix {
+  string engine = 1;
+  string title = 2;
+  string yaml = 3;
+}
+message ConnectivityPath {
+  string id = 1;
+  string direction = 2;  // "ingress" | "egress"
+  string from = 3;
+  string to = 4;
+  int32 port = 5;
+  string protocol = 6;
+  string verdict = 7;    // "allowed" | "blocked" | "unknown"
+  string summary = 8;
+  repeated PolicyFinding findings = 9;
+  repeated SuggestedFix fixes = 10;
+}
+message AnalyzeConnectivityResponse {
+  string namespace = 1;
+  repeated ConnectivityPath paths = 2;
+  repeated PolicyEngine engines = 3;
+  // What static analysis cannot see (CNI-specific policies, firewalls, ...).
+  repeated string limits = 4;
+}
+
+message ListNetworkPoliciesRequest {}
+message PolicySummary {
+  string engine = 1;
+  string kind = 2;
+  string name = 3;
+  string namespace = 4;
+  string summary = 5;
+  repeated string affected_flows = 6;
+  string yaml = 7;
+}
+message ListNetworkPoliciesResponse {
+  string namespace = 1;
+  repeated PolicySummary policies = 2;
+  repeated PolicyEngine engines = 3;
+}
+
+message DescribeClusterRequest {}
+message ClusterCapability {
+  // Stable id: "gateway-api", "istio", "istio-ambient", "envoy-gateway",
+  // "metallb", "uds-core", "network-policy", "load-balancer".
+  string id = 1;
+  string name = 2;
+  bool present = 3;
+  string version = 4;
+  string detail = 5;
+  // What the detection is based on (CRDs, GatewayClasses, Pods, ...).
+  repeated string evidence = 6;
+}
+message GatewayListenerInfo {
+  string name = 1;
+  string protocol = 2;
+  int32 port = 3;
+  string hostname = 4;
+  // "Same", "All", or "Selector: <labels>".
+  string allowed_routes = 5;
+  int32 attached_routes = 6;
+  // Added by GoFi for a flow (listener name gofi-*).
+  bool managed_by_gofi = 7;
+}
+message GatewayInfo {
+  string namespace = 1;
+  string name = 2;
+  string class_name = 3;
+  string controller = 4;
+  repeated string addresses = 5;
+  bool programmed = 6;
+  repeated GatewayListenerInfo listeners = 7;
+  // "envoy-gateway" | "istio" | "istio-waypoint" | "" (other).
+  string implementation = 8;
+  // Istio ambient waypoints are not ingress gateways.
+  bool waypoint = 9;
+  // Which route kinds this implementation supports: TCPRoute, UDPRoute, ...
+  repeated string route_kinds = 10;
+}
+message GatewayClassInfo {
+  string name = 1;
+  string controller = 2;
+  bool accepted = 3;
+  string implementation = 4;
+}
+message AddressPoolInfo {
+  string namespace = 1;
+  string name = 2;
+  repeated string addresses = 3;
+  bool auto_assign = 4;
+}
+message LoadBalancerInfo {
+  string namespace = 1;
+  string name = 2;
+  string class_name = 3;
+  repeated string addresses = 4;
+  repeated string ports = 5;
+}
+message DescribeClusterResponse {
+  string kubernetes_version = 1;
+  string namespace = 2;
+  // GoFi can read across namespaces (chart discovery.clusterWide).
+  bool cluster_wide = 3;
+  repeated ClusterCapability capabilities = 4;
+  repeated GatewayClassInfo gateway_classes = 5;
+  repeated GatewayInfo gateways = 6;
+  repeated AddressPoolInfo address_pools = 7;
+  repeated string load_balancer_classes = 8;
+  repeated LoadBalancerInfo load_balancers = 9;
+  int32 node_port_min = 10;
+  int32 node_port_max = 11;
+  // Sections GoFi could not read, e.g. "IPAddressPools: forbidden".
+  repeated string warnings = 12;
+  // GoFi may add listeners to Gateways (chart gateway.manageListeners).
+  bool manage_gateway_listeners = 13;
+  // GoFi maintains a UDS Package with each flow's network allows.
+  bool manage_uds_allows = 14;
+  // Namespaces GoFi can read (for destination pickers).
+  repeated string namespaces = 15;
+}
+
+message ListClusterNetworkingRequest {
+  // Empty lists every namespace GoFi may read.
+  string namespace = 1;
+}
+message NetworkingObject {
+  string kind = 1;
+  string api_version = 2;
+  string namespace = 3;
+  string name = 4;
+  // "kubernetes" | "istio" | "gateway-api" | "uds" | "metallb"
+  string engine = 5;
+  string summary = 6;
+  // One line per rule, listener, route, or allow entry.
+  repeated string details = 7;
+  string yaml = 8;
+  // Flows whose runtime this object selects or routes to.
+  repeated string affected_flows = 9;
+}
+message ListClusterNetworkingResponse {
+  repeated NetworkingObject objects = 1;
+  repeated string namespaces = 2;
+  repeated string warnings = 3;
+}
+
+message ListUDSPackagesRequest {}
+message UDSPackageEndpoint {
+  // "expose" (published through a UDS gateway) | "allow" (ingress allow entry)
+  string kind = 1;
+  string description = 2;
+  map<string, string> selector = 3;
+  int32 port = 4;
+  string protocol = 5;
+  // expose: the Service and host; allow: who may connect ("Anywhere", a namespace, ...).
+  string service = 6;
+  string host = 7;
+  string remote = 8;
+}
+message UDSPackageInfo {
+  string namespace = 1;
+  string name = 2;
+  string phase = 3;
+  repeated UDSPackageEndpoint endpoints = 4;
+  // Distinct workload selectors named by the Package (allow/expose/monitor).
+  repeated string workloads = 5;
+}
+message ListUDSPackagesResponse {
+  repeated UDSPackageInfo packages = 1;
+  string namespace = 2;
+  repeated string warnings = 3;
+}

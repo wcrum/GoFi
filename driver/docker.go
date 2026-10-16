@@ -1,7 +1,7 @@
 // Package driver: Docker driver.
 //
 // Docker spawns each listener as a sibling container running the same
-// image as the controller, in "listener mode" (LISTENER_SPEC env var — see
+// image as the controller, in "listener mode" (FLOW_SPEC env var — see
 // main.go's runListenerMode). It talks to the container runtime over the
 // Docker Engine API (github.com/docker/docker/client), which any
 // Docker-Engine-API-compatible runtime can serve — this has been written to
@@ -11,7 +11,7 @@
 // and would need its own driver built on github.com/containerd/containerd's
 // client SDK.
 //
-// Each listener's data port (def.Source.Port/Network) is published 1:1 to
+// Each listener's data port (def.Source.Listening().Port/Network) is published 1:1 to
 // the host (same port number on both sides) so it's reachable from outside
 // Docker entirely, not just from other containers on the same network. This
 // means two listeners configured with the same port WILL conflict at the
@@ -80,7 +80,7 @@ type DockerConfig struct {
 }
 
 // Docker spawns each listener as a container of the same image, passing the
-// spec via the LISTENER_SPEC environment variable. Requires access to a
+// spec via the FLOW_SPEC environment variable. Requires access to a
 // Docker-Engine-API-compatible socket (Docker or Podman), reachable the same
 // way the standard Docker CLI/SDK resolve it: via DOCKER_HOST (or the
 // per-platform default if unset) — see client.FromEnv. No socket path is
@@ -175,7 +175,7 @@ func containerName(name string) string {
 // definition. Name conflicts (a stale container left over from an unnoticed
 // crash) are handled by force-removing the old container and retrying once.
 //
-// The listener's data port (def.Source.Port/Network) is published to the
+// The listener's data port (def.Source.Listening().Port/Network) is published to the
 // host on the same port number (0.0.0.0:<port> -> container:<port>), so it's
 // reachable from the host machine and anything outside Docker — not just
 // from other containers on the same Docker network (which would already be
@@ -183,26 +183,23 @@ func containerName(name string) string {
 // host-side port is fixed to match the container's, two listeners sharing
 // the same port WILL conflict at ContainerCreate/ContainerStart time; ports
 // must be unique across listeners on a given host, same as InProcess mode.
-func (d *Docker) Create(ctx context.Context, def spec.ListenerDefinition) error {
+// Fetch and subscribe flows only connect outward and publish no port.
+func (d *Docker) Create(ctx context.Context, def spec.FlowDefinition) error {
 	raw, err := json.Marshal(def)
 	if err != nil {
 		return fmt.Errorf("docker driver: marshal spec for %q: %w", def.Name, err)
 	}
 
-	proto := "tcp"
-	if strings.EqualFold(def.Source.Network, "udp") {
-		proto = "udp"
-	}
-	port, err := nat.NewPort(proto, strconv.Itoa(def.Source.Port))
+	exposed, bindings, err := dockerDataPort(def)
 	if err != nil {
-		return fmt.Errorf("docker driver: invalid port %d/%s for %q: %w", def.Source.Port, proto, def.Name, err)
+		return err
 	}
 
 	name := containerName(def.Name)
 	cfg := &container.Config{
 		Image:        d.image,
-		Env:          []string{"LISTENER_SPEC=" + string(raw)},
-		ExposedPorts: nat.PortSet{port: struct{}{}},
+		Env:          []string{spec.FlowSpecEnv + "=" + string(raw)},
+		ExposedPorts: exposed,
 		Labels: map[string]string{
 			labelListener: def.Name,
 			labelManaged:  "true",
@@ -216,10 +213,8 @@ func (d *Docker) Create(ctx context.Context, def spec.ListenerDefinition) error 
 		cfg.Env = append(cfg.Env, "GOFI_PYTHON_BINDINGS="+bindings)
 	}
 	hostCfg := &container.HostConfig{
-		NetworkMode: container.NetworkMode(d.network),
-		PortBindings: nat.PortMap{
-			port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(def.Source.Port)}},
-		},
+		NetworkMode:  container.NetworkMode(d.network),
+		PortBindings: bindings,
 		RestartPolicy: container.RestartPolicy{
 			// GoFi's own periodic resync (controller.Controller.Run), not
 			// Docker, is the recreate path on crash — this keeps crashes
@@ -295,8 +290,8 @@ func (d *Docker) Delete(ctx context.Context, name string) error {
 }
 
 // List returns the definitions of all running gofi-managed containers,
-// decoded back from each container's LISTENER_SPEC env var.
-func (d *Docker) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
+// decoded back from each container's FLOW_SPEC env var.
+func (d *Docker) List(ctx context.Context) ([]spec.FlowDefinition, error) {
 	f := filters.NewArgs()
 	f.Add("label", labelManaged+"=true")
 	f.Add("network", d.network)
@@ -306,7 +301,7 @@ func (d *Docker) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 		return nil, fmt.Errorf("docker driver: list: %w", err)
 	}
 
-	out := make([]spec.ListenerDefinition, 0, len(summaries))
+	out := make([]spec.FlowDefinition, 0, len(summaries))
 	for _, s := range summaries {
 		info, err := d.cli.ContainerInspect(ctx, s.ID)
 		if err != nil {
@@ -315,7 +310,7 @@ func (d *Docker) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 		}
 		def, ok := decodeListenerSpec(info)
 		if !ok {
-			slog.Warn("docker driver: managed container missing/invalid LISTENER_SPEC, skipping", "container", s.ID)
+			slog.Warn("docker driver: managed container missing/invalid flow spec, skipping", "container", s.ID)
 			continue
 		}
 		if !d.owns(info, def.Name) {
@@ -326,24 +321,24 @@ func (d *Docker) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 	return out, nil
 }
 
-// decodeListenerSpec extracts and decodes the LISTENER_SPEC env var from a
+// decodeListenerSpec extracts and decodes the flow spec env var from a
 // container's inspect result.
-func decodeListenerSpec(info container.InspectResponse) (spec.ListenerDefinition, bool) {
+func decodeListenerSpec(info container.InspectResponse) (spec.FlowDefinition, bool) {
 	if info.Config == nil {
-		return spec.ListenerDefinition{}, false
+		return spec.FlowDefinition{}, false
 	}
 	for _, e := range info.Config.Env {
-		v, ok := strings.CutPrefix(e, "LISTENER_SPEC=")
+		v, ok := strings.CutPrefix(e, spec.FlowSpecEnv+"=")
 		if !ok {
 			continue
 		}
-		var def spec.ListenerDefinition
+		var def spec.FlowDefinition
 		if err := json.Unmarshal([]byte(v), &def); err != nil {
-			return spec.ListenerDefinition{}, false
+			return spec.FlowDefinition{}, false
 		}
 		return def, true
 	}
-	return spec.ListenerDefinition{}, false
+	return spec.FlowDefinition{}, false
 }
 
 // owns verifies both the managed identity and the selected deployment network.
@@ -428,4 +423,21 @@ func (d *Docker) Endpoints(ctx context.Context) ([]Endpoint, error) {
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// dockerDataPort returns the exposed port and host binding for a listen
+// flow's data port; other sources publish nothing.
+func dockerDataPort(def spec.FlowDefinition) (nat.PortSet, nat.PortMap, error) {
+	if def.Source.Listen == nil {
+		return nil, nil, nil
+	}
+	proto := "tcp"
+	if strings.EqualFold(def.Source.Listening().Network, "udp") {
+		proto = "udp"
+	}
+	port, err := nat.NewPort(proto, strconv.Itoa(def.Source.Listening().Port))
+	if err != nil {
+		return nil, nil, fmt.Errorf("docker driver: invalid port %d/%s for %q: %w", def.Source.Listening().Port, proto, def.Name, err)
+	}
+	return nat.PortSet{port: struct{}{}}, nat.PortMap{port: []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(def.Source.Listening().Port)}}}, nil
 }

@@ -1,7 +1,7 @@
 // Package driver abstracts the runtime that hosts listener instances.
 // The in-process driver runs them as goroutines; Docker and Kubernetes
 // drivers spawn separate containers/pods running the same binary in
-// "listener mode" (see main.go's LISTENER_SPEC handling).
+// "listener mode" (see main.go's FLOW_SPEC handling).
 package driver
 
 import (
@@ -30,22 +30,25 @@ type TapTarget struct {
 // means that driver doesn't have that concept (e.g. InProcess has no
 // container ID).
 type RuntimeInfo struct {
-	Kind      string    `json:"kind"`                // "inprocess" | "docker" | "kubernetes"
-	ID        string    `json:"id,omitempty"`        // container ID or pod name
-	Status    string    `json:"status,omitempty"`    // e.g. "running", "pending", "exited"
+	Kind      string    `json:"kind"`             // "inprocess" | "docker" | "kubernetes"
+	ID        string    `json:"id,omitempty"`     // container ID or pod name
+	Status    string    `json:"status,omitempty"` // e.g. "running", "pending", "exited"
 	StartedAt time.Time `json:"startedAt,omitempty"`
 	Node      string    `json:"node,omitempty"` // k8s node name, if applicable
 	IP        string    `json:"ip,omitempty"`   // container/pod IP, if applicable
+	// Error is the controller's last failure to start this flow's runtime
+	// (for example, a Service the API server rejected).
+	Error string `json:"error,omitempty"`
 }
 
 // Driver creates and destroys listener instances.
 type Driver interface {
 	// Create starts a new listener for the given definition.
-	Create(ctx context.Context, def spec.ListenerDefinition) error
+	Create(ctx context.Context, def spec.FlowDefinition) error
 	// Delete stops the named listener.
 	Delete(ctx context.Context, name string) error
 	// List returns the specs of all currently running listeners.
-	List(ctx context.Context) ([]spec.ListenerDefinition, error)
+	List(ctx context.Context) ([]spec.FlowDefinition, error)
 	// Tap returns how to reach a named listener's live traffic tap.
 	// ok is false if the listener is not found or not yet reachable.
 	Tap(ctx context.Context, name string) (target TapTarget, ok bool, err error)

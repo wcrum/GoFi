@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"os"
 	"time"
 )
 
@@ -52,24 +53,87 @@ func (k *Kubernetes) Start(ctx context.Context, d Definition, token string) (str
 	if e != nil {
 		return "", e
 	}
-	port := intstr.FromInt(8080)
-	protocol := core.ProtocolTCP
-	_, e = k.Client.NetworkingV1().NetworkPolicies(k.Namespace).Create(ctx, &netv1.NetworkPolicy{ObjectMeta: m, Spec: netv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: labels}, PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress, netv1.PolicyTypeEgress}, Ingress: []netv1.NetworkPolicyIngressRule{{From: []netv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/name": "gofi"}}}, {PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"gofi.io/managed-by": "true"}}}}, Ports: []netv1.NetworkPolicyPort{{Protocol: &protocol, Port: &port}}}}, Egress: []netv1.NetworkPolicyEgressRule{}}}, metav1.CreateOptions{})
+	_, e = k.Client.NetworkingV1().NetworkPolicies(k.Namespace).Create(ctx, WorkerNetworkPolicy(m, labels, d.Egress), metav1.CreateOptions{})
 	if e != nil {
 		return "", e
 	}
 	uid, gid := int64(65532), int64(65532)
 	nonroot, readOnly, escalation, automount := true, true, false, false
-	pod := &core.Pod{ObjectMeta: m, Spec: core.PodSpec{AutomountServiceAccountToken: &automount, RestartPolicy: core.RestartPolicyAlways, SecurityContext: &core.PodSecurityContext{RunAsUser: &uid, RunAsGroup: &gid, RunAsNonRoot: &nonroot, SeccompProfile: &core.SeccompProfile{Type: core.SeccompProfileTypeRuntimeDefault}}, Containers: []core.Container{{Name: "worker", Image: k.Image, ImagePullPolicy: core.PullIfNotPresent, Env: []core.EnvVar{{Name: "GOFI_PYTHON_SOURCE", Value: base64.StdEncoding.EncodeToString([]byte(d.SourceCode))}, {Name: "GOFI_TIMEOUT_SECONDS", Value: fmt.Sprint(d.TimeoutSeconds)}, {Name: "PYTHONDONTWRITEBYTECODE", Value: "1"}, {Name: "GOFI_SANDBOX_TOKEN", ValueFrom: &core.EnvVarSource{SecretKeyRef: &core.SecretKeySelector{LocalObjectReference: core.LocalObjectReference{Name: name}, Key: "token"}}}}, Ports: []core.ContainerPort{{Name: "rpc", ContainerPort: 8080}}, SecurityContext: &core.SecurityContext{ReadOnlyRootFilesystem: &readOnly, AllowPrivilegeEscalation: &escalation, Capabilities: &core.Capabilities{Drop: []core.Capability{"ALL"}}}, Resources: core.ResourceRequirements{Requests: core.ResourceList{core.ResourceCPU: resource.MustParse("50m"), core.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", d.MemoryMiB))}, Limits: core.ResourceList{core.ResourceCPU: resource.MustParse("250m"), core.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", d.MemoryMiB))}}, VolumeMounts: []core.VolumeMount{{Name: "tmp", MountPath: "/tmp"}}, ReadinessProbe: &core.Probe{ProbeHandler: core.ProbeHandler{HTTPGet: &core.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt(8080)}}, PeriodSeconds: 1}}}, Volumes: []core.Volume{{Name: "tmp", VolumeSource: core.VolumeSource{EmptyDir: &core.EmptyDirVolumeSource{Medium: core.StorageMediumMemory, SizeLimit: resource.NewQuantity(16*1024*1024, resource.BinarySI)}}}}}}
+	pod := &core.Pod{ObjectMeta: m, Spec: core.PodSpec{AutomountServiceAccountToken: &automount, RestartPolicy: core.RestartPolicyAlways, SecurityContext: &core.PodSecurityContext{RunAsUser: &uid, RunAsGroup: &gid, RunAsNonRoot: &nonroot, SeccompProfile: &core.SeccompProfile{Type: core.SeccompProfileTypeRuntimeDefault}}, Containers: []core.Container{{Name: "worker", Image: k.Image, ImagePullPolicy: pullPolicy(), Env: []core.EnvVar{{Name: "GOFI_PYTHON_SOURCE", Value: base64.StdEncoding.EncodeToString([]byte(d.SourceCode))}, {Name: "GOFI_TIMEOUT_SECONDS", Value: fmt.Sprint(d.TimeoutSeconds)}, {Name: "PYTHONDONTWRITEBYTECODE", Value: "1"}, {Name: "GOFI_LAZY_LOAD", Value: lazyValue(d)}, {Name: "GOFI_SANDBOX_TOKEN", ValueFrom: &core.EnvVarSource{SecretKeyRef: &core.SecretKeySelector{LocalObjectReference: core.LocalObjectReference{Name: name}, Key: "token"}}}}, Ports: []core.ContainerPort{{Name: "rpc", ContainerPort: 8080}}, TerminationMessagePolicy: core.TerminationMessageFallbackToLogsOnError, SecurityContext: &core.SecurityContext{ReadOnlyRootFilesystem: &readOnly, AllowPrivilegeEscalation: &escalation, Capabilities: &core.Capabilities{Drop: []core.Capability{"ALL"}}}, Resources: core.ResourceRequirements{Requests: core.ResourceList{core.ResourceCPU: resource.MustParse("50m"), core.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", d.MemoryMiB))}, Limits: core.ResourceList{core.ResourceCPU: resource.MustParse("250m"), core.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", d.MemoryMiB))}}, VolumeMounts: []core.VolumeMount{{Name: "tmp", MountPath: "/tmp"}}, ReadinessProbe: &core.Probe{ProbeHandler: core.ProbeHandler{HTTPGet: &core.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt(8080)}}, PeriodSeconds: 1}}}, Volumes: []core.Volume{{Name: "tmp", VolumeSource: core.VolumeSource{EmptyDir: &core.EmptyDirVolumeSource{Medium: core.StorageMediumMemory, SizeLimit: resource.NewQuantity(16*1024*1024, resource.BinarySI)}}}}}}
 	if _, e = k.Client.CoreV1().Pods(k.Namespace).Create(ctx, pod, metav1.CreateOptions{}); e != nil {
 		return "", e
 	}
 	endpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:8080", name, k.Namespace)
-	if e = waitReady(ctx, endpoint, token); e != nil {
+	if e = waitReady(ctx, endpoint, token, func(ctx context.Context) error { return k.crashed(ctx, name) }); e != nil {
 		return "", e
 	}
 	return endpoint, nil
 }
+
+// KubernetesEgressPolicy describes Kubernetes-mode egress for DescribeEnvironment.
+const KubernetesEgressPolicy = "Kubernetes: each worker Pod has a NetworkPolicy that denies all egress. A library's egress rules become per-destination NetworkPolicy egress rules (CIDR and/or namespace + pod selector, port, protocol); DNS to kube-system/kube-dns is allowed only when a rule exists. NetworkPolicy cannot match hostnames."
+
+func lazyValue(d Definition) string {
+	if d.Scratch {
+		return "1"
+	}
+	return "0"
+}
+
+// WorkerNetworkPolicy admits only GoFi to the worker's RPC port and denies
+// all egress except the library's declared rules (plus cluster DNS when any
+// rule exists, so in-cluster names resolve).
+func WorkerNetworkPolicy(m metav1.ObjectMeta, labels map[string]string, egress []EgressRule) *netv1.NetworkPolicy {
+	port := intstr.FromInt(8080)
+	protocol := core.ProtocolTCP
+	rules := []netv1.NetworkPolicyEgressRule{}
+	for _, r := range egress {
+		rule := netv1.NetworkPolicyEgressRule{}
+		peer := netv1.NetworkPolicyPeer{}
+		if r.CIDR != "" {
+			peer.IPBlock = &netv1.IPBlock{CIDR: r.CIDR}
+		} else {
+			if r.Namespace != "" {
+				peer.NamespaceSelector = &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": r.Namespace}}
+			}
+			// An empty pod selector within a namespace selects every Pod there.
+			peer.PodSelector = &metav1.LabelSelector{MatchLabels: r.PodSelector}
+		}
+		rule.To = []netv1.NetworkPolicyPeer{peer}
+		ruleProtocol := core.ProtocolTCP
+		if r.Protocol == "udp" {
+			ruleProtocol = core.ProtocolUDP
+		}
+		policyPort := netv1.NetworkPolicyPort{Protocol: &ruleProtocol}
+		if r.Port > 0 {
+			value := intstr.FromInt(r.Port)
+			policyPort.Port = &value
+		}
+		rule.Ports = []netv1.NetworkPolicyPort{policyPort}
+		rules = append(rules, rule)
+	}
+	if len(rules) > 0 {
+		dnsPort := intstr.FromInt(53)
+		udp, tcp := core.ProtocolUDP, core.ProtocolTCP
+		rules = append(rules, netv1.NetworkPolicyEgressRule{
+			To: []netv1.NetworkPolicyPeer{{
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "kube-system"}},
+				PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"k8s-app": "kube-dns"}},
+			}},
+			Ports: []netv1.NetworkPolicyPort{{Protocol: &udp, Port: &dnsPort}, {Protocol: &tcp, Port: &dnsPort}},
+		})
+	}
+	return &netv1.NetworkPolicy{ObjectMeta: m, Spec: netv1.NetworkPolicySpec{
+		PodSelector: metav1.LabelSelector{MatchLabels: labels},
+		PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeIngress, netv1.PolicyTypeEgress},
+		Ingress: []netv1.NetworkPolicyIngressRule{{From: []netv1.NetworkPolicyPeer{
+			{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/name": "gofi"}}},
+			{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"gofi.io/managed-by": "true"}}},
+		}, Ports: []netv1.NetworkPolicyPort{{Protocol: &protocol, Port: &port}}}},
+		Egress: rules,
+	}}
+}
+
 func (k *Kubernetes) Stop(ctx context.Context, name string) error {
 	name = "gofi-python-" + name
 	// Never replace an unrelated resource merely because its name collides.
@@ -132,3 +196,32 @@ func (k *Kubernetes) Stop(ctx context.Context, name string) error {
 }
 
 func (k *Kubernetes) Health(ctx context.Context, b Binding) error { return checkRPC(ctx, b) }
+
+// crashed reports a worker Pod whose container terminated while starting.
+// FallbackToLogsOnError puts the tail of its output (the Python traceback)
+// in the termination message.
+func (k *Kubernetes) crashed(ctx context.Context, name string) error {
+	pod, err := k.Client.CoreV1().Pods(k.Namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		terminated := status.State.Terminated
+		if terminated == nil {
+			terminated = status.LastTerminationState.Terminated
+		}
+		if terminated != nil && terminated.ExitCode != 0 {
+			return workerExited(int(terminated.ExitCode), terminated.Message)
+		}
+	}
+	return nil
+}
+
+// pullPolicy follows the controller's (GOFI_IMAGE_PULL_POLICY), so a dev
+// install that rebuilds the same tag does not run a stale cached worker.
+func pullPolicy() core.PullPolicy {
+	if p := os.Getenv("GOFI_IMAGE_PULL_POLICY"); p != "" {
+		return core.PullPolicy(p)
+	}
+	return core.PullIfNotPresent
+}

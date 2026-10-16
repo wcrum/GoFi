@@ -7,10 +7,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"maps"
+	"net"
 	"regexp"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const DefaultImage = "ghcr.io/wcrum/gofi-python:0.2.0"
@@ -20,7 +26,136 @@ type Definition struct {
 	SourceCode     string `json:"sourceCode"`
 	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
 	MemoryMiB      int    `json:"memoryMib,omitempty"`
+	// Tests are saved sample inputs; they never affect the running worker.
+	Tests []FunctionTest `json:"tests,omitempty"`
+	// ManagedBy is empty for user libraries and "flow:<flow>" for
+	// libraries generated from a listener's inline stages (read-only to users).
+	ManagedBy string `json:"managedBy,omitempty"`
+	// Egress lists permitted outbound destinations; empty means no egress.
+	Egress []EgressRule `json:"egress,omitempty"`
+	// Scratch marks a short-lived RunSource worker: source is loaded per
+	// invocation so load errors are reported instead of failing startup.
+	Scratch bool `json:"-"`
 }
+
+// FunctionTest is a saved sample input for one library function.
+type FunctionTest struct {
+	Name         string         `json:"name,omitempty"`
+	Function     string         `json:"function,omitempty"`
+	Kind         string         `json:"kind,omitempty"`
+	Raw          []byte         `json:"raw,omitempty"`
+	Fields       map[string]any `json:"fields,omitempty"`
+	Meta         map[string]any `json:"meta,omitempty"`
+	Config       map[string]any `json:"config,omitempty"`
+	ExpectFields map[string]any `json:"expectFields,omitempty"`
+	ExpectDrop   *bool          `json:"expectDrop,omitempty"`
+}
+
+// EgressRule permits outbound traffic from a library worker. Kubernetes
+// enforces each rule precisely; Docker can only grant or deny all egress.
+type EgressRule struct {
+	CIDR        string            `json:"cidr,omitempty"`
+	Port        int               `json:"port,omitempty"`
+	Protocol    string            `json:"protocol,omitempty"`
+	Namespace   string            `json:"namespace,omitempty"`
+	PodSelector map[string]string `json:"podSelector,omitempty"`
+	Description string            `json:"description,omitempty"`
+}
+
+const (
+	maxTests       = 64
+	maxEgressRules = 32
+	// ManagedPrefix and ScratchPrefix are reserved library-name prefixes.
+	ManagedPrefix = "flow-"
+	ScratchPrefix = "run-"
+)
+
+// Managed reports whether the controller owns this library.
+func (d Definition) Managed() bool { return d.ManagedBy != "" }
+
+// runtimeEqual compares only what the running worker depends on.
+func runtimeEqual(a, b Definition) bool {
+	return a.Name == b.Name && a.SourceCode == b.SourceCode && a.TimeoutSeconds == b.TimeoutSeconds && a.MemoryMiB == b.MemoryMiB &&
+		slices.EqualFunc(a.Egress, b.Egress, func(x, y EgressRule) bool {
+			return x.CIDR == y.CIDR && x.Port == y.Port && x.Protocol == y.Protocol && x.Namespace == y.Namespace && maps.Equal(x.PodSelector, y.PodSelector)
+		})
+}
+
+func normalizeEgress(rules []EgressRule) ([]EgressRule, error) {
+	if len(rules) > maxEgressRules {
+		return nil, fmt.Errorf("at most %d egress rules are allowed", maxEgressRules)
+	}
+	out := make([]EgressRule, 0, len(rules))
+	for i, r := range rules {
+		where := fmt.Sprintf("egress[%d]", i)
+		if r.CIDR == "" && r.Namespace == "" && len(r.PodSelector) == 0 {
+			return nil, fmt.Errorf("%s: cidr or namespace/podSelector is required", where)
+		}
+		if r.CIDR != "" {
+			if ip := net.ParseIP(r.CIDR); ip != nil {
+				if ip.To4() != nil {
+					r.CIDR += "/32"
+				} else {
+					r.CIDR += "/128"
+				}
+			}
+			if _, network, err := net.ParseCIDR(r.CIDR); err != nil {
+				return nil, fmt.Errorf("%s: invalid cidr %q", where, r.CIDR)
+			} else {
+				r.CIDR = network.String()
+			}
+		}
+		if r.Port < 0 || r.Port > 65535 {
+			return nil, fmt.Errorf("%s: port must be 0 (any) or 1-65535", where)
+		}
+		r.Protocol = strings.ToLower(r.Protocol)
+		if r.Protocol == "" {
+			r.Protocol = "tcp"
+		}
+		if r.Protocol != "tcp" && r.Protocol != "udp" {
+			return nil, fmt.Errorf("%s: protocol must be tcp or udp", where)
+		}
+		if r.Namespace != "" {
+			if errs := validation.IsDNS1123Label(r.Namespace); len(errs) > 0 {
+				return nil, fmt.Errorf("%s: invalid namespace: %s", where, strings.Join(errs, "; "))
+			}
+		}
+		for key, value := range r.PodSelector {
+			if errs := validation.IsQualifiedName(key); len(errs) > 0 {
+				return nil, fmt.Errorf("%s: invalid podSelector key %q", where, key)
+			}
+			if errs := validation.IsValidLabelValue(value); len(errs) > 0 {
+				return nil, fmt.Errorf("%s: invalid podSelector value for %q", where, key)
+			}
+		}
+		if len(r.Description) > 200 {
+			return nil, fmt.Errorf("%s: description exceeds 200 characters", where)
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func normalizeTests(tests []FunctionTest) error {
+	if len(tests) > maxTests {
+		return fmt.Errorf("at most %d saved tests are allowed", maxTests)
+	}
+	for i, t := range tests {
+		switch t.Kind {
+		case "listener", "parser", "transformer", "sink":
+		default:
+			return fmt.Errorf("tests[%d]: kind must be listener, parser, transformer, or sink", i)
+		}
+		if t.Function == "" || len(t.Function) > 128 || len(t.Name) > 128 {
+			return fmt.Errorf("tests[%d]: function is required and names are limited to 128 characters", i)
+		}
+		if len(t.Raw) > 1<<20 {
+			return fmt.Errorf("tests[%d]: raw sample exceeds 1 MiB", i)
+		}
+	}
+	return nil
+}
+
 type Binding struct {
 	Endpoint       string `json:"endpoint"`
 	Token          string `json:"token"`
@@ -66,7 +201,33 @@ func Normalize(d Definition) (Definition, error) {
 	if d.MemoryMiB < 64 || d.MemoryMiB > 1024 {
 		return d, fmt.Errorf("memoryMib must be between 64 and 1024")
 	}
+	if d.ManagedBy != "" && (!strings.HasPrefix(d.ManagedBy, "flow:") || len(d.ManagedBy) > 260) {
+		return d, fmt.Errorf("managedBy must be empty or flow:<flow>")
+	}
+	if err := normalizeTests(d.Tests); err != nil {
+		return d, err
+	}
+	egress, err := normalizeEgress(d.Egress)
+	if err != nil {
+		return d, err
+	}
+	d.Egress = egress
+	if len(d.Egress) == 0 {
+		d.Egress = nil
+	}
 	return d, nil
+}
+
+// NormalizeUser additionally reserves the system name prefixes and the
+// managed marker for libraries the controller generates.
+func NormalizeUser(d Definition) (Definition, error) {
+	if strings.HasPrefix(d.Name, ManagedPrefix) || strings.HasPrefix(d.Name, ScratchPrefix) {
+		return d, fmt.Errorf("library names starting with %q or %q are reserved for GoFi", ManagedPrefix, ScratchPrefix)
+	}
+	if d.ManagedBy != "" {
+		return d, fmt.Errorf("managedBy is set by GoFi for flow-managed libraries")
+	}
+	return Normalize(d)
 }
 
 type Supervisor struct {
@@ -83,11 +244,17 @@ type Supervisor struct {
 	toolingClosed  bool
 	toolingContext context.Context
 	toolingCancel  context.CancelFunc
+	// scratch maps active RunSource worker names to their tokens (for log
+	// redaction); entries exist from before Start until after Stop.
+	scratch map[string]string
+	// healthFailures counts consecutive failed health probes per library;
+	// a worker restarts only after unhealthyThreshold failures in a row.
+	healthFailures map[string]int
 }
 
 func New(b Backend, s Store) *Supervisor {
 	toolingContext, toolingCancel := context.WithCancel(context.Background())
-	return &Supervisor{backend: b, store: s, defs: map[string]Definition{}, bindings: map[string]Binding{}, statuses: map[string]Status{}, toolingContext: toolingContext, toolingCancel: toolingCancel}
+	return &Supervisor{backend: b, store: s, defs: map[string]Definition{}, bindings: map[string]Binding{}, statuses: map[string]Status{}, toolingContext: toolingContext, toolingCancel: toolingCancel, scratch: map[string]string{}}
 }
 func (s *Supervisor) Apply(ctx context.Context, d Definition) error {
 	d, err := Normalize(d)
@@ -99,6 +266,14 @@ func (s *Supervisor) Apply(ctx context.Context, d Definition) error {
 	if s.store != nil {
 		if err = s.store.Save(ctx, d); err != nil {
 			return err
+		}
+	}
+	if old, ok := s.Get(d.Name); ok && runtimeEqual(old, d) {
+		if st, _ := s.Status(d.Name); st.Phase == "Ready" {
+			s.mu.Lock()
+			s.defs[d.Name] = d
+			s.mu.Unlock()
+			return nil
 		}
 	}
 	return s.start(ctx, d)
@@ -182,6 +357,36 @@ func (s *Supervisor) Bindings(context.Context) (map[string]Binding, error) {
 	}
 	return out, nil
 }
+
+// unhealthyThreshold is how many consecutive failed health probes (one per
+// 5 s reconcile) restart a worker. One slow probe on a busy host must not
+// kill a worker that is in the middle of running functions.
+const unhealthyThreshold = 3
+
+// observeHealth records a probe result and reports whether the worker should
+// be kept: it stays until unhealthyThreshold consecutive probes fail.
+func (s *Supervisor) observeHealth(name string, err error) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healthFailures == nil {
+		s.healthFailures = map[string]int{}
+	}
+	if err == nil {
+		delete(s.healthFailures, name)
+		return true
+	}
+	s.healthFailures[name]++
+	failures := s.healthFailures[name]
+	slog.Warn("Python library health check failed", "library", name, "consecutiveFailures", failures, "threshold", unhealthyThreshold, "error", err)
+	return failures < unhealthyThreshold
+}
+
+func (s *Supervisor) resetHealth(name string) {
+	s.mu.Lock()
+	delete(s.healthFailures, name)
+	s.mu.Unlock()
+}
+
 func (s *Supervisor) Reconcile(ctx context.Context) error {
 	if s.store == nil {
 		return nil
@@ -206,12 +411,28 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			s.mu.RLock()
 			binding := s.bindings[d.Name]
 			s.mu.RUnlock()
-			healthy = hb.Health(ctx, binding) == nil
+			healthy = s.observeHealth(d.Name, hb.Health(ctx, binding))
 		}
-		if !ok || old != d || st.Phase != "Ready" || !healthy {
-			if err = s.start(ctx, d); err != nil {
-				slog.Error("Python library start failed", "library", d.Name, "error", err)
-			}
+		if ok && runtimeEqual(old, d) && st.Phase == "Ready" && healthy {
+			// Saved tests and metadata change without restarting the worker.
+			s.mu.Lock()
+			s.defs[d.Name] = d
+			s.mu.Unlock()
+			continue
+		}
+		switch {
+		case !ok:
+			slog.Info("Python library starting", "library", d.Name)
+		case !runtimeEqual(old, d):
+			slog.Info("Python library restarting: definition changed", "library", d.Name)
+		case st.Phase != "Ready":
+			slog.Info("Python library restarting: not ready", "library", d.Name, "phase", st.Phase, "error", st.Error)
+		default:
+			slog.Warn("Python library restarting: health checks failed", "library", d.Name, "consecutiveFailures", unhealthyThreshold)
+		}
+		s.resetHealth(d.Name)
+		if err = s.start(ctx, d); err != nil {
+			slog.Error("Python library start failed", "library", d.Name, "error", err)
 		}
 	}
 	for _, d := range s.List() {

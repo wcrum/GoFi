@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed a running GoFi portal and send continuous local TCP demo traffic."""
+"""Seed a running GoFi portal with an example flow and send continuous local TCP demo traffic."""
 import argparse
 import base64
 import json
@@ -13,10 +13,11 @@ def main():
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument("--api", default="http://127.0.0.1:9090")
     args.add_argument("--port", default=10001, type=int)
+    args.add_argument("--name", default="telemetry-demo", help="flow name to create or replace")
     options = args.parse_args()
     definition = {
-        "name": "telemetry-demo",
-        "source": {"port": options.port, "network": "tcp"},
+        "name": options.name,
+        "source": {"listen": {"network": "tcp", "port": options.port}},
         "framing": {"mode": "line"},
         "parser": {"format": "json", "decoders": ["base64"], "errorPolicy": "drop"},
         "stages": [
@@ -31,10 +32,10 @@ def main():
             {"id": "drop", "name": "Cool sensor is filtered", "raw": base64.b64encode(b'{"sensor":"bravo","temperature":18}').decode()},
         ],
     }
-    req = urllib.request.Request(options.api + "/gofi.v1.GoFiService/UpsertListener", data=json.dumps({"listener": definition}).encode(), headers={"Content-Type": "application/json", "Connect-Protocol-Version": "1"})
+    req = urllib.request.Request(options.api + "/gofi.v1.GoFiService/UpsertFlow", data=json.dumps({"flow": definition}).encode(), headers={"Content-Type": "application/json", "Connect-Protocol-Version": "1"})
     with urllib.request.urlopen(req, timeout=10) as response:
         assert response.status == 200
-    print(f"Demo ready: {options.api} | telemetry-demo TCP :{options.port}", flush=True)
+    print(f"Demo ready: {options.api} | flow {options.name} TCP :{options.port}", flush=True)
     sequence = 0
     while True:
         payload = {"sensor": ["alpha", "bravo", "charlie"][sequence % 3], "temperature": round(24 + 8 * math.sin(sequence / 4), 1), "sequence": sequence}
@@ -42,7 +43,7 @@ def main():
             with socket.create_connection(("127.0.0.1", options.port), timeout=2) as conn:
                 conn.sendall(base64.b64encode(json.dumps(payload).encode()) + b"\n")
         except OSError as error:
-            print(f"Waiting for demo listener: {error}", flush=True)
+            print(f"Waiting for the demo flow's listen source: {error}", flush=True)
         sequence += 1
         time.sleep(1)
 

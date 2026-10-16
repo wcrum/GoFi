@@ -19,25 +19,45 @@
 package filter
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"cel.dev/cel-go/cel"
 
 	"github.com/wcrum/gofi/message"
 )
 
+// Runtime bounds for every CEL program. Ingress data is untrusted, so each
+// evaluation is limited by an estimated-cost budget, interrupted on deadline,
+// and expressions themselves have a maximum size.
+const (
+	// CostLimit matches the per-expression budget Kubernetes applies to CEL
+	// validation rules; a typical predicate costs well under 100.
+	CostLimit uint64 = 1_000_000
+	// MaxExpressionBytes bounds expression source size.
+	MaxExpressionBytes = 8192
+	// EvalTimeout bounds wall-clock time for one evaluation.
+	EvalTimeout = 100 * time.Millisecond
+	// interruptCheckFrequency is how many comprehension iterations run
+	// between deadline checks.
+	interruptCheckFrequency = 100
+)
+
 var sharedEnv *cel.Env
 var envOnce sync.Once
 var envErr error
 
-// Env returns the shared CEL environment (built once, lazily).
+// Env returns the shared CEL environment (built once, lazily). Every stage,
+// sink condition, library check, and library evaluation uses it.
 func Env() (*cel.Env, error) {
 	envOnce.Do(func() {
 		sharedEnv, envErr = cel.NewEnv(
 			cel.Variable("fields", cel.MapType(cel.StringType, cel.DynType)),
 			cel.Variable("meta", cel.MapType(cel.StringType, cel.StringType)),
 			cel.Variable("raw", cel.StringType),
+			cel.ParserExpressionSizeLimit(MaxExpressionBytes),
 		)
 	})
 	return sharedEnv, envErr
@@ -55,6 +75,9 @@ func CompileCEL(expression string) (cel.Program, error) {
 func CompilePredicate(expression string) (cel.Program, error) { return compileCEL(expression, true) }
 
 func compileCEL(expression string, predicate bool) (cel.Program, error) {
+	if len(expression) > MaxExpressionBytes {
+		return nil, fmt.Errorf("cel: expression exceeds %d bytes", MaxExpressionBytes)
+	}
 	env, err := Env()
 	if err != nil {
 		return nil, fmt.Errorf("cel: env init: %w", err)
@@ -66,7 +89,7 @@ func compileCEL(expression string, predicate bool) (cel.Program, error) {
 	if predicate && !ast.OutputType().IsExactType(cel.BoolType) && !ast.OutputType().IsExactType(cel.DynType) {
 		return nil, fmt.Errorf("cel: condition must return a bool")
 	}
-	prog, err := env.Program(ast)
+	prog, err := env.Program(ast, cel.CostLimit(CostLimit), cel.InterruptCheckFrequency(interruptCheckFrequency))
 	if err != nil {
 		return nil, err
 	}
@@ -78,19 +101,32 @@ func compileCEL(expression string, predicate bool) (cel.Program, error) {
 // null). Callers interpret the result themselves (e.g. as a bool, or via
 // fmt.Sprint for a dedup key).
 func EvalCEL(program cel.Program, msg *message.Message) (interface{}, error) {
+	val, _, err := EvalCELDetailed(context.Background(), program, msg)
+	return val, err
+}
+
+// EvalCELDetailed evaluates under the shared deadline and also reports the
+// actual evaluation cost.
+func EvalCELDetailed(ctx context.Context, program cel.Program, msg *message.Message) (interface{}, uint64, error) {
 	activation := map[string]interface{}{
 		"fields": msg.Fields,
 		"meta":   msg.Meta,
 		"raw":    string(msg.Raw),
 	}
-	out, _, err := program.Eval(activation)
+	ctx, cancel := context.WithTimeout(ctx, EvalTimeout)
+	defer cancel()
+	out, details, err := program.ContextEval(ctx, activation)
+	var cost uint64
+	if details != nil && details.ActualCost() != nil {
+		cost = *details.ActualCost()
+	}
 	if err != nil {
-		return nil, fmt.Errorf("cel: eval: %w", err)
+		return nil, cost, fmt.Errorf("cel: eval: %w", err)
 	}
 	if out == nil {
-		return nil, nil
+		return nil, cost, nil
 	}
-	return out.Value(), nil
+	return out.Value(), cost, nil
 }
 
 // EvalCELBool evaluates a compiled program and requires a bool result (nil

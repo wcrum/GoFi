@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { RiCloseLine, RiErrorWarningLine, RiCheckboxCircleLine } from 'react-icons/ri'
+import { css } from '@emotion/css'
+import type { GrafanaTheme2 } from '@grafana/data'
+import { Alert, useStyles2 } from '@grafana/ui'
 
 type ToastSeverity = 'error' | 'success'
 
@@ -46,35 +48,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return () => { map.forEach(clearTimeout) }
   }, [])
 
+  const styles = useStyles2(getStyles)
   return (
     <ToastContext.Provider value={{ addToast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+      {/* Grafana's AppNotificationList: a top-right stack of Alerts. */}
+      <div className={styles.list} role="status" aria-live="polite">
         {toasts.map((t) => (
-          <ToastItem key={t.id} toast={t} onDismiss={dismiss} />
+          <Alert key={t.id} severity={t.severity} title={t.severity === 'error' ? 'Error' : 'Success'} onRemove={() => dismiss(t.id)} elevated bottomSpacing={0}>
+            {t.message}
+          </Alert>
         ))}
       </div>
     </ToastContext.Provider>
   )
 }
 
-function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
-  const Icon = toast.severity === 'error' ? RiErrorWarningLine : RiCheckboxCircleLine
-  const accent = toast.severity === 'error' ? 'text-red-400' : 'text-green-400'
-  const border = toast.severity === 'error' ? 'border-red-500/30' : 'border-green-500/30'
-
-  return (
-    <div
-      className={`pointer-events-auto flex items-start gap-2.5 min-w-64 max-w-sm px-3.5 py-3 rounded border bg-g-secondary shadow-lg ${border}`}
-    >
-      <Icon className={`shrink-0 mt-0.5 text-base ${accent}`} />
-      <span className="flex-1 text-sm text-g-text leading-snug">{toast.message}</span>
-      <button
-        onClick={() => onDismiss(toast.id)}
-        className="shrink-0 text-g-text-secondary hover:text-g-text transition-colors"
-      >
-        <RiCloseLine size={16} />
-      </button>
-    </div>
-  )
-}
+const getStyles = (theme: GrafanaTheme2) => ({
+  list: css({
+    position: 'fixed', top: `calc(var(--gofi-topbar-height) + ${theme.spacing(1)})`, right: theme.spacing(2),
+    zIndex: theme.zIndex.portal, display: 'flex', flexDirection: 'column', gap: theme.spacing(1),
+    width: `min(400px, calc(100vw - ${theme.spacing(4)}))`, wordBreak: 'break-word',
+  }),
+})

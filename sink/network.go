@@ -20,7 +20,8 @@ type networkSink struct {
 	conn                                  net.Conn
 }
 
-func newNetwork(cfg spec.SinkCfg, listenerName string) (*networkSink, error) {
+func newNetwork(cfg spec.SinkCfg, listenerName string) (Sink, error) {
+	fanout := false
 	if cfg.Kubernetes != nil {
 		if err := cfg.Kubernetes.Validate(); err != nil {
 			return nil, err
@@ -32,9 +33,9 @@ func newNetwork(cfg spec.SinkCfg, listenerName string) (*networkSink, error) {
 		if namespace == "" {
 			return nil, fmt.Errorf("Kubernetes target namespace is required in the listener environment")
 		}
-		if cfg.Kubernetes.Namespace != "" && cfg.Kubernetes.Namespace != namespace {
-			return nil, fmt.Errorf("Kubernetes target must use the listener namespace")
-		}
+		// The target Service always lives in GoFi's namespace; for Pods in
+		// another namespace GoFi publishes their addresses behind it.
+		fanout = cfg.Kubernetes.FanOut()
 		host := spec.KubernetesServiceName(listenerName, cfg.Type, cfg.Kubernetes) + "." + namespace + ".svc.cluster.local"
 		cfg.URL = cfg.Type + "://" + net.JoinHostPort(host, strconv.Itoa(cfg.Kubernetes.Port))
 	}
@@ -54,12 +55,19 @@ func newNetwork(cfg spec.SinkCfg, listenerName string) (*networkSink, error) {
 	if mode != "raw" && mode != "wrapped" {
 		return nil, fmt.Errorf("%s sink: unsupported bodyMode %q", cfg.Type, mode)
 	}
+	if fanout {
+		return newFanout(cfg.Type, u.Hostname(), u.Port(), func(address string) *networkSink {
+			return &networkSink{network: cfg.Type, address: address, delimiter: cfg.Delimiter, bodyMode: mode}
+		}), nil
+	}
 	return &networkSink{network: cfg.Type, address: u.Host, delimiter: cfg.Delimiter, bodyMode: mode}, nil
 }
 
 func (s *networkSink) Send(msg *message.Message) error {
 	payload := msg.Raw
-	if s.bodyMode == "wrapped" {
+	if msg.Payload != nil {
+		payload = msg.Payload
+	} else if s.bodyMode == "wrapped" {
 		var err error
 		payload, err = json.Marshal(map[string]any{"fields": msg.Fields, "meta": msg.Meta})
 		if err != nil {

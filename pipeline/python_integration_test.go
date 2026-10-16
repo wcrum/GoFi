@@ -35,7 +35,7 @@ func (w *testPythonWorker) Invoke(ctx context.Context, req *connect.Request[gofi
 	if req.Header().Get("Authorization") != "Bearer private-worker-token" {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("worker authentication required"))
 	}
-	kinds := map[string]string{"strip": "listener", "mapping": "listener", "source-none": "listener", "decode": "parser", "parser-none": "parser", "parser-error": "parser", "slow": "parser", "normalize": "transformer", "transformer-none": "transformer", "capture": "sink"}
+	kinds := map[string]string{"strip": "decoder", "decode": "parser", "parser-none": "parser", "parser-error": "parser", "slow": "parser", "normalize": "transformer", "transformer-none": "transformer", "capture": "sink"}
 	if kinds[req.Msg.Name] != req.Msg.Kind {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("function not registered for requested kind"))
 	}
@@ -46,9 +46,7 @@ func (w *testPythonWorker) Invoke(ctx context.Context, req *connect.Request[gofi
 	switch req.Msg.Name {
 	case "strip":
 		response.Raw = bytes.TrimPrefix(req.Msg.Raw, []byte("prefix:"))
-	case "mapping":
-		response.Fields, _ = structpb.NewStruct(map[string]any{"app": "PAYMENTS"})
-	case "source-none", "parser-none", "transformer-none":
+	case "parser-none", "transformer-none":
 		response.Drop = true
 	case "parser-error":
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("custom parser failed"))
@@ -93,10 +91,10 @@ func startPythonWorker(t *testing.T) (*testPythonWorker, string) {
 func pyRef(function string) *spec.PythonRef {
 	return &spec.PythonRef{Library: "telemetry", Function: function}
 }
-func pythonDefinition() spec.ListenerDefinition {
-	return spec.ListenerDefinition{Name: "python-flow", Source: spec.Source{Port: 7000, Network: "tcp", Python: pyRef("strip")}, Parser: spec.ParserCfg{Format: "python", Python: pyRef("decode")}, Stages: []spec.StageSpec{{ID: "normalize", Kind: "python", Python: pyRef("normalize")}}, Sinks: []spec.SinkCfg{{Type: "python", Python: pyRef("capture")}}}
+func pythonDefinition() spec.FlowDefinition {
+	return spec.FlowDefinition{Name: "python-flow", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 7000, Network: "tcp"}}, Parser: spec.ParserCfg{Format: "python", Python: pyRef("decode"), Decoders: []spec.CodecStep{{Type: "python", Python: pyRef("strip")}}}, Stages: []spec.StageSpec{{ID: "normalize", Kind: "python", Python: pyRef("normalize")}}, Sinks: []spec.SinkCfg{{Type: "python", Python: pyRef("capture")}}}
 }
-func executePythonPipeline(t *testing.T, def spec.ListenerDefinition, raw string, outputs []sink.Sink, dead sink.Sink) TapEvent {
+func executePythonPipeline(t *testing.T, def spec.FlowDefinition, raw string, outputs []sink.Sink, dead sink.Sink) TapEvent {
 	t.Helper()
 	chain, err := filter.NewChain(def.Stages)
 	if err != nil {
@@ -135,16 +133,16 @@ func TestPythonFunctionsConsumeRealConnectRPCInPipelineOrder(t *testing.T) {
 	if len(calls) != 4 {
 		t.Fatalf("expected four actual worker calls: %+v", calls)
 	}
-	for i, kind := range []string{"listener", "parser", "transformer", "sink"} {
+	for i, kind := range []string{"decoder", "parser", "transformer", "sink"} {
 		if calls[i].Kind != kind {
 			t.Fatalf("call %d kind %q, want %q", i, calls[i].Kind, kind)
 		}
 	}
 	if string(calls[0].Raw) != raw || string(calls[1].Raw) != `{"app":"PAYMENTS","count":3}` {
-		t.Fatal("listener hook did not feed transformed bytes to the parser")
+		t.Fatal("the Python decoder did not feed its bytes to the parser")
 	}
 	dispatched := calls[3]
-	if dispatched.Fields.AsMap()["app"] != "payments" || dispatched.Meta.AsMap()["source"] != "test-sender" || dispatched.Meta.AsMap()["name"] != def.Name || dispatched.Meta.AsMap()["ts"] == "" || string(dispatched.Raw) != `{"app":"PAYMENTS","count":3}` {
+	if dispatched.Fields.AsMap()["app"] != "payments" || dispatched.Meta.AsMap()["source"] != "test-sender" || dispatched.Meta.AsMap()["name"] != def.Name || dispatched.Meta.AsMap()["ts"] == "" || string(dispatched.Raw) != raw { // decoders preserve the original frame for sinks
 		t.Fatalf("worker envelope lost data: %+v", dispatched)
 	}
 	// Mock executes processing functions but withholds the Python sink entirely.
@@ -156,24 +154,13 @@ func TestPythonFunctionsConsumeRealConnectRPCInPipelineOrder(t *testing.T) {
 		t.Fatal("simulation dispatched a real Python sink")
 	}
 }
-func TestPythonListenerMappingResultBecomesParserInput(t *testing.T) {
-	startPythonWorker(t)
-	def := spec.ListenerDefinition{Name: "mapping", Source: spec.Source{Python: pyRef("mapping")}, Parser: spec.ParserCfg{Format: "json"}}
-	output := &fakeSink{}
-	event := executePythonPipeline(t, def, "ignored", []sink.Sink{output}, nil)
-	if event.Dropped || event.Msg.Fields["app"] != "PAYMENTS" || string(event.Msg.Raw) != `{"app":"PAYMENTS"}` {
-		t.Fatalf("mapping hook was not serialized before parsing: %+v", event)
-	}
-}
 func TestPythonExplicitRejectionsAlwaysStopLiveAndSimulation(t *testing.T) {
 	startPythonWorker(t)
-	for _, kind := range []string{"listener", "parser", "transformer"} {
+	for _, kind := range []string{"parser", "transformer"} {
 		t.Run(kind, func(t *testing.T) {
-			def := spec.ListenerDefinition{Name: "none", Parser: spec.ParserCfg{Format: "json", ErrorPolicy: "continue"}, Sinks: []spec.SinkCfg{{Type: "stdout"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"}}
+			def := spec.FlowDefinition{Name: "none", Parser: spec.ParserCfg{Format: "json", ErrorPolicy: "continue"}, Sinks: []spec.SinkCfg{{Type: "stdout"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"}}
 			droppedBy := kind
 			switch kind {
-			case "listener":
-				def.Source.Python = pyRef("source-none")
 			case "parser":
 				def.Parser = spec.ParserCfg{Format: "python", Python: pyRef("parser-none"), ErrorPolicy: "continue"}
 			case "transformer":
@@ -201,7 +188,7 @@ func TestPythonParserFailuresAreClosedUnlessContinueIsExplicit(t *testing.T) {
 				if function == "missing-library" {
 					ref.Library = "absent"
 				}
-				def := spec.ListenerDefinition{Name: "failure", Parser: spec.ParserCfg{Format: "python", Python: ref, ErrorPolicy: policy}, Sinks: []spec.SinkCfg{{Type: "stdout"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"}}
+				def := spec.FlowDefinition{Name: "failure", Parser: spec.ParserCfg{Format: "python", Python: ref, ErrorPolicy: policy}, Sinks: []spec.SinkCfg{{Type: "stdout"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"}}
 				output, dead := &fakeSink{}, &fakeSink{}
 				started := time.Now()
 				event := executePythonPipeline(t, def, `{"app":"PAYMENTS"}`, []sink.Sink{output}, dead)

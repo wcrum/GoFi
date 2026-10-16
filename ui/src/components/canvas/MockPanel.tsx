@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Edge } from '@xyflow/react'
-import { PanelHeader, Input, Spinner, Badge } from '../primitives'
+import { css } from '@emotion/css'
+import type { GrafanaTheme2 } from '@grafana/data'
+import { Badge, Button, ButtonGroup, Card, Field, IconButton, Input, Stack, Text, TextArea, ToolbarButton, useStyles2 } from '@grafana/ui'
 import { useToast } from '../Toast'
-import { RiPlayLine, RiDeleteBinLine, RiAddLine, RiMagicLine } from 'react-icons/ri'
 import type { SimulateResult, TestCase } from '../../types'
-import { simulateListener } from '../../api'
+import { simulateFlow } from '../../api'
 import { genId } from '../../lib/id'
 import { generateSampleRaw } from '../../lib/mockData'
-import { flowToListener, orderedSinkNodeIds } from './convert'
+import { graphToDefinition, orderedSinkNodeIds } from './convert'
 import type { FlowNode, MockState } from './types'
 import { MockTraceView } from '../MockTraceView'
-import { TEXTAREA_CLASSNAME } from './NodeInspector'
 
 const AUTO_PLAY_MS = 600
 
@@ -23,7 +23,7 @@ interface Props {
   setTestCases: Dispatch<SetStateAction<TestCase[]>>
   // readOnly (view mode) disables test-case add/rename/delete/generate since
   // there's no update endpoint to persist edits to an already-created
-  // listener — building an affordance that silently discards data would be a
+  // flow — building an affordance that silently discards data would be a
   // trap. Existing test cases stay visible and playable; running a case
   // mutates nothing, so Play works in both modes.
   readOnly: boolean
@@ -46,7 +46,10 @@ function statesForStep(
 ): Record<string, MockState | undefined> {
   const states: Record<string, MockState | undefined> = {}
 
-  states['ingress'] = step === 0 ? 'active' : result.parseError ? 'error' : 'pass'
+  // Step 0 is the fixed prefix: Source, Frame, and Decode succeed once a frame
+  // exists; a decode or parse failure is reported on the Parse step.
+  for (const id of ['ingress', 'frame', 'decode']) states[id] = step === 0 ? 'active' : 'pass'
+  states['parse'] = step === 0 ? 'active' : result.parseError ? 'error' : 'pass'
 
   ;(result.stages ?? []).forEach((stage, i) => {
     const pos = i + 1
@@ -85,6 +88,7 @@ function statesForStep(
 }
 
 export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnly, setMockStates, onClose }: Props) {
+  const styles = useStyles2(getStyles)
   const addToast = useToast()
   const [selectedId, setSelectedId] = useState<string | null>(testCases[0]?.id ?? null)
   const [result, setResult] = useState<SimulateResult | null>(null)
@@ -143,17 +147,17 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
     if (!selected) return
     let def
     try {
-      def = flowToListener(name, nodes, edges)
+      def = graphToDefinition(name, nodes, edges)
     } catch {
       // A generator only needs the stage/sink expressions, which are readable
-      // even from an incomplete graph — but flowToListener throws on a broken
+      // even from an incomplete graph — but graphToDefinition throws on a broken
       // one. Fall back to scanning whatever specs the nodes carry directly.
-      const ingress = nodes.find((n) => n.type === 'ingress')
+      const parse = nodes.find((n) => n.type === 'parse')
       def = {
         name,
-        source: { port: 0, network: 'tcp' },
+        source: { listen: { port: 0, network: 'tcp' } },
         framing: { mode: 'line' },
-        parser: ingress?.type === 'ingress' ? ingress.data.parser : { format: 'json' },
+        parser: parse?.type === 'parse' ? parse.data.parser : { format: 'json' },
         stages: nodes.flatMap((n) => (n.type === 'stage' ? [n.data.spec] : [])),
         sinks: nodes.flatMap((n) => (n.type === 'sink' && n.id !== 'deadletter' ? [n.data.sink] : [])),
       }
@@ -174,9 +178,9 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
     setLoading(true)
     try {
       // Build against the *current* graph. An incomplete draft (e.g. no sink)
-      // makes flowToListener throw — surface that inline rather than crashing.
-      const def = { ...flowToListener(name, nodes, edges), testCases }
-      const res = await simulateListener(def, selected.raw)
+      // makes graphToDefinition throw — surface that inline rather than crashing.
+      const def = { ...graphToDefinition(name, nodes, edges), testCases }
+      const res = await simulateFlow(def, selected.raw)
       setResult(res)
       setStep(0)
     } catch (e) {
@@ -188,154 +192,82 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
   }
 
   return (
-    <aside className="w-80 shrink-0 border-l border-g-border-weak bg-g-primary flex flex-col overflow-y-auto">
-      <PanelHeader title="Test flow" onClose={onClose} />
+    <aside className={styles.panel} aria-label="Test flow">
+      <div className={styles.header}>
+        <Text element="h2" variant="h5">Test flow</Text>
+        <IconButton name="times" tooltip="Close test flow" onClick={onClose} />
+      </div>
 
-      <div className="p-4 space-y-4">
+      <div className={styles.body}>
         {/* Test case list */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-g-text-secondary uppercase tracking-wide">Test Cases</span>
-            {!readOnly && (
-              <button
-                onClick={handleAdd}
-                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-g-border-weak text-g-text-secondary hover:text-g-text transition-colors"
-              >
-                <RiAddLine size={12} /> Add
-              </button>
-            )}
-          </div>
+        <Stack direction="column" gap={1}>
+          <Stack justifyContent="space-between" alignItems="center">
+            <Text variant="bodySmall" weight="medium" color="secondary">Test cases</Text>
+            {!readOnly && <Button size="sm" variant="secondary" icon="plus" onClick={handleAdd}>Add</Button>}
+          </Stack>
           {testCases.length === 0 ? (
-            <p className="text-xs text-g-text-secondary">No test cases yet.</p>
-          ) : (
-            <div className="space-y-1">
-              {testCases.map((tc) => (
-                <div
-                  key={tc.id}
-                  onClick={() => {
-                    setSelectedId(tc.id)
-                    resetPlayback()
-                  }}
-                  className={`group flex items-center gap-2 rounded px-2 py-1.5 cursor-pointer border transition-colors ${
-                    tc.id === selectedId
-                      ? 'border-g-accent-main/60 bg-g-hover'
-                      : 'border-g-border-weak hover:bg-g-hover'
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-g-text truncate">{tc.name}</div>
-                    <div className="text-xs text-g-text-secondary font-mono truncate">
-                      {tc.raw || '(empty)'}
-                    </div>
-                  </div>
-                  {!readOnly && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(tc.id)
-                      }}
-                      className="shrink-0 text-g-text-secondary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Delete test case"
-                    >
-                      <RiDeleteBinLine size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+            <Text variant="bodySmall" color="secondary">No test cases yet.</Text>
+          ) : testCases.map((tc) => (
+            <Card key={tc.id} isCompact noMargin isSelected={tc.id === selectedId} onClick={() => { setSelectedId(tc.id); resetPlayback() }}>
+              <Card.Heading>{tc.name}</Card.Heading>
+              <Card.Description className={styles.raw}>{tc.raw || '(empty)'}</Card.Description>
+              {!readOnly && <Card.SecondaryActions>
+                <IconButton name="trash-alt" tooltip="Delete test case" onClick={(e) => { e.stopPropagation(); handleDelete(tc.id) }} />
+              </Card.SecondaryActions>}
+            </Card>
+          ))}
+        </Stack>
 
         {/* Selected test case editor */}
         {selected && (
-          <div className="space-y-3 border-t border-g-border-weak pt-4">
-            <Input
-              value={selected.name}
-              disabled={readOnly}
-              onChange={(e) => updateSelected({ name: e.target.value })}
-              placeholder="Test case name"
-            />
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-g-text-secondary">Raw input</span>
-                {!readOnly && (
-                  <button
-                    onClick={handleGenerate}
-                    className="flex items-center gap-1 text-xs text-g-text-secondary hover:text-g-text transition-colors"
-                    title="Generate a heuristic placeholder sample from the pipeline's expressions"
-                  >
-                    <RiMagicLine size={12} /> Generate
-                  </button>
-                )}
-              </div>
-              <textarea
-                rows={5}
-                disabled={readOnly}
-                className={TEXTAREA_CLASSNAME}
-                value={selected.raw}
-                onChange={(e) => updateSelected({ raw: e.target.value })}
-                placeholder='{"type":"a-f-G"}'
-              />
-            </div>
-
-            <button
-              onClick={handlePlay}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded text-sm font-medium bg-g-accent-main text-white hover:bg-g-accent-main/90 disabled:opacity-50 transition-colors"
-            >
-              <RiPlayLine /> {loading ? 'Running…' : 'Play'}
-            </button>
-          </div>
-        )}
-
-        {loading && (
-          <div className="flex justify-center">
-            <Spinner size="16px" />
+          <div className={styles.section}>
+            <Stack direction="column" gap={2}>
+              <Field label="Name" noMargin>
+                <Input value={selected.name} disabled={readOnly} onChange={(e) => updateSelected({ name: e.currentTarget.value })} placeholder="Test case name" />
+              </Field>
+              <Field label={<Stack justifyContent="space-between" alignItems="center">
+                <span>Raw input</span>
+                {!readOnly && <Button size="sm" variant="secondary" fill="text" icon="ai-sparkle" onClick={handleGenerate} tooltip="Generate a heuristic placeholder sample from the pipeline's expressions">Generate</Button>}
+              </Stack>} noMargin>
+                <TextArea rows={5} disabled={readOnly} className={styles.mono} value={selected.raw} onChange={(e) => updateSelected({ raw: e.currentTarget.value })} placeholder='{"type":"a-f-G"}' />
+              </Field>
+              <Button variant="primary" icon={loading ? 'spinner' : 'play'} onClick={handlePlay} disabled={loading} fullWidth>
+                {loading ? 'Running...' : 'Play'}
+              </Button>
+            </Stack>
           </div>
         )}
 
         {/* Playback + trace */}
         {result && (
-          <div className="space-y-3 border-t border-g-border-weak pt-4">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setAutoPlay(false)
-                  setStep((s) => Math.max(0, s - 1))
-                }}
-                disabled={step <= 0}
-                className="text-xs px-2 py-1 rounded border border-g-border-weak text-g-text-secondary hover:text-g-text disabled:opacity-40 transition-colors"
-              >
-                Prev
-              </button>
-              <button
-                onClick={() => {
-                  setAutoPlay(false)
-                  setStep((s) => Math.min(totalSteps - 1, s + 1))
-                }}
-                disabled={step >= totalSteps - 1}
-                className="text-xs px-2 py-1 rounded border border-g-border-weak text-g-text-secondary hover:text-g-text disabled:opacity-40 transition-colors"
-              >
-                Next
-              </button>
-              <button
-                onClick={() => {
-                  // Restart from the top if auto-playing from the end.
-                  if (!autoPlay && step >= totalSteps - 1) setStep(0)
-                  setAutoPlay((p) => !p)
-                }}
-                className="text-xs px-2 py-1 rounded border border-g-border-weak text-g-text-secondary hover:text-g-text transition-colors"
-              >
-                {autoPlay ? 'Pause' : 'Auto-play'}
-              </button>
-              <Badge text={`step ${step + 1}/${totalSteps}`} color="gray" className="ml-auto" />
-            </div>
-
-            <MockTraceView result={result} activeIndex={step - 1} />
+          <div className={styles.section}>
+            <Stack direction="column" gap={2}>
+              <Stack alignItems="center" justifyContent="space-between">
+                <ButtonGroup>
+                  <ToolbarButton icon="angle-left" tooltip="Previous step" disabled={step <= 0} onClick={() => { setAutoPlay(false); setStep((s) => Math.max(0, s - 1)) }} />
+                  <ToolbarButton icon="angle-right" tooltip="Next step" disabled={step >= totalSteps - 1} onClick={() => { setAutoPlay(false); setStep((s) => Math.min(totalSteps - 1, s + 1)) }} />
+                  <ToolbarButton icon={autoPlay ? 'pause' : 'play'} onClick={() => {
+                    // Restart from the top if auto-playing from the end.
+                    if (!autoPlay && step >= totalSteps - 1) setStep(0)
+                    setAutoPlay((p) => !p)
+                  }}>{autoPlay ? 'Pause' : 'Auto-play'}</ToolbarButton>
+                </ButtonGroup>
+                <Badge text={`step ${step + 1}/${totalSteps}`} color="darkgrey" />
+              </Stack>
+              <MockTraceView result={result} activeIndex={step - 1} />
+            </Stack>
           </div>
         )}
       </div>
     </aside>
   )
 }
+
+const getStyles = (theme: GrafanaTheme2) => ({
+  panel: css({ width: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: theme.colors.background.primary, borderLeft: `1px solid ${theme.colors.border.weak}`, [theme.breakpoints.down('md')]: { width: '100%', position: 'absolute', inset: 0, zIndex: 5 } }),
+  header: css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: theme.spacing(1, 1, 1, 2), borderBottom: `1px solid ${theme.colors.border.weak}`, h2: { margin: 0 } }),
+  body: css({ flex: 1, minHeight: 0, overflowY: 'auto', padding: theme.spacing(2), display: 'flex', flexDirection: 'column', gap: theme.spacing(2) }),
+  section: css({ borderTop: `1px solid ${theme.colors.border.weak}`, paddingTop: theme.spacing(2) }),
+  raw: css({ fontFamily: theme.typography.fontFamilyMonospace, fontSize: theme.typography.bodySmall.fontSize, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+  mono: css({ fontFamily: theme.typography.fontFamilyMonospace, fontSize: theme.typography.bodySmall.fontSize }),
+})

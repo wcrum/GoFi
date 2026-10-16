@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// File stores Listener resources as YAML. Replacing the file declaratively is
+// File stores Flow resources as YAML. Replacing the file declaratively is
 // supported; a failed read never erases the last known desired state.
 type File struct {
 	Path           string
@@ -28,10 +28,10 @@ type File struct {
 }
 
 type resource struct {
-	APIVersion string                  `json:"apiVersion"`
-	Kind       string                  `json:"kind"`
-	Metadata   metav1.ObjectMeta       `json:"metadata"`
-	Spec       spec.ListenerDefinition `json:"spec"`
+	APIVersion string              `json:"apiVersion"`
+	Kind       string              `json:"kind"`
+	Metadata   metav1.ObjectMeta   `json:"metadata"`
+	Spec       spec.FlowDefinition `json:"spec"`
 }
 type resourceList struct {
 	APIVersion string          `json:"apiVersion"`
@@ -41,20 +41,20 @@ type resourceList struct {
 }
 
 func (f *File) Configuration() Configuration {
-	return Configuration{Source: "file", APIVersion: APIVersion, Kind: "Listener", Path: f.Path}
+	return Configuration{Source: "file", APIVersion: APIVersion, Kind: KindFlow, Path: f.Path}
 }
-func (f *File) Load(_ context.Context) ([]spec.ListenerDefinition, error) {
+func (f *File) Load(_ context.Context) ([]spec.FlowDefinition, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.load()
 }
-func (f *File) load() ([]spec.ListenerDefinition, error) {
+func (f *File) load() ([]spec.FlowDefinition, error) {
 	data, err := os.ReadFile(f.Path)
 	if os.IsNotExist(err) {
 		if f.loadedExisting {
 			return nil, fmt.Errorf("desired configuration disappeared: %w", err)
 		}
-		return []spec.ListenerDefinition{}, nil
+		return []spec.FlowDefinition{}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -63,19 +63,22 @@ func (f *File) load() ([]spec.ListenerDefinition, error) {
 	if err != nil {
 		return nil, err
 	}
-	defs := make([]spec.ListenerDefinition, 0, len(items))
+	defs := make([]spec.FlowDefinition, 0, len(items))
 	seen := map[string]bool{}
 	metadata := map[string]metav1.ObjectMeta{}
 	for _, item := range items {
-		if item.APIVersion != APIVersion || item.Kind != "Listener" || item.Metadata.Name == "" {
-			return nil, fmt.Errorf("invalid Listener resource")
+		if item.Kind == "Listener" {
+			return nil, fmt.Errorf("%q: %s", item.Metadata.Name, errListenerKind)
+		}
+		if item.APIVersion != APIVersion || item.Kind != KindFlow || item.Metadata.Name == "" {
+			return nil, fmt.Errorf("invalid Flow resource")
 		}
 		if seen[item.Metadata.Name] {
-			return nil, fmt.Errorf("duplicate Listener %q", item.Metadata.Name)
+			return nil, fmt.Errorf("duplicate flow %q", item.Metadata.Name)
 		}
 		seen[item.Metadata.Name] = true
 		if item.Spec.Name != "" && item.Spec.Name != item.Metadata.Name {
-			return nil, fmt.Errorf("Listener %q spec.name must match metadata.name", item.Metadata.Name)
+			return nil, fmt.Errorf("flow %q spec.name must match metadata.name", item.Metadata.Name)
 		}
 		metadata[item.Metadata.Name] = item.Metadata
 		item.Spec.Name = item.Metadata.Name
@@ -110,22 +113,24 @@ func decodeResources(data []byte) ([]resource, error) {
 			return nil, fmt.Errorf("read desired configuration: %w", err)
 		}
 		if header.Kind == "" {
-			return nil, fmt.Errorf("configuration requires a Listener, List, or ListenerList")
+			return nil, fmt.Errorf("configuration requires a Flow, List, or FlowList")
 		}
 		found = true
 		switch header.Kind {
-		case "Listener":
+		case "Listener", "ListenerList":
+			return nil, fmt.Errorf("read desired configuration: %s", errListenerKind)
+		case KindFlow:
 			var item resource
 			if err := yaml.UnmarshalStrict(doc, &item); err != nil {
 				return nil, fmt.Errorf("read desired configuration: %w", err)
 			}
 			items = append(items, item)
-		case "List", "ListenerList":
+		case "List", "FlowList":
 			var list resourceList
 			if err := yaml.UnmarshalStrict(doc, &list); err != nil {
 				return nil, fmt.Errorf("read desired configuration: %w", err)
 			}
-			if (list.Kind == "List" && list.APIVersion != "v1") || (list.Kind == "ListenerList" && list.APIVersion != APIVersion) {
+			if (list.Kind == "List" && list.APIVersion != "v1") || (list.Kind != "List" && list.APIVersion != APIVersion) {
 				return nil, fmt.Errorf("unsupported List apiVersion")
 			}
 			if list.Items == nil {
@@ -133,7 +138,7 @@ func decodeResources(data []byte) ([]resource, error) {
 			}
 			items = append(items, list.Items...)
 		default:
-			return nil, fmt.Errorf("configuration requires a Listener, List, or ListenerList")
+			return nil, fmt.Errorf("configuration requires a Flow, List, or FlowList")
 		}
 	}
 	if !found {
@@ -142,7 +147,7 @@ func decodeResources(data []byte) ([]resource, error) {
 	return items, nil
 }
 
-func (f *File) Save(_ context.Context, def spec.ListenerDefinition) error {
+func (f *File) Save(_ context.Context, def spec.FlowDefinition) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	defs, err := f.load()
@@ -162,6 +167,7 @@ func (f *File) Save(_ context.Context, def spec.ListenerDefinition) error {
 	}
 	return f.write(defs)
 }
+
 func (f *File) Delete(_ context.Context, name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -177,11 +183,11 @@ func (f *File) Delete(_ context.Context, name string) error {
 	}
 	return f.write(out)
 }
-func (f *File) write(defs []spec.ListenerDefinition) error {
+func (f *File) write(defs []spec.FlowDefinition) error {
 	sort.Slice(defs, func(i, j int) bool { return defs[i].Name < defs[j].Name })
 	list := resourceList{APIVersion: "v1", Kind: "List", Items: make([]resource, 0, len(defs))}
 	for _, def := range defs {
-		item := resource{APIVersion: APIVersion, Kind: "Listener", Spec: def}
+		item := resource{APIVersion: APIVersion, Kind: KindFlow, Spec: def}
 		item.Metadata = f.metadata[def.Name]
 		item.Metadata.Name = def.Name
 		item.Spec.Name = ""

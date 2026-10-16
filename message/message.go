@@ -22,6 +22,11 @@ type Message struct {
 
 	// Meta holds pipeline metadata injected by the listener.
 	Meta map[string]string
+
+	// Payload, when set, is the exact bytes a sink must send: the result of
+	// that sink's configured Encoding. Sinks send it verbatim instead of
+	// their default serialization.
+	Payload []byte
 }
 
 func New(raw []byte, listenerName, remoteAddr string) *Message {

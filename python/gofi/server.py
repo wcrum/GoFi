@@ -2,25 +2,98 @@
 import asyncio
 import base64
 import hmac
+import importlib.metadata
+import inspect
 import os
+import platform
+import re
+import uuid
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
-from . import _load, functions
-from .execution import invoke
+from google.protobuf.struct_pb2 import Value
+from . import DECORATORS, _load, functions
+from .execution import Executor, debug, invoke
+from . import debugger
+from . import logs
 from . import tooling
 from .v1.sandbox_connect import WorkerServiceASGIApplication
-from .v1.sandbox_pb2 import WorkerFunction, WorkerInvokeResponse, WorkerListFunctionsResponse, WorkerFormatSourceResponse, WorkerValidateSourceResponse, SourceDiagnostic
+from .v1.sandbox_pb2 import (
+    DebugRecording, DescribePythonEnvironmentResponse, FunctionParam, RunFunctionResponse, PythonDecorator, PythonPackage, SourceDiagnostic,
+    WorkerFunction, WorkerInvokeResponse, WorkerListFunctionsResponse, WorkerFormatSourceResponse, WorkerValidateSourceResponse,
+)
+
+# The worker runtime's own distributions and everything they depend on are
+# not user-facing libraries; DescribeEnvironment reports the rest.
+RUNTIME_ROOTS = ("pip", "connectrpc", "protobuf", "uvicorn", "ruff")
+
+
+def _canonical(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _runtime_closure():
+    seen, pending = set(), [_canonical(n) for n in RUNTIME_ROOTS]
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        try:
+            requirements = importlib.metadata.requires(name) or []
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        for requirement in requirements:
+            if "extra ==" not in requirement:
+                pending.append(_canonical(re.split(r"[\s;<>=!~\[(]", requirement, maxsplit=1)[0]))
+    return seen
+
+
+def _value(value):
+    holder = Struct()
+    try:
+        holder.update({"v": value})
+    except (TypeError, ValueError):
+        holder.update({"v": repr(value)})
+    return holder.fields["v"]
+
+
+def _function_message(f):
+    message = WorkerFunction(name=f.name, kind=f.kind, description=f.description)
+    for p in f.params:
+        param = FunctionParam(name=p.name, type=p.type, required=p.required, description=p.description)
+        if not p.required:
+            param.default.CopyFrom(_value(p.default))
+        message.params.append(param)
+    return message
+
+
+def describe_environment():
+    packages, runtime = {}, _runtime_closure()
+    for dist in importlib.metadata.distributions():
+        name = dist.metadata["Name"] or ""
+        if name and _canonical(name) not in runtime:
+            packages[name.lower()] = PythonPackage(name=name, version=dist.version, summary=dist.metadata["Summary"] or "")
+    decorators = [PythonDecorator(name=f"gofi.{d.__name__}", signature=f"@gofi.{d.__name__}{inspect.signature(d)}", description=inspect.getdoc(d) or "") for d in DECORATORS]
+    return DescribePythonEnvironmentResponse(python_version=platform.python_version(), packages=[packages[k] for k in sorted(packages)], decorators=decorators)
 
 class Worker:
-    def __init__(self, source, token, timeout):
+    def __init__(self, source, token, timeout, lazy=False):
         if not token:
             raise ValueError("GOFI_SANDBOX_TOKEN is required")
-        self.source, self.token, self.timeout = source, token, timeout
-        _load(source)
-        self.registry = functions()
+        self.source, self.token, self.timeout, self.lazy = source, token, timeout, lazy
+        # Lazy workers run unsaved editor source: loading happens only inside
+        # each invocation process, so load errors are reported, not fatal.
+        if not lazy:
+            _load(source)
+        self.registry = () if lazy else functions()
         self.lock = asyncio.Semaphore(1)
+        # Saved libraries keep a warm executor; unsaved (lazy) source runs once
+        # per fresh process so a load error is reported for each run.
+        self.executor = None if lazy else Executor(source)
+        if self.executor:
+            self.executor.start()
 
     def authorize(self, ctx):
         supplied = ctx.request_headers.get("authorization", "").removeprefix("Bearer ")
@@ -31,18 +104,29 @@ class Worker:
 
     async def list_functions(self, request, ctx):
         self.authorize(ctx)
-        return WorkerListFunctionsResponse(functions=[WorkerFunction(name=f.name, kind=f.kind, description=f.description) for f in self.registry])
+        return WorkerListFunctionsResponse(functions=[_function_message(f) for f in self.registry])
 
     async def invoke(self, request, ctx):
         self.authorize(ctx)
         if len(request.raw) > 1048576:
             raise ConnectError(Code.RESOURCE_EXHAUSTED, "input exceeds 1 MiB")
-        if not any(f.name == request.name and f.kind == request.kind for f in self.registry):
+        if not self.lazy and not any(f.name == request.name and f.kind == request.kind for f in self.registry):
             raise ConnectError(Code.NOT_FOUND, "function not registered")
+        invocation_id = request.invocation_id[:64] or uuid.uuid4().hex[:16]
         try:
             async with self.lock:
-                result = await asyncio.to_thread(invoke, self.source, request.name, request.kind, request.raw, MessageToDict(request.fields), MessageToDict(request.meta), self.timeout)
-            response = WorkerInvokeResponse(drop=result.get("drop", False))
+                args = (request.name, request.kind, request.raw, MessageToDict(request.fields), MessageToDict(request.meta), self.timeout, MessageToDict(request.config), invocation_id, request.trace_lines)
+                if self.executor:
+                    result = await asyncio.to_thread(self.executor.invoke, *args)
+                else:
+                    result = await asyncio.to_thread(invoke, self.source, *args)
+            response = WorkerInvokeResponse(drop=result.get("drop", False), stdout=result.get("stdout", ""), stderr=result.get("stderr", ""), duration_us=result.get("durationUs", 0),
+                                            entry_line=result.get("entryLine", 0), executed_lines=result.get("executedLines", []), invocation_id=invocation_id)
+            if "error" in result:
+                response.error = result["error"]
+                if result.get("errorLine"):
+                    response.error_location.CopyFrom(SourceDiagnostic(line=result["errorLine"], column=1, code="RUNTIME", message=result["error"]))
+                return response
             if "fields" in result:
                 fields = Struct()
                 fields.update(result["fields"])
@@ -75,14 +159,63 @@ class Worker:
         except TimeoutError as error:
             raise ConnectError(Code.DEADLINE_EXCEEDED, "validator deadline exceeded") from error
 
+    async def describe_environment(self, request, ctx):
+        self.authorize(ctx)
+        return await asyncio.to_thread(describe_environment)
+
+    async def debug(self, request, ctx):
+        """Record one traced invocation for step-through replay."""
+        self.authorize(ctx)
+        if len(request.raw) > 1048576:
+            raise ConnectError(Code.RESOURCE_EXHAUSTED, "input exceeds 1 MiB")
+        if not self.lazy and not any(f.name == request.name and f.kind == request.kind for f in self.registry):
+            raise ConnectError(Code.NOT_FOUND, "function not registered")
+        if len(request.watches) > debugger.MAX_WATCHES or any(len(w) > 500 for w in request.watches):
+            raise ConnectError(Code.INVALID_ARGUMENT, f"at most {debugger.MAX_WATCHES} watch expressions of up to 500 characters")
+        if request.max_steps < 0 or request.max_steps > debugger.MAX_STEPS:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"max_steps must be between 0 and {debugger.MAX_STEPS}")
+        invocation_id = request.invocation_id[:64] or uuid.uuid4().hex[:16]
+        try:
+            async with self.lock:
+                outcome = await asyncio.to_thread(debug, self.source, request.name, request.kind, request.raw, MessageToDict(request.fields), MessageToDict(request.meta),
+                                                  self.timeout, MessageToDict(request.config), invocation_id, list(request.watches), request.max_steps)
+        except TimeoutError as exc:
+            raise ConnectError(Code.DEADLINE_EXCEEDED, str(exc)) from exc
+        except (ValueError, TypeError, RuntimeError) as exc:
+            raise ConnectError(Code.INVALID_ARGUMENT, str(exc)) from exc
+        result, recorded = outcome["result"], outcome["recording"]
+        response = RunFunctionResponse(drop=result.get("drop", False), stdout=result.get("stdout", ""), stderr=result.get("stderr", ""), duration_us=result.get("durationUs", 0),
+                                       entry_line=result.get("entryLine", 0), run_id=invocation_id)
+        if "error" in result:
+            response.error = result["error"]
+            if result.get("errorLine"):
+                response.error_location.CopyFrom(SourceDiagnostic(line=result["errorLine"], column=1, code="RUNTIME", message=result["error"]))
+        else:
+            if "fields" in result:
+                response.fields.update(result["fields"])
+            if "raw" in result:
+                response.raw = base64.b64decode(result["raw"])
+        recording = DebugRecording(result=response, truncated=recorded.get("truncated", False), truncation_reason=recorded.get("truncationReason", ""),
+                                   entry_line=result.get("entryLine", 0), run_id=invocation_id)
+        ParseDict({"steps": recorded.get("steps", []), "initialGlobals": recorded.get("initialGlobals", [])}, recording, ignore_unknown_fields=True)
+        return recording
+
     async def listen(self, request, ctx):
         self.authorize(ctx)
-        raise ConnectError(Code.UNIMPLEMENTED, "listener hooks run on frames bound by GoFi; background streamers are not enabled")
+        raise ConnectError(Code.UNIMPLEMENTED, "background streamers are not enabled yet")
         yield
 
 def create_app():
     source = base64.b64decode(os.environ["GOFI_PYTHON_SOURCE"], validate=True).decode("utf-8")
-    worker = Worker(source, os.environ["GOFI_SANDBOX_TOKEN"], min(30, max(1, int(os.getenv("GOFI_TIMEOUT_SECONDS", "5")))))
+    lazy = os.getenv("GOFI_LAZY_LOAD") == "1"
+    logs.system("worker starting" + (" (source loads per invocation)" if lazy else ""))
+    try:
+        worker = Worker(source, os.environ["GOFI_SANDBOX_TOKEN"], min(30, max(1, int(os.getenv("GOFI_TIMEOUT_SECONDS", "5")))), lazy=lazy)
+    except BaseException as exc:
+        logs.system(f"library failed to load: {type(exc).__name__}: {exc}"[:1024], level="error")
+        raise
+    if not lazy:
+        logs.system("worker ready: " + ", ".join(f"{f.kind} {f.name}" for f in worker.registry))
     rpc = WorkerServiceASGIApplication(worker, read_max_bytes=2 * 1048576)
     async def app(scope, receive, send):
         if scope["type"] == "http" and scope.get("path") == "/healthz":

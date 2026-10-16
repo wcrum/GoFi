@@ -16,7 +16,7 @@ func TestStructuredRequestLogsExcludeCredentialsAndQueries(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&out, nil)))
 	defer slog.SetDefault(previous)
 	handler := structuredRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201) }))
-	request := httptest.NewRequest("POST", "/gofi.v1.GoFiService/UpsertListener?token=query-secret", strings.NewReader("body-secret"))
+	request := httptest.NewRequest("POST", "/gofi.v1.GoFiService/UpsertFlow?token=query-secret", strings.NewReader("body-secret"))
 	request.Header.Set("Authorization", "Bearer header-secret")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -24,7 +24,7 @@ func TestStructuredRequestLogsExcludeCredentialsAndQueries(t *testing.T) {
 	if e := json.Unmarshal(out.Bytes(), &record); e != nil {
 		t.Fatal(e)
 	}
-	if record["method"] != "POST" || record["status"] != float64(201) || record["path"] != "/gofi.v1.GoFiService/UpsertListener" {
+	if record["method"] != "POST" || record["status"] != float64(201) || record["path"] != "/gofi.v1.GoFiService/UpsertFlow" {
 		t.Fatal(record)
 	}
 	for _, secret := range []string{"query-secret", "body-secret", "header-secret"} {

@@ -1,0 +1,12 @@
+{{- range .Values.flows }}
+---
+apiVersion: gofi.wcrum.dev/v1alpha1
+kind: Flow
+metadata:
+  name: {{ required "flows[].name is required" .name | quote }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "gofi.labels" $ | nindent 4 }}
+spec:
+  {{- omit . "name" | toYaml | nindent 2 }}
+{{- end }}

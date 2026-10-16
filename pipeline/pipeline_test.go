@@ -37,9 +37,9 @@ func (f *fakeSink) received() []*message.Message {
 }
 
 func TestPipeline_ChainAttributionAndSink(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:    "test-listener",
-		Source:  spec.Source{Port: 0, Network: "tcp"},
+		Source:  spec.FlowSource{Listen: &spec.ListenSource{Port: 0, Network: "tcp"}},
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -120,7 +120,7 @@ func TestPipeline_ChainAttributionAndSink(t *testing.T) {
 }
 
 func TestPipeline_EmptyChainAlwaysPasses(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:    "no-filters",
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},
@@ -161,7 +161,7 @@ func TestPipeline_EmptyChainAlwaysPasses(t *testing.T) {
 }
 
 func TestPipeline_MultiSinkFanOutWithWhen(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:    "multi-sink",
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},
@@ -207,7 +207,7 @@ func TestPipeline_MultiSinkFanOutWithWhen(t *testing.T) {
 }
 
 func TestPipeline_DeadLetterSink(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:    "dead-letter",
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},

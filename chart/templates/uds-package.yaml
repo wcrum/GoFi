@@ -1,3 +1,8 @@
+{{- /* The UDS Package for GoFi. When GoFi manages flow network allows
+(gofiManagesPackage), the chart ships this as a base in a ConfigMap and the
+GoFi controller owns the Package (base + generated allows); UDS allows one
+Package per namespace, and two owners cannot share its allow list. */ -}}
+{{- define "uds-gofi-config.package" -}}
 apiVersion: uds.dev/v1alpha1
 kind: Package
 metadata:
@@ -103,3 +108,16 @@ spec:
       {{- with .Values.additionalNetworkAllow }}
       {{- toYaml . | nindent 6 }}
       {{- end }}
+{{- end }}
+{{- if .Values.gofiManagesPackage }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gofi-uds-package
+  namespace: {{ .Release.Namespace }}
+data:
+  package.yaml: |
+{{ include "uds-gofi-config.package" . | indent 4 }}
+{{- else }}
+{{ include "uds-gofi-config.package" . }}
+{{- end }}

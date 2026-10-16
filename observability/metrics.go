@@ -10,10 +10,10 @@ import (
 )
 
 var registry = prometheus.NewRegistry()
-var received = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_frames_received_total", Help: "Frames read from listener sources before source hooks or decoding."}, []string{"listener"})
-var receivedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_source_bytes_total", Help: "Original framed source bytes received, before source hooks or decoding."}, []string{"listener"})
+var received = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_frames_received_total", Help: "Frames read from flow sources before decoding."}, []string{"listener"})
+var receivedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_source_bytes_total", Help: "Original framed source bytes received, before decoding."}, []string{"listener"})
 var parseErrors = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_parser_errors_total", Help: "Parser failures, including failures whose configured policy permits processing."}, []string{"listener"})
-var rejected = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_messages_rejected_total", Help: "Messages rejected by a configured pipeline stage or the listener/parser hook."}, []string{"listener", "stage"})
+var rejected = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_messages_rejected_total", Help: "Messages rejected by a configured pipeline stage or the parser."}, []string{"listener", "stage"})
 var dispatches = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_sink_dispatch_total", Help: "Sink Send calls by outcome. Success describes a successful sink call, not end-to-end durable delivery."}, []string{"listener", "sink_type", "outcome"})
 var dispatchSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gofi_sink_dispatch_duration_seconds", Help: "Wall-clock duration of sink Send calls.", Buckets: prometheus.DefBuckets}, []string{"listener", "sink_type"})
 

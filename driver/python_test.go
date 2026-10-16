@@ -16,7 +16,7 @@ func TestRemotePythonBindingsTrackOnlyReferencedLibraries(t *testing.T) {
 	bindings := map[string]functionrpc.Binding{"used": {Endpoint: "http://worker:8080", Token: "old", TimeoutSeconds: 5}}
 	functionrpc.SetResolver(func(context.Context) (map[string]functionrpc.Binding, error) { return bindings, nil })
 	t.Cleanup(func() { functionrpc.SetResolver(nil) })
-	def := spec.ListenerDefinition{Name: "python", Source: spec.Source{Port: 1234}, Parser: spec.ParserCfg{Format: "python", Python: &spec.PythonRef{Library: "used", Function: "parse"}}}
+	def := spec.FlowDefinition{Name: "python", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 1234}}, Parser: spec.ParserCfg{Format: "python", Python: &spec.PythonRef{Library: "used", Function: "parse"}}}
 	api := newFakeDockerAPI()
 	d := &Docker{cli: api, network: "test", image: "gofi:test"}
 	if err := d.Create(ctx, def); err != nil {

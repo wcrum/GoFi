@@ -8,7 +8,7 @@ import (
 )
 
 func TestSimulate_JSONParsePopulatesFields(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 	}
@@ -28,7 +28,7 @@ func TestSimulate_JSONParsePopulatesFields(t *testing.T) {
 }
 
 func TestSimulate_ParseErrorFailsOpen(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 	}
@@ -45,7 +45,7 @@ func TestSimulate_ParseErrorFailsOpen(t *testing.T) {
 }
 
 func TestSimulate_AllPassChain_TransformVisibleToLaterStage(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -73,7 +73,7 @@ func TestSimulate_AllPassChain_TransformVisibleToLaterStage(t *testing.T) {
 }
 
 func TestSimulate_DropMidChain_ShortCircuits(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -104,7 +104,7 @@ func TestSimulate_DeadLetterFlag(t *testing.T) {
 	}
 
 	// Dropped + dead-letter configured → DeadLetter true.
-	withDL := spec.ListenerDefinition{
+	withDL := spec.FlowDefinition{
 		Name:           "sim",
 		Parser:         spec.ParserCfg{Format: "json"},
 		Stages:         dropStages,
@@ -119,7 +119,7 @@ func TestSimulate_DeadLetterFlag(t *testing.T) {
 	}
 
 	// Dropped but no dead-letter → DeadLetter false.
-	noDL := spec.ListenerDefinition{
+	noDL := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: dropStages,
@@ -133,7 +133,7 @@ func TestSimulate_DeadLetterFlag(t *testing.T) {
 	}
 
 	// Not dropped → DeadLetter false (zero value).
-	passDef := spec.ListenerDefinition{
+	passDef := spec.FlowDefinition{
 		Name:           "sim",
 		Parser:         spec.ParserCfg{Format: "json"},
 		Stages:         []spec.StageSpec{{ID: "f1", Kind: "filter", Type: "cel", Expression: `true`}},
@@ -149,7 +149,7 @@ func TestSimulate_DeadLetterFlag(t *testing.T) {
 }
 
 func TestSimulate_SinkWhenSemantics_NoDispatch(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Sinks: []spec.SinkCfg{
@@ -186,7 +186,7 @@ func TestSimulate_SinkWhenSemantics_NoDispatch(t *testing.T) {
 }
 
 func TestSimulate_InvalidChain_ReturnsError(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -200,7 +200,7 @@ func TestSimulate_InvalidChain_ReturnsError(t *testing.T) {
 }
 
 func TestSimulate_InvalidParser_ReturnsError(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "bogus"},
 	}
@@ -210,7 +210,7 @@ func TestSimulate_InvalidParser_ReturnsError(t *testing.T) {
 }
 
 func TestSimulate_RateLimitStage_AlwaysPassesWithNote(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -233,7 +233,7 @@ func TestSimulate_RateLimitStage_AlwaysPassesWithNote(t *testing.T) {
 }
 
 func TestSimulate_DedupStage_AlwaysPassesWithNote(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -256,7 +256,7 @@ func TestSimulate_DedupStage_AlwaysPassesWithNote(t *testing.T) {
 }
 
 func TestSimulate_FilterTransformSchema_NoteEmpty(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 		Stages: []spec.StageSpec{
@@ -280,7 +280,7 @@ func TestSimulate_FilterTransformSchema_NoteEmpty(t *testing.T) {
 }
 
 func TestSimulate_EmptyStagesAndSinks(t *testing.T) {
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:   "sim",
 		Parser: spec.ParserCfg{Format: "json"},
 	}

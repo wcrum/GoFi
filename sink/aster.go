@@ -169,7 +169,9 @@ func (s *asterSink) Send(msg *message.Message) error {
 		logicalKey = value
 	}
 	payload := msg.Raw
-	if s.bodyMode == "wrapped" {
+	if msg.Payload != nil {
+		payload = msg.Payload
+	} else if s.bodyMode == "wrapped" {
 		var err error
 		payload, err = json.Marshal(map[string]interface{}{"fields": msg.Fields, "meta": msg.Meta})
 		if err != nil {

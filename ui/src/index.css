@@ -1,29 +1,69 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+/* Grafana palettes (mirror @grafana/data createColors DarkColors/LightColors
+ * for Tailwind and React Flow; grafana-theme.ts uses the stock themes with
+ * this radius). Translucent text/border/hover colors are pre-composited over
+ * the panel background so Tailwind opacity modifiers keep working on
+ * triplets. Dark is the default; data-theme="light" on <html> (set by the
+ * theme provider and the pre-paint script in index.html) selects light. */
 :root {
   color-scheme: dark;
   --gofi-radius: 4px;
-  --g-canvas: 10 18 30;
-  --g-primary: 15 26 42;
-  --g-secondary: 20 35 53;
-  --g-text-primary: 231 238 248;
-  --g-accent-main: 46 193 166;
-  --g-hover: 30 48 69;
-  --g-text-secondary: 150 168 190;
-  --g-text-disabled: 100 119 143;
-  --g-border-weak: 36 53 74;
-  --g-border-medium: 58 80 106;
-  --g-border-strong: 112 135 162;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --gofi-topbar-height: 40px;
+  --gofi-menu-width: 248px;
+  --g-canvas: 17 18 23;
+  --g-primary: 24 27 31;
+  --g-secondary: 34 37 43;
+  --g-text-primary: 204 204 220;
+  --g-text-secondary: 141 143 156;
+  --g-text-disabled: 105 107 118;
+  --g-accent-main: 61 113 217;
+  --g-accent-text: 110 159 255;
+  --g-hover: 46 49 56;
+  --g-border-weak: 46 48 54;
+  --g-border-medium: 60 62 69;
+  --g-border-strong: 78 80 88;
+  --g-success: 26 127 75;
+  --g-success-text: 108 207 142;
+  --g-warning: 255 153 0;
+  --g-warning-text: 251 173 55;
+  --g-error: 209 14 92;
+  --g-error-text: 255 82 134;
+  font-family: Inter, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --g-canvas: 251 251 251;
+  --g-primary: 255 255 255;
+  --g-secondary: 244 245 245;
+  --g-text-primary: 36 41 46;
+  --g-text-secondary: 91 94 98;
+  --g-text-disabled: 113 116 119;
+  --g-accent-main: 56 113 220;
+  --g-accent-text: 31 98 224;
+  --g-hover: 229 229 230;
+  --g-border-weak: 229 229 230;
+  --g-border-medium: 189 191 192;
+  --g-border-strong: 167 169 171;
+  --g-success: 27 133 94;
+  --g-success-text: 10 118 78;
+  --g-warning: 255 153 0;
+  --g-warning-text: 176 78 12;
+  --g-error: 224 34 110;
+  --g-error-text: 207 14 91;
 }
 body { @apply bg-g-canvas text-g-text min-h-screen; margin: 0; }
 button { cursor: pointer; }
-button:focus-visible, a:focus-visible { outline: 2px solid rgb(var(--g-accent-main)); outline-offset: 3px; }
+button:focus-visible, a:focus-visible { outline: 2px solid rgb(var(--g-accent-main)); outline-offset: 2px; }
 button:disabled { cursor: default; }
-::selection { background: #2ec1a659; }
+::selection { background: rgb(var(--g-accent-main) / .35); }
+a { color: inherit; text-decoration: none; }
 
-/* Compact control and panel geometry, retaining GoFi's navy/teal palette. */
+/* Grafana scrollbars: thin, low-contrast thumbs on transparent tracks. */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--g-border-strong)) transparent; }
+
 .react-flow__controls { border: 1px solid rgb(var(--g-border-weak)); border-radius: var(--gofi-radius); overflow: hidden; box-shadow: none; }
 .react-flow__controls-button { color: rgb(var(--g-text-primary)); }
 .react-flow__controls-button svg { fill: currentColor; }

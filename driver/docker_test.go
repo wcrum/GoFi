@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,10 +153,10 @@ func (f *fakeDockerAPI) ContainerRemove(_ context.Context, containerID string, _
 	return cerrdefs.ErrNotFound
 }
 
-func testDef(name string, port int) spec.ListenerDefinition {
-	return spec.ListenerDefinition{
+func testDef(name string, port int) spec.FlowDefinition {
+	return spec.FlowDefinition{
 		Name:    name,
-		Source:  spec.Source{Port: port, Network: "tcp"},
+		Source:  spec.FlowSource{Listen: &spec.ListenSource{Port: port, Network: "tcp"}},
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},
 		Sinks:   []spec.SinkCfg{{Type: "stdout"}},
@@ -290,18 +291,21 @@ func TestDockerCreateSetsLabelsAndEnv(t *testing.T) {
 
 	var gotEnv string
 	for _, e := range call.config.Env {
-		if len(e) > len("LISTENER_SPEC=") && e[:len("LISTENER_SPEC=")] == "LISTENER_SPEC=" {
-			gotEnv = e[len("LISTENER_SPEC="):]
+		if value, ok := strings.CutPrefix(e, "FLOW_SPEC="); ok {
+			gotEnv = value
 		}
 	}
 	if gotEnv == "" {
-		t.Fatal("LISTENER_SPEC env var not set")
+		t.Fatal("FLOW_SPEC env var not set")
 	}
-	var decoded spec.ListenerDefinition
+	if !strings.Contains(gotEnv, `"source":{"listen":`) {
+		t.Fatalf("FLOW_SPEC must use the current source shape: %s", gotEnv)
+	}
+	var decoded spec.FlowDefinition
 	if err := json.Unmarshal([]byte(gotEnv), &decoded); err != nil {
-		t.Fatalf("decode LISTENER_SPEC: %v", err)
+		t.Fatalf("decode FLOW_SPEC: %v", err)
 	}
-	if decoded.Name != "cot-ingest" || decoded.Source.Port != 9000 {
+	if decoded.Name != "cot-ingest" || decoded.Source.Listen.Port != 9000 {
 		t.Errorf("decoded spec mismatch: %+v", decoded)
 	}
 }
@@ -346,7 +350,7 @@ func TestDockerListDecodesSpecFromEnv(t *testing.T) {
 		id:   "id-1",
 		name: "gofi-listener-cot-ingest",
 		config: &container.Config{
-			Env:    []string{"LISTENER_SPEC=" + string(raw)},
+			Env:    []string{"FLOW_SPEC=" + string(raw)},
 			Labels: map[string]string{labelManaged: "true", labelListener: "cot-ingest"},
 		},
 		labels: map[string]string{labelManaged: "true", labelListener: "cot-ingest"},
@@ -372,7 +376,7 @@ func TestDockerListDecodesSpecFromEnv(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 listener, got %d: %+v", len(got), got)
 	}
-	if got[0].Name != "cot-ingest" || got[0].Source.Port != 9000 {
+	if got[0].Name != "cot-ingest" || got[0].Source.Listen.Port != 9000 {
 		t.Errorf("decoded spec mismatch: %+v", got[0])
 	}
 }
@@ -428,9 +432,9 @@ func TestDockerCreatePublishesUDPPort(t *testing.T) {
 		t.Fatalf("newDockerWithClient: %v", err)
 	}
 
-	def := spec.ListenerDefinition{
+	def := spec.FlowDefinition{
 		Name:    "udp-ingest",
-		Source:  spec.Source{Port: 5140, Network: "udp"},
+		Source:  spec.FlowSource{Listen: &spec.ListenSource{Port: 5140, Network: "udp"}},
 		Framing: spec.Framing{Mode: "line"},
 		Parser:  spec.ParserCfg{Format: "json"},
 		Sinks:   []spec.SinkCfg{{Type: "stdout"}},
@@ -575,7 +579,7 @@ func TestDockerOwnershipRetainsAdditionalPythonNetwork(t *testing.T) {
 	fake := newFakeDockerAPI()
 	d, _ := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "application"})
 	def := testDef("python-route", 9000)
-	def.Source.Python = &spec.PythonRef{Library: "library", Function: "hook"}
+	def.Parser = spec.ParserCfg{Format: "python", Python: &spec.PythonRef{Library: "library", Function: "decode"}}
 	if err := d.Create(context.Background(), def); err != nil {
 		t.Fatal(err)
 	}

@@ -1,15 +1,16 @@
 apiVersion: gofi.wcrum.dev/v1alpha1
-kind: Listener
+kind: Flow
 metadata:
   name: telemetry
 spec:
   source:
-    port: 7000
-    network: tcp
-    service:
-      type: NodePort
+    listen:
+      network: tcp
       port: 7000
-      nodePort: 31080
+      service:
+        type: NodePort
+        port: 7000
+        nodePort: 31080
   framing:
     mode: line
     maxBytes: 1048576

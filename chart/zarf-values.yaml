@@ -1,1 +1,2 @@
 domain: "###ZARF_VAR_DOMAIN###"
+gofiManagesPackage: true

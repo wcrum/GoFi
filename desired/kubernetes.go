@@ -15,7 +15,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-var ListenerGVR = schema.GroupVersionResource{Group: "gofi.wcrum.dev", Version: "v1alpha1", Resource: "listeners"}
+// FlowGVR is the desired-state resource. Pre-rename Listener resources are
+// not read (docs/flows.md).
+var FlowGVR = schema.GroupVersionResource{Group: "gofi.wcrum.dev", Version: "v1alpha1", Resource: "flows"}
 
 type Kubernetes struct {
 	Client    dynamic.Interface
@@ -37,41 +39,42 @@ func NewKubernetes(namespace string) (*Kubernetes, error) {
 	return &Kubernetes{Client: client, Namespace: namespace}, nil
 }
 func (k *Kubernetes) Configuration() Configuration {
-	return Configuration{Source: "kubernetes", APIVersion: APIVersion, Kind: "Listener", Namespace: k.Namespace}
+	return Configuration{Source: "kubernetes", APIVersion: APIVersion, Kind: KindFlow, Namespace: k.Namespace}
 }
-func (k *Kubernetes) Load(ctx context.Context) ([]spec.ListenerDefinition, error) {
-	list, err := k.Client.Resource(ListenerGVR).Namespace(k.Namespace).List(ctx, metav1.ListOptions{})
+
+func (k *Kubernetes) Load(ctx context.Context) ([]spec.FlowDefinition, error) {
+	list, err := k.Client.Resource(FlowGVR).Namespace(k.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	defs := make([]spec.ListenerDefinition, 0, len(list.Items))
+	defs := make([]spec.FlowDefinition, 0, len(list.Items))
 	for _, item := range list.Items {
 		if item.GetDeletionTimestamp() != nil {
 			continue
 		}
 		obj, ok, err := unstructured.NestedMap(item.Object, "spec")
 		if err != nil || !ok {
-			return nil, fmt.Errorf("Listener %q has no spec", item.GetName())
+			return nil, fmt.Errorf("Flow %q has no spec", item.GetName())
 		}
 		data, err := json.Marshal(obj)
 		if err != nil {
 			return nil, err
 		}
-		var def spec.ListenerDefinition
+		var def spec.FlowDefinition
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		if err = decoder.Decode(&def); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("Flow %q: %w", item.GetName(), err)
 		}
 		if def.Name != "" && def.Name != item.GetName() {
-			return nil, fmt.Errorf("Listener %q spec.name must match metadata.name", item.GetName())
+			return nil, fmt.Errorf("Flow %q spec.name must match metadata.name", item.GetName())
 		}
 		def.Name = item.GetName()
 		defs = append(defs, def)
 	}
 	return defs, nil
 }
-func (k *Kubernetes) Save(ctx context.Context, def spec.ListenerDefinition) error {
+func (k *Kubernetes) Save(ctx context.Context, def spec.FlowDefinition) error {
 	data, err := json.Marshal(def)
 	if err != nil {
 		return err
@@ -81,10 +84,10 @@ func (k *Kubernetes) Save(ctx context.Context, def spec.ListenerDefinition) erro
 		return err
 	}
 	delete(obj, "name")
-	client := k.Client.Resource(ListenerGVR).Namespace(k.Namespace)
+	client := k.Client.Resource(FlowGVR).Namespace(k.Namespace)
 	existing, err := client.Get(ctx, def.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		_, err = client.Create(ctx, &unstructured.Unstructured{Object: map[string]any{"apiVersion": APIVersion, "kind": "Listener", "metadata": map[string]any{"name": def.Name, "namespace": k.Namespace}, "spec": obj}}, metav1.CreateOptions{})
+		_, err = client.Create(ctx, &unstructured.Unstructured{Object: map[string]any{"apiVersion": APIVersion, "kind": KindFlow, "metadata": map[string]any{"name": def.Name, "namespace": k.Namespace}, "spec": obj}}, metav1.CreateOptions{})
 		return err
 	}
 	if err != nil {
@@ -95,7 +98,7 @@ func (k *Kubernetes) Save(ctx context.Context, def spec.ListenerDefinition) erro
 	return err
 }
 func (k *Kubernetes) Delete(ctx context.Context, name string) error {
-	err := k.Client.Resource(ListenerGVR).Namespace(k.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	err := k.Client.Resource(FlowGVR).Namespace(k.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +88,18 @@ func TestDisappearingDesiredStateDoesNotEraseWorkers(t *testing.T) {
 	}
 	if b.stops != 0 || len(s.List()) != 1 {
 		t.Fatal("a transient missing file erased active libraries")
+	}
+}
+
+func TestWorkerExitedNamesTheException(t *testing.T) {
+	err := workerExited(1, "Traceback (most recent call last):\n  File \"<gofi-library>\", line 5\nAttributeError: @gofi.ingress was removed\n\n")
+	if err == nil || err.Error() != "worker exited with code 1: AttributeError: @gofi.ingress was removed" {
+		t.Fatalf("got %v", err)
+	}
+	if err := workerExited(1, "\x1b[31mValueError: "+strings.Repeat("x", 600)); !strings.HasPrefix(err.Error(), "worker exited with code 1: [31mValueError: x") || len(err.Error()) > 560 {
+		t.Fatalf("control characters or length not bounded: %q", err)
+	}
+	if err := workerExited(137, ""); err.Error() != "worker exited with code 137" {
+		t.Fatalf("got %v", err)
 	}
 }

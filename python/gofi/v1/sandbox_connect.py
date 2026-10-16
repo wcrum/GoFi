@@ -18,7 +18,7 @@ from connectrpc.protocol import ProtocolType
 from connectrpc.server import ConnectASGIApplication, ConnectWSGIApplication, DEFAULT_READ_MAX_BYTES, Endpoint, EndpointSync
 from pyqwest import Client, SyncClient
 
-from .sandbox_pb2 import ApplySandboxRequest, ApplySandboxResponse, DeleteSandboxRequest, DeleteSandboxResponse, FormatSourceRequest, FormatSourceResponse, GetSandboxRequest, GetSandboxResponse, ListLibraryFunctionsRequest, ListLibraryFunctionsResponse, ListSandboxesRequest, ListSandboxesResponse, RunFunctionRequest, RunFunctionResponse, ValidateSourceRequest, ValidateSourceResponse, WorkerFormatSourceRequest, WorkerFormatSourceResponse, WorkerInvokeRequest, WorkerInvokeResponse, WorkerListFunctionsRequest, WorkerListFunctionsResponse, WorkerListenRequest, WorkerListenResponse, WorkerValidateSourceRequest, WorkerValidateSourceResponse
+from .sandbox_pb2 import ApplySandboxRequest, ApplySandboxResponse, DebugFunctionRequest, DebugRecording, DeleteSandboxRequest, DeleteSandboxResponse, DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse, FormatSourceRequest, FormatSourceResponse, GetSandboxRequest, GetSandboxResponse, ListLibraryFunctionsRequest, ListLibraryFunctionsResponse, ListSandboxesRequest, ListSandboxesResponse, RunFunctionRequest, RunFunctionResponse, RunSourceRequest, ValidateSourceRequest, ValidateSourceResponse, WatchWorkerLogsRequest, WorkerDebugRequest, WorkerFormatSourceRequest, WorkerFormatSourceResponse, WorkerInvokeRequest, WorkerInvokeResponse, WorkerListFunctionsRequest, WorkerListFunctionsResponse, WorkerListenRequest, WorkerListenResponse, WorkerLogEntry, WorkerValidateSourceRequest, WorkerValidateSourceResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Iterator, Mapping
@@ -60,6 +60,36 @@ class SandboxService(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
     async def run_function(self, request: RunFunctionRequest, ctx: RequestContext[RunFunctionRequest, RunFunctionResponse], /) -> RunFunctionResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    async def run_source(self, request: RunSourceRequest, ctx: RequestContext[RunSourceRequest, RunFunctionResponse], /) -> RunFunctionResponse:
+        """
+        RunSource executes unsaved source in a short-lived worker with the same
+        isolation and limits as a saved library. The controller never runs it.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    async def describe_environment(self, request: DescribePythonEnvironmentRequest, ctx: RequestContext[DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse], /) -> DescribePythonEnvironmentResponse:
+        """
+        DescribeEnvironment reports the worker runtime: Python version, installed
+        packages, SDK decorators, and the default network policy.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def watch_worker_logs(self, request: WatchWorkerLogsRequest, ctx: RequestContext[WatchWorkerLogsRequest, WorkerLogEntry], /) -> AsyncIterator[WorkerLogEntry]:
+        """
+        WatchWorkerLogs follows a worker's output live: a saved library's worker
+        (`library`) or the short-lived worker of one RunSource call (`run_id`).
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    async def debug_function(self, request: DebugFunctionRequest, ctx: RequestContext[DebugFunctionRequest, DebugRecording], /) -> DebugRecording:
+        """
+        DebugFunction records one bounded, traced execution for step-through
+        replay: every executed line with its call stack, variables, library
+        globals, watch values, and output so far. Saved (`library`) or unsaved
+        (`source`) code; runs in an isolated worker under the normal deadline.
+        """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
 
@@ -155,6 +185,46 @@ class SandboxServiceASGIApplication(ConnectASGIApplication[SandboxService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.run_function,
+                ),
+                "/gofi.v1.SandboxService/RunSource": Endpoint.unary(
+                    method=MethodInfo(
+                        name="RunSource",
+                        service_name="gofi.v1.SandboxService",
+                        input=RunSourceRequest,
+                        output=RunFunctionResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.run_source,
+                ),
+                "/gofi.v1.SandboxService/DescribeEnvironment": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DescribeEnvironment",
+                        service_name="gofi.v1.SandboxService",
+                        input=DescribePythonEnvironmentRequest,
+                        output=DescribePythonEnvironmentResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.describe_environment,
+                ),
+                "/gofi.v1.SandboxService/WatchWorkerLogs": Endpoint.server_stream(
+                    method=MethodInfo(
+                        name="WatchWorkerLogs",
+                        service_name="gofi.v1.SandboxService",
+                        input=WatchWorkerLogsRequest,
+                        output=WorkerLogEntry,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.watch_worker_logs,
+                ),
+                "/gofi.v1.SandboxService/DebugFunction": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DebugFunction",
+                        service_name="gofi.v1.SandboxService",
+                        input=DebugFunctionRequest,
+                        output=DebugRecording,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.debug_function,
                 ),
             },
             interceptors=interceptors,
@@ -357,6 +427,104 @@ class SandboxServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def run_source(
+        self,
+        request: RunSourceRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> RunFunctionResponse:
+        """
+        RunSource executes unsaved source in a short-lived worker with the same
+        isolation and limits as a saved library. The controller never runs it.
+        """
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RunSource",
+                service_name="gofi.v1.SandboxService",
+                input=RunSourceRequest,
+                output=RunFunctionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def describe_environment(
+        self,
+        request: DescribePythonEnvironmentRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DescribePythonEnvironmentResponse:
+        """
+        DescribeEnvironment reports the worker runtime: Python version, installed
+        packages, SDK decorators, and the default network policy.
+        """
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DescribeEnvironment",
+                service_name="gofi.v1.SandboxService",
+                input=DescribePythonEnvironmentRequest,
+                output=DescribePythonEnvironmentResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def watch_worker_logs(
+        self,
+        request: WatchWorkerLogsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> AsyncIterator[WorkerLogEntry]:
+        """
+        WatchWorkerLogs follows a worker's output live: a saved library's worker
+        (`library`) or the short-lived worker of one RunSource call (`run_id`).
+        """
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchWorkerLogs",
+                service_name="gofi.v1.SandboxService",
+                input=WatchWorkerLogsRequest,
+                output=WorkerLogEntry,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def debug_function(
+        self,
+        request: DebugFunctionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DebugRecording:
+        """
+        DebugFunction records one bounded, traced execution for step-through
+        replay: every executed line with its call stack, variables, library
+        globals, watch values, and output so far. Saved (`library`) or unsaved
+        (`source`) code; runs in an isolated worker under the normal deadline.
+        """
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DebugFunction",
+                service_name="gofi.v1.SandboxService",
+                input=DebugFunctionRequest,
+                output=DebugRecording,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
 class SandboxServiceSync(Protocol):
     """
     Sandboxes are durable Python function libraries executed in separate workers.
@@ -383,6 +551,36 @@ class SandboxServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
     def run_function(self, request: RunFunctionRequest, ctx: RequestContext[RunFunctionRequest, RunFunctionResponse], /) -> RunFunctionResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def run_source(self, request: RunSourceRequest, ctx: RequestContext[RunSourceRequest, RunFunctionResponse], /) -> RunFunctionResponse:
+        """
+        RunSource executes unsaved source in a short-lived worker with the same
+        isolation and limits as a saved library. The controller never runs it.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def describe_environment(self, request: DescribePythonEnvironmentRequest, ctx: RequestContext[DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse], /) -> DescribePythonEnvironmentResponse:
+        """
+        DescribeEnvironment reports the worker runtime: Python version, installed
+        packages, SDK decorators, and the default network policy.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def watch_worker_logs(self, request: WatchWorkerLogsRequest, ctx: RequestContext[WatchWorkerLogsRequest, WorkerLogEntry], /) -> Iterator[WorkerLogEntry]:
+        """
+        WatchWorkerLogs follows a worker's output live: a saved library's worker
+        (`library`) or the short-lived worker of one RunSource call (`run_id`).
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def debug_function(self, request: DebugFunctionRequest, ctx: RequestContext[DebugFunctionRequest, DebugRecording], /) -> DebugRecording:
+        """
+        DebugFunction records one bounded, traced execution for step-through
+        replay: every executed line with its call stack, variables, library
+        globals, watch values, and output so far. Saved (`library`) or unsaved
+        (`source`) code; runs in an isolated worker under the normal deadline.
+        """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
 
@@ -476,6 +674,46 @@ class SandboxServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.run_function,
+                ),
+                "/gofi.v1.SandboxService/RunSource": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="RunSource",
+                        service_name="gofi.v1.SandboxService",
+                        input=RunSourceRequest,
+                        output=RunFunctionResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.run_source,
+                ),
+                "/gofi.v1.SandboxService/DescribeEnvironment": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DescribeEnvironment",
+                        service_name="gofi.v1.SandboxService",
+                        input=DescribePythonEnvironmentRequest,
+                        output=DescribePythonEnvironmentResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.describe_environment,
+                ),
+                "/gofi.v1.SandboxService/WatchWorkerLogs": EndpointSync.server_stream(
+                    method=MethodInfo(
+                        name="WatchWorkerLogs",
+                        service_name="gofi.v1.SandboxService",
+                        input=WatchWorkerLogsRequest,
+                        output=WorkerLogEntry,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.watch_worker_logs,
+                ),
+                "/gofi.v1.SandboxService/DebugFunction": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DebugFunction",
+                        service_name="gofi.v1.SandboxService",
+                        input=DebugFunctionRequest,
+                        output=DebugRecording,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.debug_function,
                 ),
             },
             interceptors=interceptors,
@@ -670,6 +908,100 @@ class SandboxServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
         )
+    def run_source(
+        self,
+        request: RunSourceRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> RunFunctionResponse:
+        """
+        RunSource executes unsaved source in a short-lived worker with the same
+        isolation and limits as a saved library. The controller never runs it.
+        """
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="RunSource",
+                service_name="gofi.v1.SandboxService",
+                input=RunSourceRequest,
+                output=RunFunctionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+    def describe_environment(
+        self,
+        request: DescribePythonEnvironmentRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DescribePythonEnvironmentResponse:
+        """
+        DescribeEnvironment reports the worker runtime: Python version, installed
+        packages, SDK decorators, and the default network policy.
+        """
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DescribeEnvironment",
+                service_name="gofi.v1.SandboxService",
+                input=DescribePythonEnvironmentRequest,
+                output=DescribePythonEnvironmentResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+    def watch_worker_logs(
+        self,
+        request: WatchWorkerLogsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> Iterator[WorkerLogEntry]:
+        """
+        WatchWorkerLogs follows a worker's output live: a saved library's worker
+        (`library`) or the short-lived worker of one RunSource call (`run_id`).
+        """
+        return self.execute_server_stream(
+            request=request,
+            method=MethodInfo(
+                name="WatchWorkerLogs",
+                service_name="gofi.v1.SandboxService",
+                input=WatchWorkerLogsRequest,
+                output=WorkerLogEntry,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+    def debug_function(
+        self,
+        request: DebugFunctionRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DebugRecording:
+        """
+        DebugFunction records one bounded, traced execution for step-through
+        replay: every executed line with its call stack, variables, library
+        globals, watch values, and output so far. Saved (`library`) or unsaved
+        (`source`) code; runs in an isolated worker under the normal deadline.
+        """
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DebugFunction",
+                service_name="gofi.v1.SandboxService",
+                input=DebugFunctionRequest,
+                output=DebugRecording,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
 class WorkerService(Protocol):
     """
     WorkerService is private: the supervisor supplies authentication metadata.
@@ -687,6 +1019,12 @@ class WorkerService(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
     async def validate_source(self, request: WorkerValidateSourceRequest, ctx: RequestContext[WorkerValidateSourceRequest, WorkerValidateSourceResponse], /) -> WorkerValidateSourceResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    async def describe_environment(self, request: DescribePythonEnvironmentRequest, ctx: RequestContext[DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse], /) -> DescribePythonEnvironmentResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    async def debug(self, request: WorkerDebugRequest, ctx: RequestContext[WorkerDebugRequest, DebugRecording], /) -> DebugRecording:
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
 
@@ -752,6 +1090,26 @@ class WorkerServiceASGIApplication(ConnectASGIApplication[WorkerService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.validate_source,
+                ),
+                "/gofi.v1.WorkerService/DescribeEnvironment": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DescribeEnvironment",
+                        service_name="gofi.v1.WorkerService",
+                        input=DescribePythonEnvironmentRequest,
+                        output=DescribePythonEnvironmentResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.describe_environment,
+                ),
+                "/gofi.v1.WorkerService/Debug": Endpoint.unary(
+                    method=MethodInfo(
+                        name="Debug",
+                        service_name="gofi.v1.WorkerService",
+                        input=WorkerDebugRequest,
+                        output=DebugRecording,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.debug,
                 ),
             },
             interceptors=interceptors,
@@ -894,6 +1252,46 @@ class WorkerServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def describe_environment(
+        self,
+        request: DescribePythonEnvironmentRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DescribePythonEnvironmentResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DescribeEnvironment",
+                service_name="gofi.v1.WorkerService",
+                input=DescribePythonEnvironmentRequest,
+                output=DescribePythonEnvironmentResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def debug(
+        self,
+        request: WorkerDebugRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DebugRecording:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Debug",
+                service_name="gofi.v1.WorkerService",
+                input=WorkerDebugRequest,
+                output=DebugRecording,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
 class WorkerServiceSync(Protocol):
     """
     WorkerService is private: the supervisor supplies authentication metadata.
@@ -911,6 +1309,12 @@ class WorkerServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
     def validate_source(self, request: WorkerValidateSourceRequest, ctx: RequestContext[WorkerValidateSourceRequest, WorkerValidateSourceResponse], /) -> WorkerValidateSourceResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def describe_environment(self, request: DescribePythonEnvironmentRequest, ctx: RequestContext[DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse], /) -> DescribePythonEnvironmentResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def debug(self, request: WorkerDebugRequest, ctx: RequestContext[WorkerDebugRequest, DebugRecording], /) -> DebugRecording:
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
 
@@ -974,6 +1378,26 @@ class WorkerServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.validate_source,
+                ),
+                "/gofi.v1.WorkerService/DescribeEnvironment": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DescribeEnvironment",
+                        service_name="gofi.v1.WorkerService",
+                        input=DescribePythonEnvironmentRequest,
+                        output=DescribePythonEnvironmentResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.describe_environment,
+                ),
+                "/gofi.v1.WorkerService/Debug": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="Debug",
+                        service_name="gofi.v1.WorkerService",
+                        input=WorkerDebugRequest,
+                        output=DebugRecording,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.debug,
                 ),
             },
             interceptors=interceptors,
@@ -1106,6 +1530,44 @@ class WorkerServiceClientSync(ConnectClientSync):
                 service_name="gofi.v1.WorkerService",
                 input=WorkerValidateSourceRequest,
                 output=WorkerValidateSourceResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+    def describe_environment(
+        self,
+        request: DescribePythonEnvironmentRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DescribePythonEnvironmentResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DescribeEnvironment",
+                service_name="gofi.v1.WorkerService",
+                input=DescribePythonEnvironmentRequest,
+                output=DescribePythonEnvironmentResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+    def debug(
+        self,
+        request: WorkerDebugRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> DebugRecording:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Debug",
+                service_name="gofi.v1.WorkerService",
+                input=WorkerDebugRequest,
+                output=DebugRecording,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

@@ -2,3 +2,10 @@ connectrpc==0.12.1
 protobuf==7.36.2
 uvicorn==0.54.0
 ruff==0.17.1
+# Curated, compute-only decoders available to user libraries. Pinned to
+# versions with prebuilt wheels for the worker's Python (no compiler).
+cbor2==6.1.5
+construct==2.10.70
+crc==8.0.0
+msgpack==1.2.3
+PyYAML==6.0.3

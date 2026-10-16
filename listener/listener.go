@@ -18,12 +18,13 @@ import (
 	"github.com/wcrum/gofi/parser"
 	"github.com/wcrum/gofi/pipeline"
 	"github.com/wcrum/gofi/sink"
+	"github.com/wcrum/gofi/source"
 	"github.com/wcrum/gofi/spec"
 )
 
 // Listener manages a bound network port and dispatches connections to pipelines.
 type Listener struct {
-	def    spec.ListenerDefinition
+	def    spec.FlowDefinition
 	ln     net.Listener
 	packet net.PacketConn
 
@@ -43,7 +44,7 @@ type Listener struct {
 // New creates a Listener: connects the sink(s), builds the stage chain,
 // binds the port. Fails fast if any operation fails so the controller gets
 // an immediate error.
-func New(def spec.ListenerDefinition) (*Listener, error) {
+func New(def spec.FlowDefinition) (*Listener, error) {
 	if err := def.Source.Validate(); err != nil {
 		return nil, err
 	}
@@ -86,8 +87,14 @@ func New(def spec.ListenerDefinition) (*Listener, error) {
 		return nil, fmt.Errorf("listener %q: stages: %w", def.Name, err)
 	}
 
-	addr := fmt.Sprintf(":%d", def.Source.Port)
-	network := def.Source.Network
+	if def.Source.Listen == nil {
+		// Fetch/subscribe flows bind no port; Run connects outward.
+		slog.Info("flow source configured", "name", def.Name, "source", source.Describe(def.Source), "framing", def.Framing.Mode, "parser", def.Parser.Format, "sinks", len(def.Sinks), "stages", len(def.Stages))
+		return &Listener{def: def, sinks: sinks, deadLetterSink: deadLetterSink, chain: chain, Tap: pipeline.NewTap()}, nil
+	}
+
+	addr := fmt.Sprintf(":%d", def.Source.Listening().Port)
+	network := def.Source.Listening().Network
 	if network == "" {
 		network = "tcp"
 	}
@@ -135,6 +142,10 @@ func closeAll(sinks []sink.Sink, deadLetterSink sink.Sink) {
 
 // Run accepts connections and processes them until ctx is cancelled.
 func (l *Listener) Run(ctx context.Context) {
+	if l.def.Source.Listen == nil {
+		l.runPulled(ctx)
+		return
+	}
 	stop := context.AfterFunc(ctx, func() { l.closeEndpoint() })
 	defer stop()
 	if l.packet != nil {
@@ -189,6 +200,22 @@ func (l *Listener) runPackets(ctx context.Context) {
 			continue
 		}
 		p.Run(ctx, remote.String())
+	}
+}
+
+// runPulled runs a fetch or subscribe source: each response or message is one
+// stream through the pipeline, exactly like one connection or datagram.
+func (l *Listener) runPulled(ctx context.Context) {
+	err := source.Run(ctx, l.def.Name, l.def.Source, func(ctx context.Context, data []byte, remote string) {
+		p, err := pipeline.New(l.def, bytes.NewReader(data), l.sinks, l.deadLetterSink, l.chain, l.Tap)
+		if err != nil {
+			slog.Error("pipeline build error", "listener", l.def.Name, "error", err)
+			return
+		}
+		p.Run(ctx, remote)
+	})
+	if err != nil && ctx.Err() == nil {
+		slog.Error("flow source stopped", "listener", l.def.Name, "error", err)
 	}
 }
 

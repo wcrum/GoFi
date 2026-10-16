@@ -11,7 +11,7 @@ import (
 )
 
 type entry struct {
-	def       spec.ListenerDefinition
+	def       spec.FlowDefinition
 	ln        *listener.Listener
 	cancel    context.CancelFunc
 	startedAt time.Time
@@ -27,12 +27,12 @@ func NewInProcess() *InProcess {
 	return &InProcess{running: make(map[string]*entry)}
 }
 
-func (d *InProcess) Create(ctx context.Context, def spec.ListenerDefinition) error {
+func (d *InProcess) Create(ctx context.Context, def spec.FlowDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if _, exists := d.running[def.Name]; exists {
-		return fmt.Errorf("listener %q already running", def.Name)
+		return fmt.Errorf("flow %q already running", def.Name)
 	}
 
 	ln, err := listener.New(def)
@@ -56,7 +56,7 @@ func (d *InProcess) Delete(_ context.Context, name string) error {
 
 	e, ok := d.running[name]
 	if !ok {
-		return fmt.Errorf("listener %q not found", name)
+		return fmt.Errorf("flow %q not found", name)
 	}
 	e.cancel()
 	e.ln.Close()
@@ -64,11 +64,11 @@ func (d *InProcess) Delete(_ context.Context, name string) error {
 	return nil
 }
 
-func (d *InProcess) List(_ context.Context) ([]spec.ListenerDefinition, error) {
+func (d *InProcess) List(_ context.Context) ([]spec.FlowDefinition, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	out := make([]spec.ListenerDefinition, 0, len(d.running))
+	out := make([]spec.FlowDefinition, 0, len(d.running))
 	for _, e := range d.running {
 		out = append(out, e.def)
 	}

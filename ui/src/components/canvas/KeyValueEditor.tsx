@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { RiAddLine, RiCloseLine } from 'react-icons/ri'
-import { Button, Input } from '../primitives'
+import { Button, IconButton, Input, Stack, Text } from '@grafana/ui'
 
 interface KeyValueEditorProps {
   value: Record<string, string>
@@ -72,46 +71,34 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <Stack direction="column" gap={1}>
       {entries.map((entry) => (
-        <div key={entry.id} className="flex items-center gap-2">
+        <Stack key={entry.id} gap={1} alignItems="center">
           <Input
             disabled={disabled}
             value={entry.key}
-            onChange={(e) => commit(entries.map((en) => (en.id === entry.id ? { ...en, key: e.target.value } : en)))}
+            aria-label="Key"
+            onChange={(e) => commit(entries.map((en) => (en.id === entry.id ? { ...en, key: e.currentTarget.value } : en)))}
             placeholder={keyPlaceholder ?? 'Key'}
           />
           <Input
             disabled={disabled}
             value={entry.value}
-            onChange={(e) => commit(entries.map((en) => (en.id === entry.id ? { ...en, value: e.target.value } : en)))}
+            aria-label="Value"
+            onChange={(e) => commit(entries.map((en) => (en.id === entry.id ? { ...en, value: e.currentTarget.value } : en)))}
             placeholder={valuePlaceholder ?? 'Value'}
           />
-          {!disabled && (
-            <button
-              type="button"
-              onClick={() => commit(entries.filter((en) => en.id !== entry.id))}
-              className="shrink-0 p-1.5 rounded text-g-text-secondary hover:text-g-text hover:bg-g-hover"
-              aria-label="Remove entry"
-            >
-              <RiCloseLine size={16} />
-            </button>
-          )}
-        </div>
+          {!disabled && <IconButton name="times" tooltip="Remove entry" onClick={() => commit(entries.filter((en) => en.id !== entry.id))} />}
+        </Stack>
       ))}
-      {entries.length === 0 && disabled && <p className="text-xs text-g-text-disabled">None</p>}
+      {entries.length === 0 && disabled && <Text color="disabled" variant="bodySmall">None</Text>}
       {!disabled && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          icon={<RiAddLine size={14} />}
-          onClick={() => commit([...entries, { id: makeId(), key: '', value: '' }])}
-          className="self-start"
-        >
-          Add
-        </Button>
+        <div>
+          <Button type="button" variant="secondary" size="sm" icon="plus" onClick={() => commit([...entries, { id: makeId(), key: '', value: '' }])}>
+            Add
+          </Button>
+        </div>
       )}
-    </div>
+    </Stack>
   )
 }

@@ -1,7 +1,7 @@
 # Deploy GoFi
 
-GoFi runs one controller and a runtime per Listener. Binary deployments use
-in-process listeners, Docker deployments manage sibling containers, and
+GoFi runs one controller and a runtime per flow. Binary deployments run flows
+in-process, Docker deployments manage sibling containers, and
 Kubernetes manages Pods and Services. The portal and ConnectRPC services share
 the controller's HTTP listener.
 
@@ -10,15 +10,15 @@ the controller's HTTP listener.
 | `INGRESS_API_ADDR` | Controller bind address, default `:9090` |
 | `GOFI_DRIVER` | `inprocess`, `docker`, or `kubernetes` |
 | `GOFI_DEPLOY_MODE` | Explicit environment: `binary`, `compose`, or `kubernetes` |
-| `GOFI_CONFIG_FILE` | Listener YAML path; defaults to `gofi/listeners.yaml` under `os.UserConfigDir()` |
-| `GOFI_SANDBOX_CONFIG_FILE` | Python Sandbox YAML path; defaults to `sandboxes.yaml` beside the Listener file |
-| `GOFI_IMAGE` | Image for managed listener containers or Pods |
-| `GOFI_DOCKER_NETWORK` | Shared Docker listener/application network |
+| `GOFI_CONFIG_FILE` | Flow YAML path; defaults to `gofi/listeners.yaml` under `os.UserConfigDir()` |
+| `GOFI_SANDBOX_CONFIG_FILE` | Python Sandbox YAML path; defaults to `sandboxes.yaml` beside the flow file |
+| `GOFI_IMAGE` | Image for managed flow runtime containers or Pods |
+| `GOFI_DOCKER_NETWORK` | Shared Docker flow-runtime/application network |
 | `GOFI_K8S_NAMESPACE` | Managed namespace; defaults to the projected service-account namespace |
 | `GOFI_SANDBOX_IMAGE` | Administrator-selected Python worker image |
 | `GOFI_SANDBOX_NETWORK` | Internal Docker worker network, default `gofi-sandbox` |
-| `GOFI_LISTENER_POD_TEMPLATE` | Additional listener sidecars, volumes, mounts, and environment |
-| `GOFI_ASTER_TOKEN_FILE` | Default Aster token mount inside the listener runtime |
+| `GOFI_LISTENER_POD_TEMPLATE` | Additional flow-runtime sidecars, volumes, mounts, and environment |
+| `GOFI_ASTER_TOKEN_FILE` | Default Aster token mount inside the flow runtime |
 
 Use one active controller; leader election is not implemented. Local files and
 Kubernetes resources persist desired configuration, not live traffic, dedup
@@ -33,8 +33,9 @@ GOWORK=off go build -o bin/gofi .
 GOFI_DEPLOY_MODE=binary GOFI_DRIVER=inprocess ./bin/gofi
 ```
 
-Open `http://localhost:9090`. Every Listener binds its configured TCP/UDP port on
-this host. Kubernetes `source.service` and selector destinations are rejected in
+Open `http://localhost:9090`. Every flow with a `listen` source binds its
+configured TCP/UDP port on this host. Kubernetes `source.listen.service` and
+selector destinations are rejected in
 this mode; use reachable explicit sink URLs.
 
 The operating system selects the default configuration root. On Linux it is
@@ -48,7 +49,7 @@ A normal binary needs no Docker daemon for built-in processing. Python function
 libraries use isolated Docker workers and require Docker access plus the worker
 image. The controller never imports submitted Python into its own process.
 
-`LISTENER_SPEC` selects an internal single-listener process role. Its private
+`FLOW_SPEC` selects an internal single-flow runtime process role. Its private
 ConnectRPC tap relay binds `TAP_RELAY_ADDR`, default `:9091`. This role does not
 start the portal; managed Docker/Kubernetes runtimes use it internally.
 
@@ -59,21 +60,21 @@ docker compose up --build -d
 ```
 
 Open `http://localhost:9091`, or set `GOFI_PORT` to choose another published port.
-The Compose file mounts the Docker socket and a named data volume. Listener
+The Compose file mounts the Docker socket and a named data volume. Flow
 configuration is stored at `/data/gofi.yaml`; Python libraries default to
-`/data/sandboxes.yaml`. The socket lets GoFi manage listener and sandbox
+`/data/sandboxes.yaml`. The socket lets GoFi manage flow-runtime and sandbox
 containers.
 
-Listeners publish their source TCP/UDP port one-to-one on the Docker host.
+Flows with a `listen` source publish its TCP/UDP port one-to-one on the Docker host.
 Use receiver container DNS names on the configured shared network, such as
 `http://receiver:8080/events` or `tcp://receiver:9000`. Set `GOFI_IMAGE` and
 `GOFI_DOCKER_NETWORK` explicitly if automatic inspection cannot identify them.
 Runtime reconciliation is scoped to that application network. GoFi refuses to
-replace an unmanaged container or a listener belonging to another network when
+replace an unmanaged container or a flow runtime belonging to another network when
 its generated container name conflicts.
 
 Python workers join a separate internal Docker network. The supervisor attaches
-only the controller and listeners that need worker RPC access. A binary outside
+only the controller and flow runtimes that need worker RPC access. A binary outside
 Docker uses a loopback-only control relay into this worker network. See
 [Python isolation](python.md).
 
@@ -99,14 +100,20 @@ A plain Helm installation supplies no identity provider. For local access:
 kubectl -n gofi port-forward svc/gofi 9090:9090
 ```
 
-The chart installs namespaced Listener and Sandbox CRDs. The controller's
-namespace-scoped permissions manage their resources and owned runtime objects.
-Listener Pods run without a Kubernetes service-account token. Configuration
+The chart installs namespaced Flow and Sandbox CRDs. GoFi reads only
+`kind: Flow` resources. The controller's namespace-scoped
+permissions manage their resources and owned runtime objects. Flow runtime Pods
+run without a Kubernetes service-account token. Configuration
 reloads every 30 seconds, with immediate reconciliation after portal changes.
 The controller repairs missing runtimes and source/target Service drift.
 
-`source.service.type` is `ClusterIP` or `NodePort`. Its port defaults to
-`source.port`; optional `nodePort` can be allocated by Kubernetes. TCP and UDP
+`source.listen.service.type` is `ClusterIP`, `NodePort`, or `LoadBalancer`. The
+Service listens on `source.listen.port`, which is also the flow Pod's container
+port, so the portal asks for one port (`service.port` remains available in YAML
+to map a different Service port). `nodePort` applies to NodePort and
+LoadBalancer and is allocated by Kubernetes when unset. A LoadBalancer needs a
+load balancer implementation in the cluster (k3d ships one) and, on UDS, a
+matching network allowance. TCP and UDP
 retain their transport. This Service exposes application data, separately from
 the portal and private live-tap relay.
 
@@ -132,20 +139,20 @@ All application operations are typed RPCs on `gofi.v1.GoFiService` and
 
 | GoFiService method | Behavior |
 | --- | --- |
-| `ListListeners`, `GetListener` | Read durable desired definitions |
-| `UpsertListener`, `DeleteListener` | Validate and persist changes |
+| `ListFlows`, `GetFlow` | Read durable desired definitions |
+| `UpsertFlow`, `DeleteFlow` | Validate and persist changes |
 | `GetRuntimeStatus` | Inspect the backing process/container/Pod |
 | `ListEndpoints`, `ResolveTargets` | Discover endpoints and preview matching ready Pods |
 | `Replay` | Send exact TCP/UDP bytes with per-destination outcomes |
 | `Simulate` | Evaluate a draft without real sink delivery |
 | `GetConfiguration`, `GetMode` | Read store identity and driver capabilities |
-| `WatchTraffic` | One server stream for all listeners or a selected listener |
+| `WatchTraffic` | One server stream for all flows or a selected flow |
 
 For an unauthenticated local binary, Connect JSON unary requests can be inspected
 with ordinary HTTP tools:
 
 ```sh
-curl http://localhost:9090/gofi.v1.GoFiService/ListListeners \
+curl http://localhost:9090/gofi.v1.GoFiService/ListFlows \
   -H 'Content-Type: application/json' \
   -H 'Connect-Protocol-Version: 1' \
   -d '{}'
@@ -160,11 +167,32 @@ assets remain ordinary HTTP endpoints.
 Application and request diagnostics use structured JSON logs on stderr. The
 stdout sink emits its traffic records separately. The Prometheus endpoint
 exports frame/byte counts, parser errors, rejections, and sink dispatch outcomes
-and timing, plus Go/process metrics. Each listener process has its own counters;
-scrape managed listener relays as well as the controller where supported by the
+and timing, plus Go/process metrics. Each flow runtime has its own counters
+(the `listener` metric label holds the flow name); scrape managed flow-runtime relays as well as
+the controller where supported by the
 platform configuration. A successful sink call is not a durable delivery proof.
 
 A Loki destination can send selected traffic records to a reachable Loki push
 endpoint with static labels and HTTP authentication. Keep labels low-cardinality
 and keep secrets out of message fields; arbitrary field values are not promoted
 to labels automatically.
+
+## UDS network allows for flows
+
+On UDS Core, a namespace's Package generates default-deny NetworkPolicies and
+Istio AuthorizationPolicies, so a flow exposed outside the namespace (NodePort,
+LoadBalancer, Gateway, or ClusterIP from other namespaces) or sending to
+another namespace or host needs an allow entry. With `uds.manageAllows: true`
+(gofi chart) and `gofiManagesPackage: true` (uds-gofi-config chart; set both
+together), GoFi generates those entries:
+
+- The config chart renders the Package's base (SSO, expose, monitors, static
+  allows) into the `gofi-uds-package` ConfigMap instead of the Package itself.
+- The controller server-side applies the `gofi` Package (field manager `gofi`)
+  as the base plus one entry per flow need, each described `GoFi flow …`. The
+  Package is owned by the ConfigMap, so it is removed with the chart.
+
+UDS allows one Package per namespace and treats its allow list as one field,
+so the Package must have a single owner; Helm owns only the ConfigMap.
+Upgrading from a release that rendered the Package directly deletes and
+recreates it once (a brief SSO and policy reconcile; users sign in again).

@@ -35,6 +35,6 @@ router or its authentication proxy. Each request has a ten-second timeout;
 redirects fail instead of publishing to a different key. Router errors are
 reported as sink failures. GoFi does not retry or maintain a durable outbox.
 
-In Kubernetes, allow the listener's egress to the router's REST port and use a
+In Kubernetes, allow the flow runtime's egress to the router's REST port and use a
 Service DNS name for the router. In Docker or binary mode, use an HTTP address
-reachable from the listener process.
+reachable from the flow runtime process.

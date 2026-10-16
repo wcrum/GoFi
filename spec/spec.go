@@ -1,10 +1,11 @@
 package spec
 
-// ListenerDefinition describes a full ingest pipeline:
-// a network source → framer → parser → ordered stage chain → sink(s).
-type ListenerDefinition struct {
+// FlowDefinition describes GoFi's top-level object, a flow:
+// a source → framer → parser → ordered stage chain → sink(s).
+// See docs/flows.md.
+type FlowDefinition struct {
 	Name           string      `json:"name"`
-	Source         Source      `json:"source"`
+	Source         FlowSource  `json:"source"`
 	Framing        Framing     `json:"framing"`
 	Parser         ParserCfg   `json:"parser"`
 	Stages         []StageSpec `json:"stages,omitempty"`
@@ -13,7 +14,7 @@ type ListenerDefinition struct {
 	TestCases      []TestCase  `json:"testCases,omitempty"`
 }
 
-// TestCase is a saved mock-mode sample input for exercising this listener's
+// TestCase is a saved mock-mode sample input for exercising this flow's
 // stage chain without real traffic. Purely descriptive: the runtime
 // (listener/pipeline packages) never reads this field — it exists solely for
 // the editor's mock-mode panel and pipeline.Simulate.
@@ -23,20 +24,54 @@ type TestCase struct {
 	Raw  string `json:"raw"` // raw frame text fed through Simulate
 }
 
-// Source defines the network endpoint to listen on.
-type Source struct {
-	Python  *PythonRef       `json:"python,omitempty"`
+// ListenSource is a flow source where senders push to a GoFi TCP/UDP port
+// (the former Listener.source).
+type ListenSource struct {
 	Port    int              `json:"port"`
 	Network string           `json:"network"`           // "tcp" | "udp"
-	Service *ServiceExposure `json:"service,omitempty"` // Kubernetes exposure; nil leaves the listener private
+	Service *ServiceExposure `json:"service,omitempty"` // Kubernetes exposure; nil leaves the port private
 }
 
 // ServiceExposure publishes a listener through a stable Kubernetes Service.
 // Destinations are addressed by DNS/URL; pod selectors are internal to GoFi.
 type ServiceExposure struct {
-	Type     string `json:"type"`               // "ClusterIP" | "NodePort"
-	Port     int    `json:"port,omitempty"`     // defaults to source.port
-	NodePort int    `json:"nodePort,omitempty"` // 0 requests allocation from the cluster
+	Type     string `json:"type"`               // "ClusterIP" | "NodePort" | "LoadBalancer" | "Gateway"
+	Port     int    `json:"port,omitempty"`     // defaults to source.port; the portal leaves it unset
+	NodePort int    `json:"nodePort,omitempty"` // NodePort/LoadBalancer; 0 requests allocation from the cluster
+	// ExternalTrafficPolicy is "Cluster" (default) or "Local" (NodePort and
+	// LoadBalancer). Local keeps the sender's source IP.
+	ExternalTrafficPolicy string               `json:"externalTrafficPolicy,omitempty"`
+	Annotations           map[string]string    `json:"annotations,omitempty"`
+	LoadBalancer          *LoadBalancerOptions `json:"loadBalancer,omitempty"`
+	Gateway               *GatewayExposure     `json:"gateway,omitempty"`
+	// AllowFrom limits in-cluster senders (ClusterIP) to these workloads,
+	// typically chosen from their UDS Packages. Empty allows every namespace.
+	AllowFrom []PeerRef `json:"allowFrom,omitempty"`
+}
+
+// PeerRef names workloads in another namespace: a UDS Package (by name, for
+// display and verification) and the Pod labels the allow should match.
+type PeerRef struct {
+	Namespace string            `json:"namespace"`
+	Package   string            `json:"package,omitempty"`
+	Selector  map[string]string `json:"selector,omitempty"`
+}
+
+// LoadBalancerOptions chooses which load balancer serves a LoadBalancer Service.
+type LoadBalancerOptions struct {
+	Class       string `json:"class,omitempty"`       // spec.loadBalancerClass
+	AddressPool string `json:"addressPool,omitempty"` // MetalLB IPAddressPool
+	IP          string `json:"ip,omitempty"`          // requested address
+}
+
+// GatewayExposure attaches the flow to a Gateway API Gateway with a TCPRoute
+// or UDPRoute. With an empty Listener, GoFi adds a gofi-<flow> listener on
+// Port (default: the listen port) when the chart allows it.
+type GatewayExposure struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Listener  string `json:"listener,omitempty"`
+	Port      int    `json:"port,omitempty"`
 }
 
 // Framing controls how the raw byte stream is split into discrete frames.
@@ -46,10 +81,12 @@ type Framing struct {
 	//   delimited     — accumulate until Delimiter byte sequence is found
 	//   length-prefix — read a big-endian uint16 or uint32 length header, then that many bytes
 	//   raw           — entire connection is one frame (closed on disconnect)
-	Mode      string `json:"mode"`
-	Delimiter string `json:"delimiter,omitempty"` // used by "delimited"
-	PrefixLen int    `json:"prefixLen,omitempty"` // 2 or 4; used by "length-prefix"
-	MaxBytes  int    `json:"maxBytes,omitempty"`  // safety cap; 0 = 1 MiB
+	//   python        — a @gofi.framer function splits the byte stream
+	Mode      string     `json:"mode"`
+	Delimiter string     `json:"delimiter,omitempty"` // used by "delimited"
+	PrefixLen int        `json:"prefixLen,omitempty"` // 2 or 4; used by "length-prefix"
+	MaxBytes  int        `json:"maxBytes,omitempty"`  // safety cap; 0 = 1 MiB
+	Python    *PythonRef `json:"python,omitempty"`    // used by "python"
 }
 
 // ParserCfg selects how a frame's bytes are decoded into Message.Fields.
@@ -63,7 +100,7 @@ type ParserCfg struct {
 
 	// Decoders run in order before parsing: base64, base64url, hex, gzip,
 	// zlib, or url (URL query escaping). Raw frame bytes remain unchanged.
-	Decoders []string `json:"decoders,omitempty"`
+	Decoders []CodecStep `json:"decoders,omitempty"`
 	// MaxDecodedBytes caps the output of each decoding step; 0 = 1 MiB.
 	MaxDecodedBytes int `json:"maxDecodedBytes,omitempty"`
 	// ErrorPolicy is "continue" (default) or "drop". Drop sends malformed
@@ -105,6 +142,19 @@ type StageSpec struct {
 
 	// Kind == "schema"
 	RequiredFields []string `json:"requiredFields,omitempty"`
+
+	// ExpressionRef links this kind's expression (Expression, ValueExpr, or
+	// KeyExpr) to a CEL library entry; a literal expression takes precedence.
+	ExpressionRef *ExpressionRef `json:"expressionRef,omitempty"`
+	// OnError selects CEL evaluation-error handling: "pass" (default) or "drop".
+	OnError string `json:"onError,omitempty"`
+}
+
+// ExpressionRef names a CEL library entry. Generation 0 follows the latest
+// generation; a positive generation pins that revision.
+type ExpressionRef struct {
+	Name       string `json:"name"`
+	Generation int64  `json:"generation,omitempty"`
 }
 
 // SinkCfg describes the destination for passing messages.
@@ -134,6 +184,10 @@ type SinkCfg struct {
 	// evaluated per-message to decide whether THIS sink should receive it.
 	// Empty = always send. Non-empty = only send when the expression is true.
 	When string `json:"when,omitempty"`
+	// WhenRef links the condition to a CEL library entry; When takes precedence.
+	WhenRef *ExpressionRef `json:"whenRef,omitempty"`
+	// Encoding serializes and encodes the message before this sink sends it.
+	Encoding *Encoding `json:"encoding,omitempty"`
 }
 
 // HTTPAuth configures authentication for the HTTP sink. Type selects which
@@ -149,8 +203,8 @@ type HTTPAuth struct {
 
 // NATSAuth configures authentication/TLS for the NATS sink. All credential
 // material here is INLINE CONTENT (raw strings), never a filesystem path.
-// This is deliberate: a ListenerDefinition travels as a single
-// self-contained JSON blob (via the LISTENER_SPEC env var) to whichever
+// This is deliberate: a FlowDefinition travels as a single
+// self-contained JSON blob (via the FLOW_SPEC env var) to whichever
 // process ultimately runs it — including, in Docker/Kubernetes deployment
 // modes, a completely different container/Pod filesystem than the
 // controller's. A file path would silently break in those modes.

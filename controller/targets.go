@@ -18,8 +18,10 @@ func (c *Controller) ValidateTarget(target spec.KubernetesTarget, network string
 	if c.drv.Kind() != "kubernetes" {
 		return fmt.Errorf("Kubernetes selector targets require the Kubernetes driver")
 	}
-	if scoped, ok := c.drv.(interface{ Namespace() string }); ok && target.Namespace != "" && target.Namespace != scoped.Namespace() {
-		return fmt.Errorf("Kubernetes targets must use the controller namespace %q", scoped.Namespace())
+	if scoped, ok := c.drv.(interface{ AllowsTargetNamespace(string) error }); ok {
+		if err := scoped.AllowsTargetNamespace(target.Namespace); err != nil {
+			return err
+		}
 	}
 	if _, ok := c.drv.(driver.TargetResolver); !ok {
 		return fmt.Errorf("driver does not support Kubernetes selector resolution")

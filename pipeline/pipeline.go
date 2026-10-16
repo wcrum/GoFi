@@ -76,9 +76,10 @@ func (t *Tap) broadcast(ev TapEvent) {
 // by that same index) — keep this invariant in mind if either slice is ever
 // reordered independently of the other.
 type sinkTarget struct {
-	sink sink.Sink
-	kind string
-	when cel.Program // nil = always send
+	sink     sink.Sink
+	kind     string
+	when     cel.Program    // nil = always send
+	encoding *spec.Encoding // nil = the sink's default payload
 }
 
 // Pipeline runs the full processing chain for one connection stream.
@@ -92,15 +93,15 @@ type Pipeline struct {
 	deadLetterSink sink.Sink
 	deadLetterType string
 	deadLetterWhen cel.Program
-	sourceHook     *spec.PythonRef
+	deadLetterEnc  *spec.Encoding
 	tap            *Tap
 }
 
-// New builds a Pipeline from a ListenerDefinition and an already-opened
+// New builds a Pipeline from a FlowDefinition and an already-opened
 // reader. sinks, deadLetterSink, and chain are passed in because they are
 // owned by the listener (shared across every connection of that listener) —
 // see listener.New, which builds them exactly once per listener.
-func New(def spec.ListenerDefinition, r io.Reader, sinks []sink.Sink, deadLetterSink sink.Sink, chain *filter.Chain, tap *Tap) (*Pipeline, error) {
+func New(def spec.FlowDefinition, r io.Reader, sinks []sink.Sink, deadLetterSink sink.Sink, chain *filter.Chain, tap *Tap) (*Pipeline, error) {
 	fr, err := framing.New(def.Framing, r)
 	if err != nil {
 		return nil, err
@@ -115,6 +116,7 @@ func New(def spec.ListenerDefinition, r io.Reader, sinks []sink.Sink, deadLetter
 		st := sinkTarget{sink: sk}
 		if i < len(def.Sinks) {
 			st.kind = def.Sinks[i].Type
+			st.encoding = def.Sinks[i].Encoding
 		}
 		if i < len(def.Sinks) && def.Sinks[i].When != "" {
 			prog, err := filter.CompileCEL(def.Sinks[i].When)
@@ -147,7 +149,7 @@ func New(def spec.ListenerDefinition, r io.Reader, sinks []sink.Sink, deadLetter
 		deadLetterSink: deadLetterSink,
 		deadLetterType: deadLetterType,
 		deadLetterWhen: deadLetterWhen,
-		sourceHook:     def.Source.Python,
+		deadLetterEnc:  deadLetterEncoding(def),
 		tap:            tap,
 	}, nil
 }
@@ -161,7 +163,10 @@ func (p *Pipeline) Run(ctx context.Context, remoteAddr string) {
 
 		raw, err := p.framer.ReadFrame()
 		if err != nil {
-			if err != io.EOF && ctx.Err() == nil {
+			if errors.Is(err, framing.ErrFramer) {
+				// The framer itself failed, so the rest of the connection is dropped.
+				slog.Warn("framer error; connection dropped", "listener", p.name, "remote", remoteAddr, "error", err)
+			} else if err != io.EOF && ctx.Err() == nil {
 				slog.Debug("frame read error", "listener", p.name, "remote", remoteAddr, "error", err)
 			}
 			return
@@ -169,18 +174,6 @@ func (p *Pipeline) Run(ctx context.Context, remoteAddr string) {
 
 		observability.Frame(p.name, len(raw))
 		msg := message.New(raw, p.name, remoteAddr)
-		if p.sourceHook != nil {
-			drop, err := applySourceHook(ctx, p.sourceHook, msg)
-			if err != nil {
-				msg.Meta["sourceError"] = err.Error()
-				p.reject(msg, "listener")
-				continue
-			}
-			if drop {
-				p.reject(msg, "listener")
-				continue
-			}
-		}
 
 		if err := p.parser.Parse(msg); err != nil {
 			if !errors.Is(err, parser.ErrRejected) {
@@ -224,7 +217,10 @@ func (p *Pipeline) Run(ctx context.Context, remoteAddr string) {
 				}
 			}
 			started := time.Now()
-			err := st.sink.Send(msg)
+			out, err := Encode(ctx, st.encoding, msg)
+			if err == nil {
+				err = st.sink.Send(out)
+			}
 			observability.SinkDispatch(p.name, st.kind, time.Since(started), err)
 			if err != nil {
 				slog.Warn("sink error", "listener", p.name, "error", err)
@@ -246,7 +242,10 @@ func (p *Pipeline) reject(msg *message.Message, droppedBy string) {
 			}
 		}
 		started := time.Now()
-		err := p.deadLetterSink.Send(msg)
+		out, err := Encode(context.Background(), p.deadLetterEnc, msg)
+		if err == nil {
+			err = p.deadLetterSink.Send(out)
+		}
 		observability.SinkDispatch(p.name, p.deadLetterType, time.Since(started), err)
 		if err != nil {
 			slog.Warn("dead-letter sink error", "listener", p.name, "error", err)

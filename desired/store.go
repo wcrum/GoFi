@@ -18,9 +18,16 @@ type Configuration struct {
 	Path       string `json:"path,omitempty"`
 }
 
+// KindFlow is the only desired-state resource kind. The pre-rename Listener
+// kind is rejected with an explicit error (docs/flows.md).
+const KindFlow = "Flow"
+
+// errListenerKind explains a pre-rename Listener resource.
+const errListenerKind = "kind Listener is no longer supported; declare it as kind: Flow with source.listen (docs/flows.md)"
+
 type Store interface {
-	Load(context.Context) ([]spec.ListenerDefinition, error)
-	Save(context.Context, spec.ListenerDefinition) error
+	Load(context.Context) ([]spec.FlowDefinition, error)
+	Save(context.Context, spec.FlowDefinition) error
 	Delete(context.Context, string) error
 	Configuration() Configuration
 }

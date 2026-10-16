@@ -1,23 +1,21 @@
-import { useState } from 'react'
-import { Badge, Input } from '../primitives'
-import {
-  RiFilterLine,
-  RiEditLine,
-  RiSpeedLine,
-  RiFingerprintLine,
-  RiShieldCheckLine,
-  RiSendPlaneLine,
-  RiErrorWarningLine,
-} from 'react-icons/ri'
+import { useState, type ReactNode } from 'react'
+import { css } from '@emotion/css'
+import type { GrafanaTheme2, IconName } from '@grafana/data'
+import { Badge, Card, ControlledCollapse, Dropdown, FilterInput, Icon, Menu, Stack, Text, ToolbarButton, useStyles2 } from '@grafana/ui'
 import { STAGE_KIND_COLOR } from '../stageColors'
 import type { StageSpec } from '../../types'
 import { useLibraryFunctions } from './python-functions'
+import { INLINE_STARTER } from './python-templates'
+import { useExpressions } from '../cel/useExpressions'
+import { KIND_ICON } from './StageNode'
 
 export interface StagePaletteEntry {
   kind: StageSpec['kind']
   label: string
   description: string
   defaults: Partial<StageSpec>
+  /** Entries from the CEL library are listed in their own section. */
+  group?: 'cel-library'
 }
 
 // Built-ins stay available alongside functions discovered from Python libraries.
@@ -55,53 +53,142 @@ export const BUILTIN_STAGES: StagePaletteEntry[] = [
   },
 ]
 
-const KIND_ICON: Record<StageSpec['kind'], typeof RiFilterLine> = {
-  filter: RiFilterLine,
-  transform: RiEditLine,
-  'rate-limit': RiSpeedLine,
-  dedup: RiFingerprintLine,
-  schema: RiShieldCheckLine,
-  python: RiEditLine,
+// Python written directly in the flow; the controller runs it in the
+// flow's managed, isolated worker.
+const INLINE_PYTHON_STAGE: StagePaletteEntry = {
+  kind: 'python',
+  label: 'Inline Python',
+  description: 'Write a Python transformer directly in this flow',
+  defaults: { kind: 'python', python: { library: '', function: '', inlineSource: INLINE_STARTER } },
 }
+
+export type PipelineStep = 'frame' | 'decode' | 'parse'
+
+/** What a palette card carries when dragged onto the canvas. */
+export type PaletteDrop =
+  | { kind: 'stage'; entry: StagePaletteEntry }
+  | { kind: 'step'; step: PipelineStep }
+  | { kind: 'sink' }
+  | { kind: 'dead-letter' }
+export const PALETTE_MIME = 'application/x-gofi-palette'
+
+const STEP_ITEMS: Array<{ step: PipelineStep; icon: IconName; label: string; description: string }> = [
+  { step: 'frame', icon: 'gf-grid', label: 'Frame', description: 'Split the byte stream into frames (line, delimiter, length prefix). Without it, each connection or datagram is one frame.' },
+  { step: 'decode', icon: 'unlock', label: 'Decode', description: 'Apply byte decoders in order (base64, gzip, hex…). Without it, frames are not decoded.' },
+  { step: 'parse', icon: 'brackets-curly', label: 'Parse', description: 'Turn frames into fields (JSON, XML, text, or a Python parser). Without it, frames pass through as fields.raw.' },
+]
 
 interface Props {
   onAdd: (entry: StagePaletteEntry) => void
   onAddSink: () => void
   onAddDeadLetter: () => void
   hasDeadLetter: boolean
+  /** Optional pipeline steps the flow does not have yet. */
+  missingSteps?: PipelineStep[]
+  onAddStep?: (step: PipelineStep) => void
 }
 
-export function StagePalette({ onAdd, onAddSink, onAddDeadLetter, hasDeadLetter }: Props) {
+interface PaletteGroup { title: string; entries: StagePaletteEntry[] }
+
+/** Every addable stage, grouped. Shared by the side palette and the toolbar
+ * "Add stage" dropdown so both always offer the same choices. */
+function usePaletteGroups(): { groups: PaletteGroup[]; registryError: string | null; pythonCount: number } {
   const { functions, error } = useLibraryFunctions()
+  const pythonStages: StagePaletteEntry[] = functions.filter(fn => fn.kind === 'transformer').map(fn => ({ kind: 'python', label: `${fn.library}.${fn.name}`, description: fn.description || 'Python transformer', defaults: { kind: 'python', python: { library: fn.library, function: fn.name } } }))
+  // Saved bool CEL expressions become filters linked to the library entry.
+  const { expressions } = useExpressions()
+  const celStages: StagePaletteEntry[] = expressions.filter(e => e.resultType === 'bool').map(e => ({ kind: 'filter', group: 'cel-library', label: `CEL filter: ${e.name}`, description: e.description || e.expression, defaults: { kind: 'filter', type: 'cel', expression: '', expressionRef: { name: e.name } } }))
+  const builtin = (...kinds: StageSpec['kind'][]) => BUILTIN_STAGES.filter(entry => kinds.includes(entry.kind))
+  return {
+    groups: [
+      { title: 'Filter & validate', entries: builtin('filter', 'schema') },
+      { title: 'Transform', entries: builtin('transform') },
+      { title: 'Python', entries: [INLINE_PYTHON_STAGE, ...pythonStages] },
+      { title: 'Traffic controls', entries: builtin('rate-limit', 'dedup') },
+      { title: 'CEL library', entries: celStages },
+    ],
+    registryError: error,
+    pythonCount: pythonStages.length,
+  }
+}
+
+const matchText = (entry: StagePaletteEntry) => `${entry.label} ${entry.description} ${entry.kind} ${entry.defaults.python?.library || ''} ${entry.group ? 'library cel' : ''}`
+const kindBadge = (entry: StagePaletteEntry) => <Badge text={entry.kind === 'python' ? 'python' : entry.kind} color={STAGE_KIND_COLOR[entry.kind] ?? 'darkgrey'} />
+const SINK_ICON: IconName = 'arrow-right'
+const DEAD_LETTER_ICON: IconName = 'exclamation-triangle'
+
+export function StagePalette({ onAdd, onAddSink, onAddDeadLetter, hasDeadLetter, missingSteps = [], onAddStep }: Props) {
+  const styles = useStyles2(getStyles)
+  const { groups, registryError, pythonCount } = usePaletteGroups()
   const [query, setQuery] = useState('')
   const search = query.trim().toLowerCase()
   const matches = (text: string) => !search || text.toLowerCase().includes(search)
-  const pythonStages: StagePaletteEntry[] = functions.filter(fn => fn.kind === 'transformer').map(fn => ({ kind: 'python', label: `${fn.library}.${fn.name}`, description: fn.description || 'Python transformer', defaults: { kind: 'python', python: { library: fn.library, function: fn.name } } }))
-  const entries = [...BUILTIN_STAGES, ...pythonStages].filter(entry => matches(`${entry.label} ${entry.description} ${entry.kind} ${entry.defaults.python?.library || ''}`))
-  const groups = [
-    { title: 'Filter & validate', kinds: ['filter', 'schema'] },
-    { title: 'Transform', kinds: ['transform', 'python'] },
-    { title: 'Traffic controls', kinds: ['rate-limit', 'dedup'] },
-  ]
+  const visible = groups.map(group => ({ ...group, entries: group.entries.filter(entry => matches(matchText(entry))) })).filter(group => group.entries.length)
   const showSink = matches('Add sink destination forward HTTP NATS TCP UDP Aster Zenoh Loki stdout container application')
   const showDeadLetter = !hasDeadLetter && matches('Dead letter sink rejected dropped messages destination')
-  const card = (entry: StagePaletteEntry) => {
-    const Icon = KIND_ICON[entry.kind]
-    return <button key={entry.label} onClick={() => onAdd(entry)} className="w-full text-left rounded border border-g-border-weak bg-g-primary p-3 hover:bg-g-hover hover:border-g-accent-main/50 transition-colors" title={entry.description}>
-      <div className="flex items-center gap-2"><Icon className="text-g-accent-main shrink-0" /><span className="min-w-0 flex-1 text-xs text-g-text font-medium break-words">{entry.label}</span><Badge text={entry.kind === 'python' ? 'Python' : entry.kind} color={STAGE_KIND_COLOR[entry.kind] ?? 'gray'} className="shrink-0" /></div>
-      <p className="mt-1.5 text-[11px] text-g-text-secondary leading-relaxed">{entry.description}</p>
-    </button>
-  }
-  return <aside className="w-64 shrink-0 border-r border-g-border-weak flex flex-col min-h-0 bg-g-primary">
-    <div className="p-3 border-b border-g-border-weak"><h3 className="text-xs font-medium mb-2">Add a stage</h3><Input aria-label="Search stages and Python functions" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search stages and functions…" className="!text-xs !px-2 !py-1.5" /></div>
-    <div className="p-3 space-y-5 overflow-y-auto">
-      {groups.map(group => {
-        const items = entries.filter(entry => group.kinds.includes(entry.kind))
-        return items.length ? <section key={group.title}><h4 className="text-[10px] font-semibold uppercase tracking-wider text-g-text-secondary mb-2">{group.title}</h4><div className="space-y-2">{items.map(card)}</div></section> : null
-      })}
-      {(showSink || showDeadLetter) && <section><h4 className="text-[10px] font-semibold uppercase tracking-wider text-g-text-secondary mb-2">Destinations</h4><div className="space-y-2">{showSink && <button onClick={onAddSink} className="w-full text-left rounded border border-g-border-weak p-3 hover:bg-g-hover hover:border-g-accent-main/50"><span className="flex items-center gap-2 text-xs font-medium"><RiSendPlaneLine className="text-g-accent-main" />Add sink</span><p className="mt-1.5 text-[11px] text-g-text-secondary">Forward passing traffic to an application.</p></button>}{showDeadLetter && <button onClick={onAddDeadLetter} className="w-full text-left rounded border border-g-border-weak p-3 hover:bg-g-hover hover:border-orange-400/50"><span className="flex items-center gap-2 text-xs font-medium"><RiErrorWarningLine className="text-orange-400" />Dead letter sink</span><p className="mt-1.5 text-[11px] text-g-text-secondary">Route rejected messages for inspection.</p></button>}</div></section>}
-      {!entries.length && !showSink && !showDeadLetter && <p role="status" className="text-xs text-g-text-secondary">No stages or functions match “{query}”.</p>}
-      {error ? <p className="text-[11px] text-amber-300">Python function registry unavailable.</p> : !pythonStages.length && <p className="text-[11px] text-g-text-secondary">Launch a Python library to add its transformer functions here.</p>}
+  // Every card can be clicked (appends at the end of the chain) or dragged onto
+  // the canvas: dropped on a connection it is inserted there.
+  const item = (key: string, icon: IconName, heading: string, description: string, onClick: () => void, drop: PaletteDrop, tags?: ReactNode) =>
+    <div key={key} draggable className={styles.draggable} title="Click to add, or drag onto a connection"
+      onDragStart={(event) => { event.dataTransfer.setData(PALETTE_MIME, JSON.stringify(drop)); event.dataTransfer.effectAllowed = 'copy' }}>
+      <Card isCompact noMargin onClick={onClick}>
+        <Card.Heading>{heading}</Card.Heading>
+        <Card.Figure><Icon name={icon} className={styles.icon} /></Card.Figure>
+        <Card.Description>{description}</Card.Description>
+        {tags && <Card.Tags>{tags}</Card.Tags>}
+      </Card>
+    </div>
+  const steps = STEP_ITEMS.filter((step) => missingSteps.includes(step.step) && matches(`${step.label} ${step.description} pipeline`))
+  return <aside className={styles.palette} aria-label="Add a stage">
+    <div className={styles.search}>
+      <Text element="h3" variant="h6">Add a stage</Text>
+      <FilterInput aria-label="Search stages and Python functions" value={query} onChange={setQuery} placeholder="Search stages and functions" />
+    </div>
+    <div className={styles.groups}>
+      {steps.length > 0 && onAddStep && <ControlledCollapse label={`Pipeline steps (${steps.length})`} isOpen className={styles.collapse}>
+        <Stack direction="column" gap={1}>{steps.map((step) => item(`step:${step.step}`, step.icon, step.label, step.description, () => onAddStep(step.step), { kind: 'step', step: step.step }))}</Stack>
+      </ControlledCollapse>}
+      {visible.map(group => <ControlledCollapse key={group.title} label={`${group.title} (${group.entries.length})`} isOpen className={styles.collapse}>
+        <Stack direction="column" gap={1}>{group.entries.map(entry => item(`${group.title}:${entry.label}`, KIND_ICON[entry.kind], entry.label, entry.description, () => onAdd(entry), { kind: 'stage', entry }, kindBadge(entry)))}</Stack>
+      </ControlledCollapse>)}
+      {(showSink || showDeadLetter) && <ControlledCollapse label="Destinations" isOpen className={styles.collapse}>
+        <Stack direction="column" gap={1}>
+          {showSink && item('sink', SINK_ICON, 'Add sink', 'Forward passing traffic to an application.', onAddSink, { kind: 'sink' })}
+          {showDeadLetter && item('dead-letter', DEAD_LETTER_ICON, 'Dead letter sink', 'Route rejected messages for inspection.', onAddDeadLetter, { kind: 'dead-letter' })}
+        </Stack>
+      </ControlledCollapse>}
+      {!visible.length && !showSink && !showDeadLetter && <Text variant="bodySmall" color="secondary">No stages or functions match “{query}”.</Text>}
+      {registryError ? <Text variant="bodySmall" color="warning">Python function registry unavailable.</Text>
+        : !pythonCount && <Text variant="bodySmall" color="secondary">Launch a Python library to add its transformer functions here.</Text>}
     </div>
   </aside>
 }
+
+/** "Add stage" dropdown (Grafana Dropdown + Menu.Group pattern) with the side
+ * palette's entries, shown only on narrow screens where the palette is hidden. */
+export function AddStageMenu({ onAdd, onAddSink, onAddDeadLetter, hasDeadLetter }: Props) {
+  const { groups } = usePaletteGroups()
+  const [open, setOpen] = useState(false)
+  const menu = <Menu>
+    {groups.filter(group => group.entries.length).map(group => <Menu.Group key={group.title} label={group.title}>
+      {group.entries.map(entry => <Menu.Item key={entry.label} label={entry.label} description={entry.description} icon={KIND_ICON[entry.kind]} onClick={() => onAdd(entry)} />)}
+    </Menu.Group>)}
+    <Menu.Divider />
+    <Menu.Group label="Destinations">
+      <Menu.Item label="Add sink" description="Forward passing traffic to an application" icon={SINK_ICON} onClick={onAddSink} />
+      <Menu.Item label="Dead letter sink" description={hasDeadLetter ? 'This flow already has one' : 'Route rejected messages for inspection'} icon={DEAD_LETTER_ICON} disabled={hasDeadLetter} onClick={onAddDeadLetter} />
+    </Menu.Group>
+  </Menu>
+  return <Dropdown overlay={menu} placement="bottom-start" onVisibleChange={setOpen}>
+    <ToolbarButton icon="plus" isOpen={open} variant="primary">Add stage</ToolbarButton>
+  </Dropdown>
+}
+
+const getStyles = (theme: GrafanaTheme2) => ({
+  draggable: css({ cursor: 'grab', '&:active': { cursor: 'grabbing' } }),
+  palette: css({ width: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: theme.colors.background.primary, borderRight: `1px solid ${theme.colors.border.weak}`, [theme.breakpoints.down('md')]: { display: 'none' } }),
+  search: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(1), padding: theme.spacing(1.5), borderBottom: `1px solid ${theme.colors.border.weak}` }),
+  groups: css({ flex: 1, minHeight: 0, overflowY: 'auto', padding: theme.spacing(1) }),
+  collapse: css({ marginBottom: theme.spacing(1) }),
+  icon: css({ color: theme.colors.primary.text }),
+})

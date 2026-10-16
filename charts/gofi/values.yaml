@@ -6,6 +6,29 @@ sandboxImage:
   repository: ghcr.io/wcrum/gofi-python
   tag: "0.2.0"
 
+# Read-only cluster discovery (Cluster page, exposure and destination
+# pickers, cross-namespace selector destinations). Grants get/list on Pods,
+# Services, Gateways, Istio and UDS networking objects, and MetalLB pools
+# cluster-wide. Disable to keep GoFi to its own namespace.
+discovery:
+  clusterWide: true
+
+# Gateway exposure may add a gofi-* listener to a Gateway in another namespace.
+gateway:
+  manageListeners: true
+
+# On UDS Core, keep a GoFi-managed Package (gofi-flows) with the ingress and
+# egress allows each flow's exposure and destinations need.
+uds:
+  manageAllows: false
+  # ConfigMap holding the Package base (the uds-gofi-config chart renders it).
+  packageBaseConfigMap: gofi-uds-package
+
+# NodePort range flow Services may request. Leave empty for the Kubernetes
+# default (30000-32767); set it to match a cluster started with a different
+# --service-node-port-range, e.g. "1-65535".
+nodePortRange: ""
+
 # Exactly one active controller; persistent resources do not provide leader election.
 replicaCount: 1
 service:
@@ -48,9 +71,10 @@ listenerPodTemplate:
   volumes: []
   volumeMounts: []
   env: []
-# Initial Listener definitions, with name plus source/framing/parser/stages/sinks.
-# Helm owns these resources; kubectl-managed resources may be applied separately.
-listeners: []
+# Flows to declare at install time (kind Flow; see docs/flows.md): name plus
+# source/framing/parser/stages/sinks. Helm owns these resources; kubectl-managed
+# Flows may be applied separately.
+flows: []
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []

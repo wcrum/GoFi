@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,19 +23,741 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type DebugFunctionRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Library string                 `protobuf:"bytes,1,opt,name=library,proto3" json:"library,omitempty"` // saved library, or
+	Source  string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`   // unsaved source (short-lived worker)
+	Name    string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Kind    string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	Raw     []byte                 `protobuf:"bytes,5,opt,name=raw,proto3" json:"raw,omitempty"`
+	Fields  *structpb.Struct       `protobuf:"bytes,6,opt,name=fields,proto3" json:"fields,omitempty"`
+	Meta    *structpb.Struct       `protobuf:"bytes,7,opt,name=meta,proto3" json:"meta,omitempty"`
+	Config  *structpb.Struct       `protobuf:"bytes,8,opt,name=config,proto3" json:"config,omitempty"`
+	// Python expressions evaluated against each step's frame (read-only intent;
+	// evaluated in the isolated worker).
+	Watches        []string `protobuf:"bytes,9,rep,name=watches,proto3" json:"watches,omitempty"`
+	MaxSteps       int32    `protobuf:"varint,10,opt,name=max_steps,json=maxSteps,proto3" json:"max_steps,omitempty"` // default 5000, max 20000
+	RunId          string   `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`           // correlates WatchWorkerLogs lines
+	TimeoutSeconds int32    `protobuf:"varint,12,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DebugFunctionRequest) Reset() {
+	*x = DebugFunctionRequest{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DebugFunctionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DebugFunctionRequest) ProtoMessage() {}
+
+func (x *DebugFunctionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DebugFunctionRequest.ProtoReflect.Descriptor instead.
+func (*DebugFunctionRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DebugFunctionRequest) GetLibrary() string {
+	if x != nil {
+		return x.Library
+	}
+	return ""
+}
+
+func (x *DebugFunctionRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *DebugFunctionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DebugFunctionRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *DebugFunctionRequest) GetRaw() []byte {
+	if x != nil {
+		return x.Raw
+	}
+	return nil
+}
+
+func (x *DebugFunctionRequest) GetFields() *structpb.Struct {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+func (x *DebugFunctionRequest) GetMeta() *structpb.Struct {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *DebugFunctionRequest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *DebugFunctionRequest) GetWatches() []string {
+	if x != nil {
+		return x.Watches
+	}
+	return nil
+}
+
+func (x *DebugFunctionRequest) GetMaxSteps() int32 {
+	if x != nil {
+		return x.MaxSteps
+	}
+	return 0
+}
+
+func (x *DebugFunctionRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *DebugFunctionRequest) GetTimeoutSeconds() int32 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
+}
+
+type DebugRecording struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Steps []*DebugStep           `protobuf:"bytes,1,rep,name=steps,proto3" json:"steps,omitempty"`
+	// The final outcome, exactly as RunFunction would report it.
+	Result *RunFunctionResponse `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
+	// Library module globals after loading, before the call (functions,
+	// modules, and dunder names omitted).
+	InitialGlobals   []*DebugVariable `protobuf:"bytes,3,rep,name=initial_globals,json=initialGlobals,proto3" json:"initial_globals,omitempty"`
+	Truncated        bool             `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	TruncationReason string           `protobuf:"bytes,5,opt,name=truncation_reason,json=truncationReason,proto3" json:"truncation_reason,omitempty"` // "max_steps" | "size" | "deadline"
+	EntryLine        int32            `protobuf:"varint,6,opt,name=entry_line,json=entryLine,proto3" json:"entry_line,omitempty"`
+	RunId            string           `protobuf:"bytes,7,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DebugRecording) Reset() {
+	*x = DebugRecording{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DebugRecording) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DebugRecording) ProtoMessage() {}
+
+func (x *DebugRecording) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DebugRecording.ProtoReflect.Descriptor instead.
+func (*DebugRecording) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DebugRecording) GetSteps() []*DebugStep {
+	if x != nil {
+		return x.Steps
+	}
+	return nil
+}
+
+func (x *DebugRecording) GetResult() *RunFunctionResponse {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *DebugRecording) GetInitialGlobals() []*DebugVariable {
+	if x != nil {
+		return x.InitialGlobals
+	}
+	return nil
+}
+
+func (x *DebugRecording) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *DebugRecording) GetTruncationReason() string {
+	if x != nil {
+		return x.TruncationReason
+	}
+	return ""
+}
+
+func (x *DebugRecording) GetEntryLine() int32 {
+	if x != nil {
+		return x.EntryLine
+	}
+	return 0
+}
+
+func (x *DebugRecording) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+type DebugStep struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Index    int32                  `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
+	Event    string                 `protobuf:"bytes,2,opt,name=event,proto3" json:"event,omitempty"` // "call" | "line" | "return" | "exception"
+	Line     int32                  `protobuf:"varint,3,opt,name=line,proto3" json:"line,omitempty"`  // source line about to execute (library coordinates)
+	Function string                 `protobuf:"bytes,4,opt,name=function,proto3" json:"function,omitempty"`
+	Depth    int32                  `protobuf:"varint,5,opt,name=depth,proto3" json:"depth,omitempty"` // 0 = the invoked function
+	Stack    []*DebugFrame          `protobuf:"bytes,6,rep,name=stack,proto3" json:"stack,omitempty"`  // innermost last
+	Locals   []*DebugVariable       `protobuf:"bytes,7,rep,name=locals,proto3" json:"locals,omitempty"`
+	// Module globals that changed since the previous step.
+	ChangedGlobals []*DebugVariable `protobuf:"bytes,8,rep,name=changed_globals,json=changedGlobals,proto3" json:"changed_globals,omitempty"`
+	Watches        []*DebugWatch    `protobuf:"bytes,9,rep,name=watches,proto3" json:"watches,omitempty"`
+	// Length of the run's stdout at this step (prefix of result.stdout).
+	StdoutLength  int32          `protobuf:"varint,10,opt,name=stdout_length,json=stdoutLength,proto3" json:"stdout_length,omitempty"`
+	ReturnValue   *DebugVariable `protobuf:"bytes,11,opt,name=return_value,json=returnValue,proto3" json:"return_value,omitempty"` // event "return"
+	Exception     string         `protobuf:"bytes,12,opt,name=exception,proto3" json:"exception,omitempty"`                        // event "exception": "Type: message"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DebugStep) Reset() {
+	*x = DebugStep{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DebugStep) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DebugStep) ProtoMessage() {}
+
+func (x *DebugStep) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DebugStep.ProtoReflect.Descriptor instead.
+func (*DebugStep) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DebugStep) GetIndex() int32 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+func (x *DebugStep) GetEvent() string {
+	if x != nil {
+		return x.Event
+	}
+	return ""
+}
+
+func (x *DebugStep) GetLine() int32 {
+	if x != nil {
+		return x.Line
+	}
+	return 0
+}
+
+func (x *DebugStep) GetFunction() string {
+	if x != nil {
+		return x.Function
+	}
+	return ""
+}
+
+func (x *DebugStep) GetDepth() int32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
+func (x *DebugStep) GetStack() []*DebugFrame {
+	if x != nil {
+		return x.Stack
+	}
+	return nil
+}
+
+func (x *DebugStep) GetLocals() []*DebugVariable {
+	if x != nil {
+		return x.Locals
+	}
+	return nil
+}
+
+func (x *DebugStep) GetChangedGlobals() []*DebugVariable {
+	if x != nil {
+		return x.ChangedGlobals
+	}
+	return nil
+}
+
+func (x *DebugStep) GetWatches() []*DebugWatch {
+	if x != nil {
+		return x.Watches
+	}
+	return nil
+}
+
+func (x *DebugStep) GetStdoutLength() int32 {
+	if x != nil {
+		return x.StdoutLength
+	}
+	return 0
+}
+
+func (x *DebugStep) GetReturnValue() *DebugVariable {
+	if x != nil {
+		return x.ReturnValue
+	}
+	return nil
+}
+
+func (x *DebugStep) GetException() string {
+	if x != nil {
+		return x.Exception
+	}
+	return ""
+}
+
+type DebugFrame struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Function      string                 `protobuf:"bytes,1,opt,name=function,proto3" json:"function,omitempty"`
+	Line          int32                  `protobuf:"varint,2,opt,name=line,proto3" json:"line,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DebugFrame) Reset() {
+	*x = DebugFrame{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DebugFrame) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DebugFrame) ProtoMessage() {}
+
+func (x *DebugFrame) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DebugFrame.ProtoReflect.Descriptor instead.
+func (*DebugFrame) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DebugFrame) GetFunction() string {
+	if x != nil {
+		return x.Function
+	}
+	return ""
+}
+
+func (x *DebugFrame) GetLine() int32 {
+	if x != nil {
+		return x.Line
+	}
+	return 0
+}
+
+type DebugVariable struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type  string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Repr  string                 `protobuf:"bytes,3,opt,name=repr,proto3" json:"repr,omitempty"` // truncated representation
+	// Containers expanded to bounded depth and width.
+	Children      []*DebugVariable `protobuf:"bytes,4,rep,name=children,proto3" json:"children,omitempty"`
+	Changed       bool             `protobuf:"varint,5,opt,name=changed,proto3" json:"changed,omitempty"` // value differs from the previous step
+	Truncated     bool             `protobuf:"varint,6,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DebugVariable) Reset() {
+	*x = DebugVariable{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DebugVariable) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DebugVariable) ProtoMessage() {}
+
+func (x *DebugVariable) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DebugVariable.ProtoReflect.Descriptor instead.
+func (*DebugVariable) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DebugVariable) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DebugVariable) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *DebugVariable) GetRepr() string {
+	if x != nil {
+		return x.Repr
+	}
+	return ""
+}
+
+func (x *DebugVariable) GetChildren() []*DebugVariable {
+	if x != nil {
+		return x.Children
+	}
+	return nil
+}
+
+func (x *DebugVariable) GetChanged() bool {
+	if x != nil {
+		return x.Changed
+	}
+	return false
+}
+
+func (x *DebugVariable) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+type DebugWatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Expression    string                 `protobuf:"bytes,1,opt,name=expression,proto3" json:"expression,omitempty"`
+	Repr          string                 `protobuf:"bytes,2,opt,name=repr,proto3" json:"repr,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DebugWatch) Reset() {
+	*x = DebugWatch{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DebugWatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DebugWatch) ProtoMessage() {}
+
+func (x *DebugWatch) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DebugWatch.ProtoReflect.Descriptor instead.
+func (*DebugWatch) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *DebugWatch) GetExpression() string {
+	if x != nil {
+		return x.Expression
+	}
+	return ""
+}
+
+func (x *DebugWatch) GetRepr() string {
+	if x != nil {
+		return x.Repr
+	}
+	return ""
+}
+
+func (x *DebugWatch) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type WatchWorkerLogsRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Library string                 `protobuf:"bytes,1,opt,name=library,proto3" json:"library,omitempty"`
+	// Client-chosen id also sent in RunSourceRequest.run_id; the stream waits
+	// briefly for that worker to start and ends when it exits.
+	RunId string `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	// Recent lines to replay before following (default 100, max 1000).
+	TailLines     int32 `protobuf:"varint,3,opt,name=tail_lines,json=tailLines,proto3" json:"tail_lines,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchWorkerLogsRequest) Reset() {
+	*x = WatchWorkerLogsRequest{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchWorkerLogsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchWorkerLogsRequest) ProtoMessage() {}
+
+func (x *WatchWorkerLogsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchWorkerLogsRequest.ProtoReflect.Descriptor instead.
+func (*WatchWorkerLogsRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *WatchWorkerLogsRequest) GetLibrary() string {
+	if x != nil {
+		return x.Library
+	}
+	return ""
+}
+
+func (x *WatchWorkerLogsRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *WatchWorkerLogsRequest) GetTailLines() int32 {
+	if x != nil {
+		return x.TailLines
+	}
+	return 0
+}
+
+type WorkerLogEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Time          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=time,proto3" json:"time,omitempty"`
+	Stream        string                 `protobuf:"bytes,2,opt,name=stream,proto3" json:"stream,omitempty"` // "stdout" | "stderr" | "system"
+	Line          string                 `protobuf:"bytes,3,opt,name=line,proto3" json:"line,omitempty"`
+	InvocationId  string                 `protobuf:"bytes,4,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"` // empty for worker lifecycle lines
+	Function      string                 `protobuf:"bytes,5,opt,name=function,proto3" json:"function,omitempty"`
+	Kind          string                 `protobuf:"bytes,6,opt,name=kind,proto3" json:"kind,omitempty"`
+	Level         string                 `protobuf:"bytes,7,opt,name=level,proto3" json:"level,omitempty"` // system lines: "info" | "warn" | "error"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerLogEntry) Reset() {
+	*x = WorkerLogEntry{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerLogEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerLogEntry) ProtoMessage() {}
+
+func (x *WorkerLogEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerLogEntry.ProtoReflect.Descriptor instead.
+func (*WorkerLogEntry) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *WorkerLogEntry) GetTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
+func (x *WorkerLogEntry) GetStream() string {
+	if x != nil {
+		return x.Stream
+	}
+	return ""
+}
+
+func (x *WorkerLogEntry) GetLine() string {
+	if x != nil {
+		return x.Line
+	}
+	return ""
+}
+
+func (x *WorkerLogEntry) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *WorkerLogEntry) GetFunction() string {
+	if x != nil {
+		return x.Function
+	}
+	return ""
+}
+
+func (x *WorkerLogEntry) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *WorkerLogEntry) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
 type SandboxDefinition struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	SourceCode     string                 `protobuf:"bytes,2,opt,name=source_code,json=sourceCode,proto3" json:"source_code,omitempty"`
 	TimeoutSeconds int32                  `protobuf:"varint,3,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
 	MemoryMib      int32                  `protobuf:"varint,4,opt,name=memory_mib,json=memoryMib,proto3" json:"memory_mib,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Saved sample inputs for this library's functions.
+	Tests []*FunctionTest `protobuf:"bytes,5,rep,name=tests,proto3" json:"tests,omitempty"`
+	// Empty for user libraries; "flow:<flow>" for libraries the controller
+	// generates from inline flow stages. Managed libraries are read-only.
+	ManagedBy string `protobuf:"bytes,6,opt,name=managed_by,json=managedBy,proto3" json:"managed_by,omitempty"`
+	// Outbound destinations this library may reach. Empty = no egress (default).
+	Egress        []*EgressRule `protobuf:"bytes,7,rep,name=egress,proto3" json:"egress,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SandboxDefinition) Reset() {
 	*x = SandboxDefinition{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[0]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +769,7 @@ func (x *SandboxDefinition) String() string {
 func (*SandboxDefinition) ProtoMessage() {}
 
 func (x *SandboxDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[0]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +782,7 @@ func (x *SandboxDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxDefinition.ProtoReflect.Descriptor instead.
 func (*SandboxDefinition) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{0}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SandboxDefinition) GetName() string {
@@ -90,6 +813,224 @@ func (x *SandboxDefinition) GetMemoryMib() int32 {
 	return 0
 }
 
+func (x *SandboxDefinition) GetTests() []*FunctionTest {
+	if x != nil {
+		return x.Tests
+	}
+	return nil
+}
+
+func (x *SandboxDefinition) GetManagedBy() string {
+	if x != nil {
+		return x.ManagedBy
+	}
+	return ""
+}
+
+func (x *SandboxDefinition) GetEgress() []*EgressRule {
+	if x != nil {
+		return x.Egress
+	}
+	return nil
+}
+
+// EgressRule allows outbound traffic from a library's worker. Kubernetes
+// enforces each rule with NetworkPolicy (cidr and/or namespace+pod_selector;
+// DNS to cluster DNS is added automatically). Docker cannot filter by
+// destination: any rule attaches the worker to an egress-capable network.
+type EgressRule struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cidr          string                 `protobuf:"bytes,1,opt,name=cidr,proto3" json:"cidr,omitempty"`
+	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	Protocol      string                 `protobuf:"bytes,3,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	Namespace     string                 `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	PodSelector   map[string]string      `protobuf:"bytes,5,rep,name=pod_selector,json=podSelector,proto3" json:"pod_selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EgressRule) Reset() {
+	*x = EgressRule{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EgressRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EgressRule) ProtoMessage() {}
+
+func (x *EgressRule) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EgressRule.ProtoReflect.Descriptor instead.
+func (*EgressRule) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *EgressRule) GetCidr() string {
+	if x != nil {
+		return x.Cidr
+	}
+	return ""
+}
+
+func (x *EgressRule) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *EgressRule) GetProtocol() string {
+	if x != nil {
+		return x.Protocol
+	}
+	return ""
+}
+
+func (x *EgressRule) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *EgressRule) GetPodSelector() map[string]string {
+	if x != nil {
+		return x.PodSelector
+	}
+	return nil
+}
+
+func (x *EgressRule) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type FunctionTest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Name     string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Function string                 `protobuf:"bytes,2,opt,name=function,proto3" json:"function,omitempty"`
+	Kind     string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Raw      []byte                 `protobuf:"bytes,4,opt,name=raw,proto3" json:"raw,omitempty"`
+	Fields   *structpb.Struct       `protobuf:"bytes,5,opt,name=fields,proto3" json:"fields,omitempty"`
+	Meta     *structpb.Struct       `protobuf:"bytes,6,opt,name=meta,proto3" json:"meta,omitempty"`
+	Config   *structpb.Struct       `protobuf:"bytes,7,opt,name=config,proto3" json:"config,omitempty"`
+	// Optional expectations; unset means "record only".
+	ExpectFields  *structpb.Struct `protobuf:"bytes,8,opt,name=expect_fields,json=expectFields,proto3" json:"expect_fields,omitempty"`
+	ExpectDrop    *bool            `protobuf:"varint,9,opt,name=expect_drop,json=expectDrop,proto3,oneof" json:"expect_drop,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FunctionTest) Reset() {
+	*x = FunctionTest{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FunctionTest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FunctionTest) ProtoMessage() {}
+
+func (x *FunctionTest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FunctionTest.ProtoReflect.Descriptor instead.
+func (*FunctionTest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *FunctionTest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FunctionTest) GetFunction() string {
+	if x != nil {
+		return x.Function
+	}
+	return ""
+}
+
+func (x *FunctionTest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *FunctionTest) GetRaw() []byte {
+	if x != nil {
+		return x.Raw
+	}
+	return nil
+}
+
+func (x *FunctionTest) GetFields() *structpb.Struct {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+func (x *FunctionTest) GetMeta() *structpb.Struct {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *FunctionTest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *FunctionTest) GetExpectFields() *structpb.Struct {
+	if x != nil {
+		return x.ExpectFields
+	}
+	return nil
+}
+
+func (x *FunctionTest) GetExpectDrop() bool {
+	if x != nil && x.ExpectDrop != nil {
+		return *x.ExpectDrop
+	}
+	return false
+}
+
 type SandboxStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -101,7 +1042,7 @@ type SandboxStatus struct {
 
 func (x *SandboxStatus) Reset() {
 	*x = SandboxStatus{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[1]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -113,7 +1054,7 @@ func (x *SandboxStatus) String() string {
 func (*SandboxStatus) ProtoMessage() {}
 
 func (x *SandboxStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[1]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -126,7 +1067,7 @@ func (x *SandboxStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxStatus.ProtoReflect.Descriptor instead.
 func (*SandboxStatus) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{1}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SandboxStatus) GetName() string {
@@ -158,7 +1099,7 @@ type ListSandboxesRequest struct {
 
 func (x *ListSandboxesRequest) Reset() {
 	*x = ListSandboxesRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[2]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -170,7 +1111,7 @@ func (x *ListSandboxesRequest) String() string {
 func (*ListSandboxesRequest) ProtoMessage() {}
 
 func (x *ListSandboxesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[2]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -183,7 +1124,7 @@ func (x *ListSandboxesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSandboxesRequest.ProtoReflect.Descriptor instead.
 func (*ListSandboxesRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{2}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{12}
 }
 
 type ListSandboxesResponse struct {
@@ -196,7 +1137,7 @@ type ListSandboxesResponse struct {
 
 func (x *ListSandboxesResponse) Reset() {
 	*x = ListSandboxesResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[3]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -208,7 +1149,7 @@ func (x *ListSandboxesResponse) String() string {
 func (*ListSandboxesResponse) ProtoMessage() {}
 
 func (x *ListSandboxesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[3]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -221,7 +1162,7 @@ func (x *ListSandboxesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSandboxesResponse.ProtoReflect.Descriptor instead.
 func (*ListSandboxesResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{3}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListSandboxesResponse) GetSandboxes() []*SandboxDefinition {
@@ -247,7 +1188,7 @@ type GetSandboxRequest struct {
 
 func (x *GetSandboxRequest) Reset() {
 	*x = GetSandboxRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[4]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -259,7 +1200,7 @@ func (x *GetSandboxRequest) String() string {
 func (*GetSandboxRequest) ProtoMessage() {}
 
 func (x *GetSandboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[4]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +1213,7 @@ func (x *GetSandboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSandboxRequest.ProtoReflect.Descriptor instead.
 func (*GetSandboxRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{4}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetSandboxRequest) GetName() string {
@@ -292,7 +1233,7 @@ type GetSandboxResponse struct {
 
 func (x *GetSandboxResponse) Reset() {
 	*x = GetSandboxResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[5]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -304,7 +1245,7 @@ func (x *GetSandboxResponse) String() string {
 func (*GetSandboxResponse) ProtoMessage() {}
 
 func (x *GetSandboxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[5]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -317,7 +1258,7 @@ func (x *GetSandboxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSandboxResponse.ProtoReflect.Descriptor instead.
 func (*GetSandboxResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{5}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetSandboxResponse) GetSandbox() *SandboxDefinition {
@@ -343,7 +1284,7 @@ type ApplySandboxRequest struct {
 
 func (x *ApplySandboxRequest) Reset() {
 	*x = ApplySandboxRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[6]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -355,7 +1296,7 @@ func (x *ApplySandboxRequest) String() string {
 func (*ApplySandboxRequest) ProtoMessage() {}
 
 func (x *ApplySandboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[6]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -368,7 +1309,7 @@ func (x *ApplySandboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplySandboxRequest.ProtoReflect.Descriptor instead.
 func (*ApplySandboxRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{6}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ApplySandboxRequest) GetSandbox() *SandboxDefinition {
@@ -388,7 +1329,7 @@ type ApplySandboxResponse struct {
 
 func (x *ApplySandboxResponse) Reset() {
 	*x = ApplySandboxResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[7]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -400,7 +1341,7 @@ func (x *ApplySandboxResponse) String() string {
 func (*ApplySandboxResponse) ProtoMessage() {}
 
 func (x *ApplySandboxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[7]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -413,7 +1354,7 @@ func (x *ApplySandboxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplySandboxResponse.ProtoReflect.Descriptor instead.
 func (*ApplySandboxResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{7}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ApplySandboxResponse) GetSandbox() *SandboxDefinition {
@@ -439,7 +1380,7 @@ type DeleteSandboxRequest struct {
 
 func (x *DeleteSandboxRequest) Reset() {
 	*x = DeleteSandboxRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[8]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -451,7 +1392,7 @@ func (x *DeleteSandboxRequest) String() string {
 func (*DeleteSandboxRequest) ProtoMessage() {}
 
 func (x *DeleteSandboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[8]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -464,7 +1405,7 @@ func (x *DeleteSandboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSandboxRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSandboxRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{8}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DeleteSandboxRequest) GetName() string {
@@ -482,7 +1423,7 @@ type DeleteSandboxResponse struct {
 
 func (x *DeleteSandboxResponse) Reset() {
 	*x = DeleteSandboxResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[9]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -494,7 +1435,7 @@ func (x *DeleteSandboxResponse) String() string {
 func (*DeleteSandboxResponse) ProtoMessage() {}
 
 func (x *DeleteSandboxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[9]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -507,7 +1448,7 @@ func (x *DeleteSandboxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSandboxResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSandboxResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{9}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{19}
 }
 
 type ListLibraryFunctionsRequest struct {
@@ -519,7 +1460,7 @@ type ListLibraryFunctionsRequest struct {
 
 func (x *ListLibraryFunctionsRequest) Reset() {
 	*x = ListLibraryFunctionsRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[10]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -531,7 +1472,7 @@ func (x *ListLibraryFunctionsRequest) String() string {
 func (*ListLibraryFunctionsRequest) ProtoMessage() {}
 
 func (x *ListLibraryFunctionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[10]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -544,7 +1485,7 @@ func (x *ListLibraryFunctionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLibraryFunctionsRequest.ProtoReflect.Descriptor instead.
 func (*ListLibraryFunctionsRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{10}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListLibraryFunctionsRequest) GetLibrary() string {
@@ -555,18 +1496,20 @@ func (x *ListLibraryFunctionsRequest) GetLibrary() string {
 }
 
 type LibraryFunction struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Library       string                 `protobuf:"bytes,1,opt,name=library,proto3" json:"library,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Library     string                 `protobuf:"bytes,1,opt,name=library,proto3" json:"library,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Kind        string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Description string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Keyword parameters accepted as per-node configuration.
+	Params        []*FunctionParam `protobuf:"bytes,6,rep,name=params,proto3" json:"params,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LibraryFunction) Reset() {
 	*x = LibraryFunction{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[11]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -578,7 +1521,7 @@ func (x *LibraryFunction) String() string {
 func (*LibraryFunction) ProtoMessage() {}
 
 func (x *LibraryFunction) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[11]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -591,7 +1534,7 @@ func (x *LibraryFunction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LibraryFunction.ProtoReflect.Descriptor instead.
 func (*LibraryFunction) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{11}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *LibraryFunction) GetLibrary() string {
@@ -622,6 +1565,89 @@ func (x *LibraryFunction) GetDescription() string {
 	return ""
 }
 
+func (x *LibraryFunction) GetParams() []*FunctionParam {
+	if x != nil {
+		return x.Params
+	}
+	return nil
+}
+
+type FunctionParam struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"` // "str" | "int" | "float" | "bool" | "list" | "dict" | "any"
+	Default       *structpb.Value        `protobuf:"bytes,3,opt,name=default,proto3" json:"default,omitempty"`
+	Required      bool                   `protobuf:"varint,4,opt,name=required,proto3" json:"required,omitempty"`
+	Description   string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FunctionParam) Reset() {
+	*x = FunctionParam{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FunctionParam) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FunctionParam) ProtoMessage() {}
+
+func (x *FunctionParam) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FunctionParam.ProtoReflect.Descriptor instead.
+func (*FunctionParam) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *FunctionParam) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FunctionParam) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *FunctionParam) GetDefault() *structpb.Value {
+	if x != nil {
+		return x.Default
+	}
+	return nil
+}
+
+func (x *FunctionParam) GetRequired() bool {
+	if x != nil {
+		return x.Required
+	}
+	return false
+}
+
+func (x *FunctionParam) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
 type ListLibraryFunctionsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Functions     []*LibraryFunction     `protobuf:"bytes,1,rep,name=functions,proto3" json:"functions,omitempty"`
@@ -631,7 +1657,7 @@ type ListLibraryFunctionsResponse struct {
 
 func (x *ListLibraryFunctionsResponse) Reset() {
 	*x = ListLibraryFunctionsResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[12]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -643,7 +1669,7 @@ func (x *ListLibraryFunctionsResponse) String() string {
 func (*ListLibraryFunctionsResponse) ProtoMessage() {}
 
 func (x *ListLibraryFunctionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[12]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,7 +1682,7 @@ func (x *ListLibraryFunctionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLibraryFunctionsResponse.ProtoReflect.Descriptor instead.
 func (*ListLibraryFunctionsResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{12}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListLibraryFunctionsResponse) GetFunctions() []*LibraryFunction {
@@ -666,18 +1692,127 @@ func (x *ListLibraryFunctionsResponse) GetFunctions() []*LibraryFunction {
 	return nil
 }
 
+type WorkerDebugRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Raw           []byte                 `protobuf:"bytes,3,opt,name=raw,proto3" json:"raw,omitempty"`
+	Fields        *structpb.Struct       `protobuf:"bytes,4,opt,name=fields,proto3" json:"fields,omitempty"`
+	Meta          *structpb.Struct       `protobuf:"bytes,5,opt,name=meta,proto3" json:"meta,omitempty"`
+	Config        *structpb.Struct       `protobuf:"bytes,6,opt,name=config,proto3" json:"config,omitempty"`
+	Watches       []string               `protobuf:"bytes,7,rep,name=watches,proto3" json:"watches,omitempty"`
+	MaxSteps      int32                  `protobuf:"varint,8,opt,name=max_steps,json=maxSteps,proto3" json:"max_steps,omitempty"`
+	InvocationId  string                 `protobuf:"bytes,9,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerDebugRequest) Reset() {
+	*x = WorkerDebugRequest{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerDebugRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerDebugRequest) ProtoMessage() {}
+
+func (x *WorkerDebugRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerDebugRequest.ProtoReflect.Descriptor instead.
+func (*WorkerDebugRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *WorkerDebugRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *WorkerDebugRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *WorkerDebugRequest) GetRaw() []byte {
+	if x != nil {
+		return x.Raw
+	}
+	return nil
+}
+
+func (x *WorkerDebugRequest) GetFields() *structpb.Struct {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+func (x *WorkerDebugRequest) GetMeta() *structpb.Struct {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *WorkerDebugRequest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *WorkerDebugRequest) GetWatches() []string {
+	if x != nil {
+		return x.Watches
+	}
+	return nil
+}
+
+func (x *WorkerDebugRequest) GetMaxSteps() int32 {
+	if x != nil {
+		return x.MaxSteps
+	}
+	return 0
+}
+
+func (x *WorkerDebugRequest) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
 type WorkerFunction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Params        []*FunctionParam       `protobuf:"bytes,5,rep,name=params,proto3" json:"params,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkerFunction) Reset() {
 	*x = WorkerFunction{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[13]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -689,7 +1824,7 @@ func (x *WorkerFunction) String() string {
 func (*WorkerFunction) ProtoMessage() {}
 
 func (x *WorkerFunction) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[13]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -702,7 +1837,7 @@ func (x *WorkerFunction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerFunction.ProtoReflect.Descriptor instead.
 func (*WorkerFunction) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{13}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *WorkerFunction) GetName() string {
@@ -726,6 +1861,13 @@ func (x *WorkerFunction) GetDescription() string {
 	return ""
 }
 
+func (x *WorkerFunction) GetParams() []*FunctionParam {
+	if x != nil {
+		return x.Params
+	}
+	return nil
+}
+
 type WorkerListFunctionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -734,7 +1876,7 @@ type WorkerListFunctionsRequest struct {
 
 func (x *WorkerListFunctionsRequest) Reset() {
 	*x = WorkerListFunctionsRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[14]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -746,7 +1888,7 @@ func (x *WorkerListFunctionsRequest) String() string {
 func (*WorkerListFunctionsRequest) ProtoMessage() {}
 
 func (x *WorkerListFunctionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[14]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -759,7 +1901,7 @@ func (x *WorkerListFunctionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerListFunctionsRequest.ProtoReflect.Descriptor instead.
 func (*WorkerListFunctionsRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{14}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{26}
 }
 
 type WorkerListFunctionsResponse struct {
@@ -771,7 +1913,7 @@ type WorkerListFunctionsResponse struct {
 
 func (x *WorkerListFunctionsResponse) Reset() {
 	*x = WorkerListFunctionsResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[15]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -783,7 +1925,7 @@ func (x *WorkerListFunctionsResponse) String() string {
 func (*WorkerListFunctionsResponse) ProtoMessage() {}
 
 func (x *WorkerListFunctionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[15]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -796,7 +1938,7 @@ func (x *WorkerListFunctionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerListFunctionsResponse.ProtoReflect.Descriptor instead.
 func (*WorkerListFunctionsResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{15}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *WorkerListFunctionsResponse) GetFunctions() []*WorkerFunction {
@@ -813,13 +1955,16 @@ type WorkerInvokeRequest struct {
 	Raw           []byte                 `protobuf:"bytes,3,opt,name=raw,proto3" json:"raw,omitempty"`
 	Fields        *structpb.Struct       `protobuf:"bytes,4,opt,name=fields,proto3" json:"fields,omitempty"`
 	Meta          *structpb.Struct       `protobuf:"bytes,5,opt,name=meta,proto3" json:"meta,omitempty"`
+	Config        *structpb.Struct       `protobuf:"bytes,6,opt,name=config,proto3" json:"config,omitempty"`
+	InvocationId  string                 `protobuf:"bytes,7,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	TraceLines    bool                   `protobuf:"varint,8,opt,name=trace_lines,json=traceLines,proto3" json:"trace_lines,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkerInvokeRequest) Reset() {
 	*x = WorkerInvokeRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[16]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +1976,7 @@ func (x *WorkerInvokeRequest) String() string {
 func (*WorkerInvokeRequest) ProtoMessage() {}
 
 func (x *WorkerInvokeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[16]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +1989,7 @@ func (x *WorkerInvokeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerInvokeRequest.ProtoReflect.Descriptor instead.
 func (*WorkerInvokeRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{16}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *WorkerInvokeRequest) GetName() string {
@@ -882,18 +2027,53 @@ func (x *WorkerInvokeRequest) GetMeta() *structpb.Struct {
 	return nil
 }
 
+func (x *WorkerInvokeRequest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *WorkerInvokeRequest) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *WorkerInvokeRequest) GetTraceLines() bool {
+	if x != nil {
+		return x.TraceLines
+	}
+	return false
+}
+
 type WorkerInvokeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Fields        *structpb.Struct       `protobuf:"bytes,1,opt,name=fields,proto3" json:"fields,omitempty"`
-	Raw           []byte                 `protobuf:"bytes,2,opt,name=raw,proto3,oneof" json:"raw,omitempty"`
-	Drop          bool                   `protobuf:"varint,3,opt,name=drop,proto3" json:"drop,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Fields *structpb.Struct       `protobuf:"bytes,1,opt,name=fields,proto3" json:"fields,omitempty"`
+	Raw    []byte                 `protobuf:"bytes,2,opt,name=raw,proto3,oneof" json:"raw,omitempty"`
+	Drop   bool                   `protobuf:"varint,3,opt,name=drop,proto3" json:"drop,omitempty"`
+	// Captured print/stdout and stderr, each capped at 64 KiB.
+	Stdout     string `protobuf:"bytes,4,opt,name=stdout,proto3" json:"stdout,omitempty"`
+	Stderr     string `protobuf:"bytes,5,opt,name=stderr,proto3" json:"stderr,omitempty"`
+	DurationUs int64  `protobuf:"varint,6,opt,name=duration_us,json=durationUs,proto3" json:"duration_us,omitempty"`
+	// A user-code exception: message plus the source location when known. The
+	// RPC still succeeds so stdout and timing are preserved.
+	Error         string            `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorLocation *SourceDiagnostic `protobuf:"bytes,8,opt,name=error_location,json=errorLocation,proto3" json:"error_location,omitempty"`
+	// Line of the `def` that received the input, in the library source.
+	EntryLine int32 `protobuf:"varint,9,opt,name=entry_line,json=entryLine,proto3" json:"entry_line,omitempty"`
+	// With trace_lines: source lines executed for this input, in first-hit order
+	// (bounded to 2000 entries).
+	ExecutedLines []int32 `protobuf:"varint,10,rep,packed,name=executed_lines,json=executedLines,proto3" json:"executed_lines,omitempty"`
+	InvocationId  string  `protobuf:"bytes,11,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WorkerInvokeResponse) Reset() {
 	*x = WorkerInvokeResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[17]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +2085,7 @@ func (x *WorkerInvokeResponse) String() string {
 func (*WorkerInvokeResponse) ProtoMessage() {}
 
 func (x *WorkerInvokeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[17]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +2098,7 @@ func (x *WorkerInvokeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerInvokeResponse.ProtoReflect.Descriptor instead.
 func (*WorkerInvokeResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{17}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *WorkerInvokeResponse) GetFields() *structpb.Struct {
@@ -942,6 +2122,62 @@ func (x *WorkerInvokeResponse) GetDrop() bool {
 	return false
 }
 
+func (x *WorkerInvokeResponse) GetStdout() string {
+	if x != nil {
+		return x.Stdout
+	}
+	return ""
+}
+
+func (x *WorkerInvokeResponse) GetStderr() string {
+	if x != nil {
+		return x.Stderr
+	}
+	return ""
+}
+
+func (x *WorkerInvokeResponse) GetDurationUs() int64 {
+	if x != nil {
+		return x.DurationUs
+	}
+	return 0
+}
+
+func (x *WorkerInvokeResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *WorkerInvokeResponse) GetErrorLocation() *SourceDiagnostic {
+	if x != nil {
+		return x.ErrorLocation
+	}
+	return nil
+}
+
+func (x *WorkerInvokeResponse) GetEntryLine() int32 {
+	if x != nil {
+		return x.EntryLine
+	}
+	return 0
+}
+
+func (x *WorkerInvokeResponse) GetExecutedLines() []int32 {
+	if x != nil {
+		return x.ExecutedLines
+	}
+	return nil
+}
+
+func (x *WorkerInvokeResponse) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
 type WorkerListenRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -951,7 +2187,7 @@ type WorkerListenRequest struct {
 
 func (x *WorkerListenRequest) Reset() {
 	*x = WorkerListenRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[18]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -963,7 +2199,7 @@ func (x *WorkerListenRequest) String() string {
 func (*WorkerListenRequest) ProtoMessage() {}
 
 func (x *WorkerListenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[18]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -976,7 +2212,7 @@ func (x *WorkerListenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerListenRequest.ProtoReflect.Descriptor instead.
 func (*WorkerListenRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{18}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *WorkerListenRequest) GetName() string {
@@ -997,7 +2233,7 @@ type WorkerListenResponse struct {
 
 func (x *WorkerListenResponse) Reset() {
 	*x = WorkerListenResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[19]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1009,7 +2245,7 @@ func (x *WorkerListenResponse) String() string {
 func (*WorkerListenResponse) ProtoMessage() {}
 
 func (x *WorkerListenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[19]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1022,7 +2258,7 @@ func (x *WorkerListenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerListenResponse.ProtoReflect.Descriptor instead.
 func (*WorkerListenResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{19}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *WorkerListenResponse) GetRaw() []byte {
@@ -1060,7 +2296,7 @@ type SourceDiagnostic struct {
 
 func (x *SourceDiagnostic) Reset() {
 	*x = SourceDiagnostic{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[20]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1072,7 +2308,7 @@ func (x *SourceDiagnostic) String() string {
 func (*SourceDiagnostic) ProtoMessage() {}
 
 func (x *SourceDiagnostic) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[20]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1085,7 +2321,7 @@ func (x *SourceDiagnostic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceDiagnostic.ProtoReflect.Descriptor instead.
 func (*SourceDiagnostic) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{20}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *SourceDiagnostic) GetLine() int32 {
@@ -1125,7 +2361,7 @@ type FormatSourceRequest struct {
 
 func (x *FormatSourceRequest) Reset() {
 	*x = FormatSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[21]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1137,7 +2373,7 @@ func (x *FormatSourceRequest) String() string {
 func (*FormatSourceRequest) ProtoMessage() {}
 
 func (x *FormatSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[21]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +2386,7 @@ func (x *FormatSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FormatSourceRequest.ProtoReflect.Descriptor instead.
 func (*FormatSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{21}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *FormatSourceRequest) GetSource() string {
@@ -1169,7 +2405,7 @@ type FormatSourceResponse struct {
 
 func (x *FormatSourceResponse) Reset() {
 	*x = FormatSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[22]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1181,7 +2417,7 @@ func (x *FormatSourceResponse) String() string {
 func (*FormatSourceResponse) ProtoMessage() {}
 
 func (x *FormatSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[22]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1194,7 +2430,7 @@ func (x *FormatSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FormatSourceResponse.ProtoReflect.Descriptor instead.
 func (*FormatSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{22}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *FormatSourceResponse) GetSource() string {
@@ -1213,7 +2449,7 @@ type ValidateSourceRequest struct {
 
 func (x *ValidateSourceRequest) Reset() {
 	*x = ValidateSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[23]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +2461,7 @@ func (x *ValidateSourceRequest) String() string {
 func (*ValidateSourceRequest) ProtoMessage() {}
 
 func (x *ValidateSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[23]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +2474,7 @@ func (x *ValidateSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateSourceRequest.ProtoReflect.Descriptor instead.
 func (*ValidateSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{23}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ValidateSourceRequest) GetSource() string {
@@ -1258,7 +2494,7 @@ type ValidateSourceResponse struct {
 
 func (x *ValidateSourceResponse) Reset() {
 	*x = ValidateSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[24]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1270,7 +2506,7 @@ func (x *ValidateSourceResponse) String() string {
 func (*ValidateSourceResponse) ProtoMessage() {}
 
 func (x *ValidateSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[24]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1283,7 +2519,7 @@ func (x *ValidateSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateSourceResponse.ProtoReflect.Descriptor instead.
 func (*ValidateSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{24}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ValidateSourceResponse) GetValid() bool {
@@ -1309,7 +2545,7 @@ type WorkerFormatSourceRequest struct {
 
 func (x *WorkerFormatSourceRequest) Reset() {
 	*x = WorkerFormatSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[25]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1321,7 +2557,7 @@ func (x *WorkerFormatSourceRequest) String() string {
 func (*WorkerFormatSourceRequest) ProtoMessage() {}
 
 func (x *WorkerFormatSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[25]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1334,7 +2570,7 @@ func (x *WorkerFormatSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerFormatSourceRequest.ProtoReflect.Descriptor instead.
 func (*WorkerFormatSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{25}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *WorkerFormatSourceRequest) GetSource() string {
@@ -1353,7 +2589,7 @@ type WorkerFormatSourceResponse struct {
 
 func (x *WorkerFormatSourceResponse) Reset() {
 	*x = WorkerFormatSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[26]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1365,7 +2601,7 @@ func (x *WorkerFormatSourceResponse) String() string {
 func (*WorkerFormatSourceResponse) ProtoMessage() {}
 
 func (x *WorkerFormatSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[26]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1378,7 +2614,7 @@ func (x *WorkerFormatSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerFormatSourceResponse.ProtoReflect.Descriptor instead.
 func (*WorkerFormatSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{26}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *WorkerFormatSourceResponse) GetSource() string {
@@ -1397,7 +2633,7 @@ type WorkerValidateSourceRequest struct {
 
 func (x *WorkerValidateSourceRequest) Reset() {
 	*x = WorkerValidateSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[27]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1409,7 +2645,7 @@ func (x *WorkerValidateSourceRequest) String() string {
 func (*WorkerValidateSourceRequest) ProtoMessage() {}
 
 func (x *WorkerValidateSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[27]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1422,7 +2658,7 @@ func (x *WorkerValidateSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerValidateSourceRequest.ProtoReflect.Descriptor instead.
 func (*WorkerValidateSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{27}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *WorkerValidateSourceRequest) GetSource() string {
@@ -1442,7 +2678,7 @@ type WorkerValidateSourceResponse struct {
 
 func (x *WorkerValidateSourceResponse) Reset() {
 	*x = WorkerValidateSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[28]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1454,7 +2690,7 @@ func (x *WorkerValidateSourceResponse) String() string {
 func (*WorkerValidateSourceResponse) ProtoMessage() {}
 
 func (x *WorkerValidateSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[28]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1467,7 +2703,7 @@ func (x *WorkerValidateSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerValidateSourceResponse.ProtoReflect.Descriptor instead.
 func (*WorkerValidateSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{28}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *WorkerValidateSourceResponse) GetValid() bool {
@@ -1486,20 +2722,24 @@ func (x *WorkerValidateSourceResponse) GetDiagnostics() []*SourceDiagnostic {
 
 // RunFunction invokes a registered function in its saved library worker.
 type RunFunctionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Library       string                 `protobuf:"bytes,1,opt,name=library,proto3" json:"library,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Raw           []byte                 `protobuf:"bytes,4,opt,name=raw,proto3" json:"raw,omitempty"`
-	Fields        *structpb.Struct       `protobuf:"bytes,5,opt,name=fields,proto3" json:"fields,omitempty"`
-	Meta          *structpb.Struct       `protobuf:"bytes,6,opt,name=meta,proto3" json:"meta,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Library string                 `protobuf:"bytes,1,opt,name=library,proto3" json:"library,omitempty"`
+	Name    string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Kind    string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Raw     []byte                 `protobuf:"bytes,4,opt,name=raw,proto3" json:"raw,omitempty"`
+	Fields  *structpb.Struct       `protobuf:"bytes,5,opt,name=fields,proto3" json:"fields,omitempty"`
+	Meta    *structpb.Struct       `protobuf:"bytes,6,opt,name=meta,proto3" json:"meta,omitempty"`
+	Config  *structpb.Struct       `protobuf:"bytes,7,opt,name=config,proto3" json:"config,omitempty"`
+	// Correlates live WorkerLogEntry lines with this run (server generates one if empty).
+	RunId         string `protobuf:"bytes,8,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TraceLines    bool   `protobuf:"varint,9,opt,name=trace_lines,json=traceLines,proto3" json:"trace_lines,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunFunctionRequest) Reset() {
 	*x = RunFunctionRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[29]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1511,7 +2751,7 @@ func (x *RunFunctionRequest) String() string {
 func (*RunFunctionRequest) ProtoMessage() {}
 
 func (x *RunFunctionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[29]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1524,7 +2764,7 @@ func (x *RunFunctionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunFunctionRequest.ProtoReflect.Descriptor instead.
 func (*RunFunctionRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{29}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RunFunctionRequest) GetLibrary() string {
@@ -1569,18 +2809,47 @@ func (x *RunFunctionRequest) GetMeta() *structpb.Struct {
 	return nil
 }
 
+func (x *RunFunctionRequest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *RunFunctionRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *RunFunctionRequest) GetTraceLines() bool {
+	if x != nil {
+		return x.TraceLines
+	}
+	return false
+}
+
 type RunFunctionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Fields        *structpb.Struct       `protobuf:"bytes,1,opt,name=fields,proto3" json:"fields,omitempty"`
 	Raw           []byte                 `protobuf:"bytes,2,opt,name=raw,proto3,oneof" json:"raw,omitempty"`
 	Drop          bool                   `protobuf:"varint,3,opt,name=drop,proto3" json:"drop,omitempty"`
+	Stdout        string                 `protobuf:"bytes,4,opt,name=stdout,proto3" json:"stdout,omitempty"`
+	Stderr        string                 `protobuf:"bytes,5,opt,name=stderr,proto3" json:"stderr,omitempty"`
+	DurationUs    int64                  `protobuf:"varint,6,opt,name=duration_us,json=durationUs,proto3" json:"duration_us,omitempty"`
+	Error         string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorLocation *SourceDiagnostic      `protobuf:"bytes,8,opt,name=error_location,json=errorLocation,proto3" json:"error_location,omitempty"`
+	EntryLine     int32                  `protobuf:"varint,9,opt,name=entry_line,json=entryLine,proto3" json:"entry_line,omitempty"`
+	ExecutedLines []int32                `protobuf:"varint,10,rep,packed,name=executed_lines,json=executedLines,proto3" json:"executed_lines,omitempty"`
+	RunId         string                 `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunFunctionResponse) Reset() {
 	*x = RunFunctionResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[30]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1592,7 +2861,7 @@ func (x *RunFunctionResponse) String() string {
 func (*RunFunctionResponse) ProtoMessage() {}
 
 func (x *RunFunctionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[30]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1605,7 +2874,7 @@ func (x *RunFunctionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunFunctionResponse.ProtoReflect.Descriptor instead.
 func (*RunFunctionResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{30}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *RunFunctionResponse) GetFields() *structpb.Struct {
@@ -1629,18 +2898,534 @@ func (x *RunFunctionResponse) GetDrop() bool {
 	return false
 }
 
+func (x *RunFunctionResponse) GetStdout() string {
+	if x != nil {
+		return x.Stdout
+	}
+	return ""
+}
+
+func (x *RunFunctionResponse) GetStderr() string {
+	if x != nil {
+		return x.Stderr
+	}
+	return ""
+}
+
+func (x *RunFunctionResponse) GetDurationUs() int64 {
+	if x != nil {
+		return x.DurationUs
+	}
+	return 0
+}
+
+func (x *RunFunctionResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *RunFunctionResponse) GetErrorLocation() *SourceDiagnostic {
+	if x != nil {
+		return x.ErrorLocation
+	}
+	return nil
+}
+
+func (x *RunFunctionResponse) GetEntryLine() int32 {
+	if x != nil {
+		return x.EntryLine
+	}
+	return 0
+}
+
+func (x *RunFunctionResponse) GetExecutedLines() []int32 {
+	if x != nil {
+		return x.ExecutedLines
+	}
+	return nil
+}
+
+func (x *RunFunctionResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+type RunSourceRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Source         string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Kind           string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Raw            []byte                 `protobuf:"bytes,4,opt,name=raw,proto3" json:"raw,omitempty"`
+	Fields         *structpb.Struct       `protobuf:"bytes,5,opt,name=fields,proto3" json:"fields,omitempty"`
+	Meta           *structpb.Struct       `protobuf:"bytes,6,opt,name=meta,proto3" json:"meta,omitempty"`
+	Config         *structpb.Struct       `protobuf:"bytes,7,opt,name=config,proto3" json:"config,omitempty"`
+	TimeoutSeconds int32                  `protobuf:"varint,8,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	MemoryMib      int32                  `protobuf:"varint,9,opt,name=memory_mib,json=memoryMib,proto3" json:"memory_mib,omitempty"`
+	// Names the short-lived worker so WatchWorkerLogs(run_id) can attach to it.
+	RunId         string `protobuf:"bytes,10,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TraceLines    bool   `protobuf:"varint,11,opt,name=trace_lines,json=traceLines,proto3" json:"trace_lines,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunSourceRequest) Reset() {
+	*x = RunSourceRequest{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunSourceRequest) ProtoMessage() {}
+
+func (x *RunSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunSourceRequest.ProtoReflect.Descriptor instead.
+func (*RunSourceRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *RunSourceRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *RunSourceRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RunSourceRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *RunSourceRequest) GetRaw() []byte {
+	if x != nil {
+		return x.Raw
+	}
+	return nil
+}
+
+func (x *RunSourceRequest) GetFields() *structpb.Struct {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+func (x *RunSourceRequest) GetMeta() *structpb.Struct {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *RunSourceRequest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *RunSourceRequest) GetTimeoutSeconds() int32 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
+}
+
+func (x *RunSourceRequest) GetMemoryMib() int32 {
+	if x != nil {
+		return x.MemoryMib
+	}
+	return 0
+}
+
+func (x *RunSourceRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *RunSourceRequest) GetTraceLines() bool {
+	if x != nil {
+		return x.TraceLines
+	}
+	return false
+}
+
+type DescribePythonEnvironmentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DescribePythonEnvironmentRequest) Reset() {
+	*x = DescribePythonEnvironmentRequest{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribePythonEnvironmentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribePythonEnvironmentRequest) ProtoMessage() {}
+
+func (x *DescribePythonEnvironmentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribePythonEnvironmentRequest.ProtoReflect.Descriptor instead.
+func (*DescribePythonEnvironmentRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{44}
+}
+
+type PythonPackage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	Summary       string                 `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PythonPackage) Reset() {
+	*x = PythonPackage{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PythonPackage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PythonPackage) ProtoMessage() {}
+
+func (x *PythonPackage) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PythonPackage.ProtoReflect.Descriptor instead.
+func (*PythonPackage) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *PythonPackage) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PythonPackage) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *PythonPackage) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+type PythonDecorator struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Signature     string                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PythonDecorator) Reset() {
+	*x = PythonDecorator{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PythonDecorator) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PythonDecorator) ProtoMessage() {}
+
+func (x *PythonDecorator) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PythonDecorator.ProtoReflect.Descriptor instead.
+func (*PythonDecorator) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *PythonDecorator) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PythonDecorator) GetSignature() string {
+	if x != nil {
+		return x.Signature
+	}
+	return ""
+}
+
+func (x *PythonDecorator) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type DescribePythonEnvironmentResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	PythonVersion     string                 `protobuf:"bytes,1,opt,name=python_version,json=pythonVersion,proto3" json:"python_version,omitempty"`
+	Packages          []*PythonPackage       `protobuf:"bytes,2,rep,name=packages,proto3" json:"packages,omitempty"`
+	Decorators        []*PythonDecorator     `protobuf:"bytes,3,rep,name=decorators,proto3" json:"decorators,omitempty"`
+	NetworkPolicy     string                 `protobuf:"bytes,4,opt,name=network_policy,json=networkPolicy,proto3" json:"network_policy,omitempty"`
+	MaxTimeoutSeconds int32                  `protobuf:"varint,5,opt,name=max_timeout_seconds,json=maxTimeoutSeconds,proto3" json:"max_timeout_seconds,omitempty"`
+	MaxMemoryMib      int32                  `protobuf:"varint,6,opt,name=max_memory_mib,json=maxMemoryMib,proto3" json:"max_memory_mib,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *DescribePythonEnvironmentResponse) Reset() {
+	*x = DescribePythonEnvironmentResponse{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribePythonEnvironmentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribePythonEnvironmentResponse) ProtoMessage() {}
+
+func (x *DescribePythonEnvironmentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribePythonEnvironmentResponse.ProtoReflect.Descriptor instead.
+func (*DescribePythonEnvironmentResponse) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *DescribePythonEnvironmentResponse) GetPythonVersion() string {
+	if x != nil {
+		return x.PythonVersion
+	}
+	return ""
+}
+
+func (x *DescribePythonEnvironmentResponse) GetPackages() []*PythonPackage {
+	if x != nil {
+		return x.Packages
+	}
+	return nil
+}
+
+func (x *DescribePythonEnvironmentResponse) GetDecorators() []*PythonDecorator {
+	if x != nil {
+		return x.Decorators
+	}
+	return nil
+}
+
+func (x *DescribePythonEnvironmentResponse) GetNetworkPolicy() string {
+	if x != nil {
+		return x.NetworkPolicy
+	}
+	return ""
+}
+
+func (x *DescribePythonEnvironmentResponse) GetMaxTimeoutSeconds() int32 {
+	if x != nil {
+		return x.MaxTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *DescribePythonEnvironmentResponse) GetMaxMemoryMib() int32 {
+	if x != nil {
+		return x.MaxMemoryMib
+	}
+	return 0
+}
+
 var File_gofi_v1_sandbox_proto protoreflect.FileDescriptor
 
 const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\n" +
-	"\x15gofi/v1/sandbox.proto\x12\agofi.v1\x1a\x1cgoogle/protobuf/struct.proto\"\x90\x01\n" +
+	"\x15gofi/v1/sandbox.proto\x12\agofi.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x03\n" +
+	"\x14DebugFunctionRequest\x12\x18\n" +
+	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03raw\x18\x05 \x01(\fR\x03raw\x12/\n" +
+	"\x06fields\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
+	"\x04meta\x18\a \x01(\v2\x17.google.protobuf.StructR\x04meta\x12/\n" +
+	"\x06config\x18\b \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x18\n" +
+	"\awatches\x18\t \x03(\tR\awatches\x12\x1b\n" +
+	"\tmax_steps\x18\n" +
+	" \x01(\x05R\bmaxSteps\x12\x15\n" +
+	"\x06run_id\x18\v \x01(\tR\x05runId\x12'\n" +
+	"\x0ftimeout_seconds\x18\f \x01(\x05R\x0etimeoutSeconds\"\xb2\x02\n" +
+	"\x0eDebugRecording\x12(\n" +
+	"\x05steps\x18\x01 \x03(\v2\x12.gofi.v1.DebugStepR\x05steps\x124\n" +
+	"\x06result\x18\x02 \x01(\v2\x1c.gofi.v1.RunFunctionResponseR\x06result\x12?\n" +
+	"\x0finitial_globals\x18\x03 \x03(\v2\x16.gofi.v1.DebugVariableR\x0einitialGlobals\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\x12+\n" +
+	"\x11truncation_reason\x18\x05 \x01(\tR\x10truncationReason\x12\x1d\n" +
+	"\n" +
+	"entry_line\x18\x06 \x01(\x05R\tentryLine\x12\x15\n" +
+	"\x06run_id\x18\a \x01(\tR\x05runId\"\xc6\x03\n" +
+	"\tDebugStep\x12\x14\n" +
+	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x14\n" +
+	"\x05event\x18\x02 \x01(\tR\x05event\x12\x12\n" +
+	"\x04line\x18\x03 \x01(\x05R\x04line\x12\x1a\n" +
+	"\bfunction\x18\x04 \x01(\tR\bfunction\x12\x14\n" +
+	"\x05depth\x18\x05 \x01(\x05R\x05depth\x12)\n" +
+	"\x05stack\x18\x06 \x03(\v2\x13.gofi.v1.DebugFrameR\x05stack\x12.\n" +
+	"\x06locals\x18\a \x03(\v2\x16.gofi.v1.DebugVariableR\x06locals\x12?\n" +
+	"\x0fchanged_globals\x18\b \x03(\v2\x16.gofi.v1.DebugVariableR\x0echangedGlobals\x12-\n" +
+	"\awatches\x18\t \x03(\v2\x13.gofi.v1.DebugWatchR\awatches\x12#\n" +
+	"\rstdout_length\x18\n" +
+	" \x01(\x05R\fstdoutLength\x129\n" +
+	"\freturn_value\x18\v \x01(\v2\x16.gofi.v1.DebugVariableR\vreturnValue\x12\x1c\n" +
+	"\texception\x18\f \x01(\tR\texception\"<\n" +
+	"\n" +
+	"DebugFrame\x12\x1a\n" +
+	"\bfunction\x18\x01 \x01(\tR\bfunction\x12\x12\n" +
+	"\x04line\x18\x02 \x01(\x05R\x04line\"\xb7\x01\n" +
+	"\rDebugVariable\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12\x12\n" +
+	"\x04repr\x18\x03 \x01(\tR\x04repr\x122\n" +
+	"\bchildren\x18\x04 \x03(\v2\x16.gofi.v1.DebugVariableR\bchildren\x12\x18\n" +
+	"\achanged\x18\x05 \x01(\bR\achanged\x12\x1c\n" +
+	"\ttruncated\x18\x06 \x01(\bR\ttruncated\"V\n" +
+	"\n" +
+	"DebugWatch\x12\x1e\n" +
+	"\n" +
+	"expression\x18\x01 \x01(\tR\n" +
+	"expression\x12\x12\n" +
+	"\x04repr\x18\x02 \x01(\tR\x04repr\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"h\n" +
+	"\x16WatchWorkerLogsRequest\x12\x18\n" +
+	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x1d\n" +
+	"\n" +
+	"tail_lines\x18\x03 \x01(\x05R\ttailLines\"\xd7\x01\n" +
+	"\x0eWorkerLogEntry\x12.\n" +
+	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x16\n" +
+	"\x06stream\x18\x02 \x01(\tR\x06stream\x12\x12\n" +
+	"\x04line\x18\x03 \x01(\tR\x04line\x12#\n" +
+	"\rinvocation_id\x18\x04 \x01(\tR\finvocationId\x12\x1a\n" +
+	"\bfunction\x18\x05 \x01(\tR\bfunction\x12\x12\n" +
+	"\x04kind\x18\x06 \x01(\tR\x04kind\x12\x14\n" +
+	"\x05level\x18\a \x01(\tR\x05level\"\x89\x02\n" +
 	"\x11SandboxDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
 	"\vsource_code\x18\x02 \x01(\tR\n" +
 	"sourceCode\x12'\n" +
 	"\x0ftimeout_seconds\x18\x03 \x01(\x05R\x0etimeoutSeconds\x12\x1d\n" +
 	"\n" +
-	"memory_mib\x18\x04 \x01(\x05R\tmemoryMib\"O\n" +
+	"memory_mib\x18\x04 \x01(\x05R\tmemoryMib\x12+\n" +
+	"\x05tests\x18\x05 \x03(\v2\x15.gofi.v1.FunctionTestR\x05tests\x12\x1d\n" +
+	"\n" +
+	"managed_by\x18\x06 \x01(\tR\tmanagedBy\x12+\n" +
+	"\x06egress\x18\a \x03(\v2\x13.gofi.v1.EgressRuleR\x06egress\"\x99\x02\n" +
+	"\n" +
+	"EgressRule\x12\x12\n" +
+	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1a\n" +
+	"\bprotocol\x18\x03 \x01(\tR\bprotocol\x12\x1c\n" +
+	"\tnamespace\x18\x04 \x01(\tR\tnamespace\x12G\n" +
+	"\fpod_selector\x18\x05 \x03(\v2$.gofi.v1.EgressRule.PodSelectorEntryR\vpodSelector\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x1a>\n" +
+	"\x10PodSelectorEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe7\x02\n" +
+	"\fFunctionTest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
+	"\bfunction\x18\x02 \x01(\tR\bfunction\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03raw\x18\x04 \x01(\fR\x03raw\x12/\n" +
+	"\x06fields\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
+	"\x04meta\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x04meta\x12/\n" +
+	"\x06config\x18\a \x01(\v2\x17.google.protobuf.StructR\x06config\x12<\n" +
+	"\rexpect_fields\x18\b \x01(\v2\x17.google.protobuf.StructR\fexpectFields\x12$\n" +
+	"\vexpect_drop\x18\t \x01(\bH\x00R\n" +
+	"expectDrop\x88\x01\x01B\x0e\n" +
+	"\f_expect_drop\"O\n" +
 	"\rSandboxStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05phase\x18\x02 \x01(\tR\x05phase\x12\x14\n" +
@@ -1663,31 +3448,64 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x17\n" +
 	"\x15DeleteSandboxResponse\"7\n" +
 	"\x1bListLibraryFunctionsRequest\x12\x18\n" +
-	"\alibrary\x18\x01 \x01(\tR\alibrary\"u\n" +
+	"\alibrary\x18\x01 \x01(\tR\alibrary\"\xb4\x01\n" +
 	"\x0fLibraryFunction\x12\x18\n" +
 	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"V\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12.\n" +
+	"\x06params\x18\x06 \x03(\v2\x16.gofi.v1.FunctionParamR\x06paramsJ\x04\b\x05\x10\x06R\aingress\"\xa7\x01\n" +
+	"\rFunctionParam\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x120\n" +
+	"\adefault\x18\x03 \x01(\v2\x16.google.protobuf.ValueR\adefault\x12\x1a\n" +
+	"\brequired\x18\x04 \x01(\bR\brequired\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\"V\n" +
 	"\x1cListLibraryFunctionsResponse\x126\n" +
-	"\tfunctions\x18\x01 \x03(\v2\x18.gofi.v1.LibraryFunctionR\tfunctions\"Z\n" +
+	"\tfunctions\x18\x01 \x03(\v2\x18.gofi.v1.LibraryFunctionR\tfunctions\"\xb9\x02\n" +
+	"\x12WorkerDebugRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03raw\x18\x03 \x01(\fR\x03raw\x12/\n" +
+	"\x06fields\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
+	"\x04meta\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x04meta\x12/\n" +
+	"\x06config\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x18\n" +
+	"\awatches\x18\a \x03(\tR\awatches\x12\x1b\n" +
+	"\tmax_steps\x18\b \x01(\x05R\bmaxSteps\x12#\n" +
+	"\rinvocation_id\x18\t \x01(\tR\finvocationId\"\x99\x01\n" +
 	"\x0eWorkerFunction\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\"\x1c\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12.\n" +
+	"\x06params\x18\x05 \x03(\v2\x16.gofi.v1.FunctionParamR\x06paramsJ\x04\b\x04\x10\x05R\aingress\"\x1c\n" +
 	"\x1aWorkerListFunctionsRequest\"T\n" +
 	"\x1bWorkerListFunctionsResponse\x125\n" +
-	"\tfunctions\x18\x01 \x03(\v2\x17.gofi.v1.WorkerFunctionR\tfunctions\"\xad\x01\n" +
+	"\tfunctions\x18\x01 \x03(\v2\x17.gofi.v1.WorkerFunctionR\tfunctions\"\xa4\x02\n" +
 	"\x13WorkerInvokeRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x10\n" +
 	"\x03raw\x18\x03 \x01(\fR\x03raw\x12/\n" +
 	"\x06fields\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
-	"\x04meta\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x04meta\"z\n" +
+	"\x04meta\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x04meta\x12/\n" +
+	"\x06config\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x06config\x12#\n" +
+	"\rinvocation_id\x18\a \x01(\tR\finvocationId\x12\x1f\n" +
+	"\vtrace_lines\x18\b \x01(\bR\n" +
+	"traceLines\"\x8e\x03\n" +
 	"\x14WorkerInvokeResponse\x12/\n" +
 	"\x06fields\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12\x15\n" +
 	"\x03raw\x18\x02 \x01(\fH\x00R\x03raw\x88\x01\x01\x12\x12\n" +
-	"\x04drop\x18\x03 \x01(\bR\x04dropB\x06\n" +
+	"\x04drop\x18\x03 \x01(\bR\x04drop\x12\x16\n" +
+	"\x06stdout\x18\x04 \x01(\tR\x06stdout\x12\x16\n" +
+	"\x06stderr\x18\x05 \x01(\tR\x06stderr\x12\x1f\n" +
+	"\vduration_us\x18\x06 \x01(\x03R\n" +
+	"durationUs\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12@\n" +
+	"\x0eerror_location\x18\b \x01(\v2\x19.gofi.v1.SourceDiagnosticR\rerrorLocation\x12\x1d\n" +
+	"\n" +
+	"entry_line\x18\t \x01(\x05R\tentryLine\x12%\n" +
+	"\x0eexecuted_lines\x18\n" +
+	" \x03(\x05R\rexecutedLines\x12#\n" +
+	"\rinvocation_id\x18\v \x01(\tR\finvocationIdB\x06\n" +
 	"\x04_raw\")\n" +
 	"\x13WorkerListenRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x86\x01\n" +
@@ -1717,19 +3535,67 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x06source\x18\x01 \x01(\tR\x06source\"q\n" +
 	"\x1cWorkerValidateSourceResponse\x12\x14\n" +
 	"\x05valid\x18\x01 \x01(\bR\x05valid\x12;\n" +
-	"\vdiagnostics\x18\x02 \x03(\v2\x19.gofi.v1.SourceDiagnosticR\vdiagnostics\"\xc6\x01\n" +
+	"\vdiagnostics\x18\x02 \x03(\v2\x19.gofi.v1.SourceDiagnosticR\vdiagnostics\"\xaf\x02\n" +
 	"\x12RunFunctionRequest\x12\x18\n" +
 	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x10\n" +
 	"\x03raw\x18\x04 \x01(\fR\x03raw\x12/\n" +
 	"\x06fields\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
-	"\x04meta\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x04meta\"y\n" +
+	"\x04meta\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x04meta\x12/\n" +
+	"\x06config\x18\a \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x15\n" +
+	"\x06run_id\x18\b \x01(\tR\x05runId\x12\x1f\n" +
+	"\vtrace_lines\x18\t \x01(\bR\n" +
+	"traceLines\"\xff\x02\n" +
 	"\x13RunFunctionResponse\x12/\n" +
 	"\x06fields\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12\x15\n" +
 	"\x03raw\x18\x02 \x01(\fH\x00R\x03raw\x88\x01\x01\x12\x12\n" +
-	"\x04drop\x18\x03 \x01(\bR\x04dropB\x06\n" +
-	"\x04_raw2\x8c\x05\n" +
+	"\x04drop\x18\x03 \x01(\bR\x04drop\x12\x16\n" +
+	"\x06stdout\x18\x04 \x01(\tR\x06stdout\x12\x16\n" +
+	"\x06stderr\x18\x05 \x01(\tR\x06stderr\x12\x1f\n" +
+	"\vduration_us\x18\x06 \x01(\x03R\n" +
+	"durationUs\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12@\n" +
+	"\x0eerror_location\x18\b \x01(\v2\x19.gofi.v1.SourceDiagnosticR\rerrorLocation\x12\x1d\n" +
+	"\n" +
+	"entry_line\x18\t \x01(\x05R\tentryLine\x12%\n" +
+	"\x0eexecuted_lines\x18\n" +
+	" \x03(\x05R\rexecutedLines\x12\x15\n" +
+	"\x06run_id\x18\v \x01(\tR\x05runIdB\x06\n" +
+	"\x04_raw\"\xf3\x02\n" +
+	"\x10RunSourceRequest\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03raw\x18\x04 \x01(\fR\x03raw\x12/\n" +
+	"\x06fields\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
+	"\x04meta\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x04meta\x12/\n" +
+	"\x06config\x18\a \x01(\v2\x17.google.protobuf.StructR\x06config\x12'\n" +
+	"\x0ftimeout_seconds\x18\b \x01(\x05R\x0etimeoutSeconds\x12\x1d\n" +
+	"\n" +
+	"memory_mib\x18\t \x01(\x05R\tmemoryMib\x12\x15\n" +
+	"\x06run_id\x18\n" +
+	" \x01(\tR\x05runId\x12\x1f\n" +
+	"\vtrace_lines\x18\v \x01(\bR\n" +
+	"traceLines\"\"\n" +
+	" DescribePythonEnvironmentRequest\"W\n" +
+	"\rPythonPackage\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12\x18\n" +
+	"\asummary\x18\x03 \x01(\tR\asummary\"e\n" +
+	"\x0fPythonDecorator\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\tsignature\x18\x02 \x01(\tR\tsignature\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"\xb5\x02\n" +
+	"!DescribePythonEnvironmentResponse\x12%\n" +
+	"\x0epython_version\x18\x01 \x01(\tR\rpythonVersion\x122\n" +
+	"\bpackages\x18\x02 \x03(\v2\x16.gofi.v1.PythonPackageR\bpackages\x128\n" +
+	"\n" +
+	"decorators\x18\x03 \x03(\v2\x18.gofi.v1.PythonDecoratorR\n" +
+	"decorators\x12%\n" +
+	"\x0enetwork_policy\x18\x04 \x01(\tR\rnetworkPolicy\x12.\n" +
+	"\x13max_timeout_seconds\x18\x05 \x01(\x05R\x11maxTimeoutSeconds\x12$\n" +
+	"\x0emax_memory_mib\x18\x06 \x01(\x05R\fmaxMemoryMib2\xd8\a\n" +
 	"\x0eSandboxService\x12N\n" +
 	"\rListSandboxes\x12\x1d.gofi.v1.ListSandboxesRequest\x1a\x1e.gofi.v1.ListSandboxesResponse\x12E\n" +
 	"\n" +
@@ -1739,13 +3605,19 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\rListFunctions\x12$.gofi.v1.ListLibraryFunctionsRequest\x1a%.gofi.v1.ListLibraryFunctionsResponse\x12K\n" +
 	"\fFormatSource\x12\x1c.gofi.v1.FormatSourceRequest\x1a\x1d.gofi.v1.FormatSourceResponse\x12Q\n" +
 	"\x0eValidateSource\x12\x1e.gofi.v1.ValidateSourceRequest\x1a\x1f.gofi.v1.ValidateSourceResponse\x12H\n" +
-	"\vRunFunction\x12\x1b.gofi.v1.RunFunctionRequest\x1a\x1c.gofi.v1.RunFunctionResponse2\xb3\x03\n" +
+	"\vRunFunction\x12\x1b.gofi.v1.RunFunctionRequest\x1a\x1c.gofi.v1.RunFunctionResponse\x12D\n" +
+	"\tRunSource\x12\x19.gofi.v1.RunSourceRequest\x1a\x1c.gofi.v1.RunFunctionResponse\x12l\n" +
+	"\x13DescribeEnvironment\x12).gofi.v1.DescribePythonEnvironmentRequest\x1a*.gofi.v1.DescribePythonEnvironmentResponse\x12M\n" +
+	"\x0fWatchWorkerLogs\x12\x1f.gofi.v1.WatchWorkerLogsRequest\x1a\x17.gofi.v1.WorkerLogEntry0\x01\x12G\n" +
+	"\rDebugFunction\x12\x1d.gofi.v1.DebugFunctionRequest\x1a\x17.gofi.v1.DebugRecording2\xe0\x04\n" +
 	"\rWorkerService\x12Z\n" +
 	"\rListFunctions\x12#.gofi.v1.WorkerListFunctionsRequest\x1a$.gofi.v1.WorkerListFunctionsResponse\x12E\n" +
 	"\x06Invoke\x12\x1c.gofi.v1.WorkerInvokeRequest\x1a\x1d.gofi.v1.WorkerInvokeResponse\x12G\n" +
 	"\x06Listen\x12\x1c.gofi.v1.WorkerListenRequest\x1a\x1d.gofi.v1.WorkerListenResponse0\x01\x12W\n" +
 	"\fFormatSource\x12\".gofi.v1.WorkerFormatSourceRequest\x1a#.gofi.v1.WorkerFormatSourceResponse\x12]\n" +
-	"\x0eValidateSource\x12$.gofi.v1.WorkerValidateSourceRequest\x1a%.gofi.v1.WorkerValidateSourceResponseB*Z(github.com/wcrum/gofi/gen/gofi/v1;gofiv1b\x06proto3"
+	"\x0eValidateSource\x12$.gofi.v1.WorkerValidateSourceRequest\x1a%.gofi.v1.WorkerValidateSourceResponse\x12l\n" +
+	"\x13DescribeEnvironment\x12).gofi.v1.DescribePythonEnvironmentRequest\x1a*.gofi.v1.DescribePythonEnvironmentResponse\x12=\n" +
+	"\x05Debug\x12\x1b.gofi.v1.WorkerDebugRequest\x1a\x17.gofi.v1.DebugRecordingB*Z(github.com/wcrum/gofi/gen/gofi/v1;gofiv1b\x06proto3"
 
 var (
 	file_gofi_v1_sandbox_proto_rawDescOnce sync.Once
@@ -1759,92 +3631,159 @@ func file_gofi_v1_sandbox_proto_rawDescGZIP() []byte {
 	return file_gofi_v1_sandbox_proto_rawDescData
 }
 
-var file_gofi_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_gofi_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_gofi_v1_sandbox_proto_goTypes = []any{
-	(*SandboxDefinition)(nil),            // 0: gofi.v1.SandboxDefinition
-	(*SandboxStatus)(nil),                // 1: gofi.v1.SandboxStatus
-	(*ListSandboxesRequest)(nil),         // 2: gofi.v1.ListSandboxesRequest
-	(*ListSandboxesResponse)(nil),        // 3: gofi.v1.ListSandboxesResponse
-	(*GetSandboxRequest)(nil),            // 4: gofi.v1.GetSandboxRequest
-	(*GetSandboxResponse)(nil),           // 5: gofi.v1.GetSandboxResponse
-	(*ApplySandboxRequest)(nil),          // 6: gofi.v1.ApplySandboxRequest
-	(*ApplySandboxResponse)(nil),         // 7: gofi.v1.ApplySandboxResponse
-	(*DeleteSandboxRequest)(nil),         // 8: gofi.v1.DeleteSandboxRequest
-	(*DeleteSandboxResponse)(nil),        // 9: gofi.v1.DeleteSandboxResponse
-	(*ListLibraryFunctionsRequest)(nil),  // 10: gofi.v1.ListLibraryFunctionsRequest
-	(*LibraryFunction)(nil),              // 11: gofi.v1.LibraryFunction
-	(*ListLibraryFunctionsResponse)(nil), // 12: gofi.v1.ListLibraryFunctionsResponse
-	(*WorkerFunction)(nil),               // 13: gofi.v1.WorkerFunction
-	(*WorkerListFunctionsRequest)(nil),   // 14: gofi.v1.WorkerListFunctionsRequest
-	(*WorkerListFunctionsResponse)(nil),  // 15: gofi.v1.WorkerListFunctionsResponse
-	(*WorkerInvokeRequest)(nil),          // 16: gofi.v1.WorkerInvokeRequest
-	(*WorkerInvokeResponse)(nil),         // 17: gofi.v1.WorkerInvokeResponse
-	(*WorkerListenRequest)(nil),          // 18: gofi.v1.WorkerListenRequest
-	(*WorkerListenResponse)(nil),         // 19: gofi.v1.WorkerListenResponse
-	(*SourceDiagnostic)(nil),             // 20: gofi.v1.SourceDiagnostic
-	(*FormatSourceRequest)(nil),          // 21: gofi.v1.FormatSourceRequest
-	(*FormatSourceResponse)(nil),         // 22: gofi.v1.FormatSourceResponse
-	(*ValidateSourceRequest)(nil),        // 23: gofi.v1.ValidateSourceRequest
-	(*ValidateSourceResponse)(nil),       // 24: gofi.v1.ValidateSourceResponse
-	(*WorkerFormatSourceRequest)(nil),    // 25: gofi.v1.WorkerFormatSourceRequest
-	(*WorkerFormatSourceResponse)(nil),   // 26: gofi.v1.WorkerFormatSourceResponse
-	(*WorkerValidateSourceRequest)(nil),  // 27: gofi.v1.WorkerValidateSourceRequest
-	(*WorkerValidateSourceResponse)(nil), // 28: gofi.v1.WorkerValidateSourceResponse
-	(*RunFunctionRequest)(nil),           // 29: gofi.v1.RunFunctionRequest
-	(*RunFunctionResponse)(nil),          // 30: gofi.v1.RunFunctionResponse
-	(*structpb.Struct)(nil),              // 31: google.protobuf.Struct
+	(*DebugFunctionRequest)(nil),              // 0: gofi.v1.DebugFunctionRequest
+	(*DebugRecording)(nil),                    // 1: gofi.v1.DebugRecording
+	(*DebugStep)(nil),                         // 2: gofi.v1.DebugStep
+	(*DebugFrame)(nil),                        // 3: gofi.v1.DebugFrame
+	(*DebugVariable)(nil),                     // 4: gofi.v1.DebugVariable
+	(*DebugWatch)(nil),                        // 5: gofi.v1.DebugWatch
+	(*WatchWorkerLogsRequest)(nil),            // 6: gofi.v1.WatchWorkerLogsRequest
+	(*WorkerLogEntry)(nil),                    // 7: gofi.v1.WorkerLogEntry
+	(*SandboxDefinition)(nil),                 // 8: gofi.v1.SandboxDefinition
+	(*EgressRule)(nil),                        // 9: gofi.v1.EgressRule
+	(*FunctionTest)(nil),                      // 10: gofi.v1.FunctionTest
+	(*SandboxStatus)(nil),                     // 11: gofi.v1.SandboxStatus
+	(*ListSandboxesRequest)(nil),              // 12: gofi.v1.ListSandboxesRequest
+	(*ListSandboxesResponse)(nil),             // 13: gofi.v1.ListSandboxesResponse
+	(*GetSandboxRequest)(nil),                 // 14: gofi.v1.GetSandboxRequest
+	(*GetSandboxResponse)(nil),                // 15: gofi.v1.GetSandboxResponse
+	(*ApplySandboxRequest)(nil),               // 16: gofi.v1.ApplySandboxRequest
+	(*ApplySandboxResponse)(nil),              // 17: gofi.v1.ApplySandboxResponse
+	(*DeleteSandboxRequest)(nil),              // 18: gofi.v1.DeleteSandboxRequest
+	(*DeleteSandboxResponse)(nil),             // 19: gofi.v1.DeleteSandboxResponse
+	(*ListLibraryFunctionsRequest)(nil),       // 20: gofi.v1.ListLibraryFunctionsRequest
+	(*LibraryFunction)(nil),                   // 21: gofi.v1.LibraryFunction
+	(*FunctionParam)(nil),                     // 22: gofi.v1.FunctionParam
+	(*ListLibraryFunctionsResponse)(nil),      // 23: gofi.v1.ListLibraryFunctionsResponse
+	(*WorkerDebugRequest)(nil),                // 24: gofi.v1.WorkerDebugRequest
+	(*WorkerFunction)(nil),                    // 25: gofi.v1.WorkerFunction
+	(*WorkerListFunctionsRequest)(nil),        // 26: gofi.v1.WorkerListFunctionsRequest
+	(*WorkerListFunctionsResponse)(nil),       // 27: gofi.v1.WorkerListFunctionsResponse
+	(*WorkerInvokeRequest)(nil),               // 28: gofi.v1.WorkerInvokeRequest
+	(*WorkerInvokeResponse)(nil),              // 29: gofi.v1.WorkerInvokeResponse
+	(*WorkerListenRequest)(nil),               // 30: gofi.v1.WorkerListenRequest
+	(*WorkerListenResponse)(nil),              // 31: gofi.v1.WorkerListenResponse
+	(*SourceDiagnostic)(nil),                  // 32: gofi.v1.SourceDiagnostic
+	(*FormatSourceRequest)(nil),               // 33: gofi.v1.FormatSourceRequest
+	(*FormatSourceResponse)(nil),              // 34: gofi.v1.FormatSourceResponse
+	(*ValidateSourceRequest)(nil),             // 35: gofi.v1.ValidateSourceRequest
+	(*ValidateSourceResponse)(nil),            // 36: gofi.v1.ValidateSourceResponse
+	(*WorkerFormatSourceRequest)(nil),         // 37: gofi.v1.WorkerFormatSourceRequest
+	(*WorkerFormatSourceResponse)(nil),        // 38: gofi.v1.WorkerFormatSourceResponse
+	(*WorkerValidateSourceRequest)(nil),       // 39: gofi.v1.WorkerValidateSourceRequest
+	(*WorkerValidateSourceResponse)(nil),      // 40: gofi.v1.WorkerValidateSourceResponse
+	(*RunFunctionRequest)(nil),                // 41: gofi.v1.RunFunctionRequest
+	(*RunFunctionResponse)(nil),               // 42: gofi.v1.RunFunctionResponse
+	(*RunSourceRequest)(nil),                  // 43: gofi.v1.RunSourceRequest
+	(*DescribePythonEnvironmentRequest)(nil),  // 44: gofi.v1.DescribePythonEnvironmentRequest
+	(*PythonPackage)(nil),                     // 45: gofi.v1.PythonPackage
+	(*PythonDecorator)(nil),                   // 46: gofi.v1.PythonDecorator
+	(*DescribePythonEnvironmentResponse)(nil), // 47: gofi.v1.DescribePythonEnvironmentResponse
+	nil,                           // 48: gofi.v1.EgressRule.PodSelectorEntry
+	(*structpb.Struct)(nil),       // 49: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 50: google.protobuf.Timestamp
+	(*structpb.Value)(nil),        // 51: google.protobuf.Value
 }
 var file_gofi_v1_sandbox_proto_depIdxs = []int32{
-	0,  // 0: gofi.v1.ListSandboxesResponse.sandboxes:type_name -> gofi.v1.SandboxDefinition
-	1,  // 1: gofi.v1.ListSandboxesResponse.statuses:type_name -> gofi.v1.SandboxStatus
-	0,  // 2: gofi.v1.GetSandboxResponse.sandbox:type_name -> gofi.v1.SandboxDefinition
-	1,  // 3: gofi.v1.GetSandboxResponse.status:type_name -> gofi.v1.SandboxStatus
-	0,  // 4: gofi.v1.ApplySandboxRequest.sandbox:type_name -> gofi.v1.SandboxDefinition
-	0,  // 5: gofi.v1.ApplySandboxResponse.sandbox:type_name -> gofi.v1.SandboxDefinition
-	1,  // 6: gofi.v1.ApplySandboxResponse.status:type_name -> gofi.v1.SandboxStatus
-	11, // 7: gofi.v1.ListLibraryFunctionsResponse.functions:type_name -> gofi.v1.LibraryFunction
-	13, // 8: gofi.v1.WorkerListFunctionsResponse.functions:type_name -> gofi.v1.WorkerFunction
-	31, // 9: gofi.v1.WorkerInvokeRequest.fields:type_name -> google.protobuf.Struct
-	31, // 10: gofi.v1.WorkerInvokeRequest.meta:type_name -> google.protobuf.Struct
-	31, // 11: gofi.v1.WorkerInvokeResponse.fields:type_name -> google.protobuf.Struct
-	31, // 12: gofi.v1.WorkerListenResponse.fields:type_name -> google.protobuf.Struct
-	31, // 13: gofi.v1.WorkerListenResponse.meta:type_name -> google.protobuf.Struct
-	20, // 14: gofi.v1.ValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
-	20, // 15: gofi.v1.WorkerValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
-	31, // 16: gofi.v1.RunFunctionRequest.fields:type_name -> google.protobuf.Struct
-	31, // 17: gofi.v1.RunFunctionRequest.meta:type_name -> google.protobuf.Struct
-	31, // 18: gofi.v1.RunFunctionResponse.fields:type_name -> google.protobuf.Struct
-	2,  // 19: gofi.v1.SandboxService.ListSandboxes:input_type -> gofi.v1.ListSandboxesRequest
-	4,  // 20: gofi.v1.SandboxService.GetSandbox:input_type -> gofi.v1.GetSandboxRequest
-	6,  // 21: gofi.v1.SandboxService.ApplySandbox:input_type -> gofi.v1.ApplySandboxRequest
-	8,  // 22: gofi.v1.SandboxService.DeleteSandbox:input_type -> gofi.v1.DeleteSandboxRequest
-	10, // 23: gofi.v1.SandboxService.ListFunctions:input_type -> gofi.v1.ListLibraryFunctionsRequest
-	21, // 24: gofi.v1.SandboxService.FormatSource:input_type -> gofi.v1.FormatSourceRequest
-	23, // 25: gofi.v1.SandboxService.ValidateSource:input_type -> gofi.v1.ValidateSourceRequest
-	29, // 26: gofi.v1.SandboxService.RunFunction:input_type -> gofi.v1.RunFunctionRequest
-	14, // 27: gofi.v1.WorkerService.ListFunctions:input_type -> gofi.v1.WorkerListFunctionsRequest
-	16, // 28: gofi.v1.WorkerService.Invoke:input_type -> gofi.v1.WorkerInvokeRequest
-	18, // 29: gofi.v1.WorkerService.Listen:input_type -> gofi.v1.WorkerListenRequest
-	25, // 30: gofi.v1.WorkerService.FormatSource:input_type -> gofi.v1.WorkerFormatSourceRequest
-	27, // 31: gofi.v1.WorkerService.ValidateSource:input_type -> gofi.v1.WorkerValidateSourceRequest
-	3,  // 32: gofi.v1.SandboxService.ListSandboxes:output_type -> gofi.v1.ListSandboxesResponse
-	5,  // 33: gofi.v1.SandboxService.GetSandbox:output_type -> gofi.v1.GetSandboxResponse
-	7,  // 34: gofi.v1.SandboxService.ApplySandbox:output_type -> gofi.v1.ApplySandboxResponse
-	9,  // 35: gofi.v1.SandboxService.DeleteSandbox:output_type -> gofi.v1.DeleteSandboxResponse
-	12, // 36: gofi.v1.SandboxService.ListFunctions:output_type -> gofi.v1.ListLibraryFunctionsResponse
-	22, // 37: gofi.v1.SandboxService.FormatSource:output_type -> gofi.v1.FormatSourceResponse
-	24, // 38: gofi.v1.SandboxService.ValidateSource:output_type -> gofi.v1.ValidateSourceResponse
-	30, // 39: gofi.v1.SandboxService.RunFunction:output_type -> gofi.v1.RunFunctionResponse
-	15, // 40: gofi.v1.WorkerService.ListFunctions:output_type -> gofi.v1.WorkerListFunctionsResponse
-	17, // 41: gofi.v1.WorkerService.Invoke:output_type -> gofi.v1.WorkerInvokeResponse
-	19, // 42: gofi.v1.WorkerService.Listen:output_type -> gofi.v1.WorkerListenResponse
-	26, // 43: gofi.v1.WorkerService.FormatSource:output_type -> gofi.v1.WorkerFormatSourceResponse
-	28, // 44: gofi.v1.WorkerService.ValidateSource:output_type -> gofi.v1.WorkerValidateSourceResponse
-	32, // [32:45] is the sub-list for method output_type
-	19, // [19:32] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	49, // 0: gofi.v1.DebugFunctionRequest.fields:type_name -> google.protobuf.Struct
+	49, // 1: gofi.v1.DebugFunctionRequest.meta:type_name -> google.protobuf.Struct
+	49, // 2: gofi.v1.DebugFunctionRequest.config:type_name -> google.protobuf.Struct
+	2,  // 3: gofi.v1.DebugRecording.steps:type_name -> gofi.v1.DebugStep
+	42, // 4: gofi.v1.DebugRecording.result:type_name -> gofi.v1.RunFunctionResponse
+	4,  // 5: gofi.v1.DebugRecording.initial_globals:type_name -> gofi.v1.DebugVariable
+	3,  // 6: gofi.v1.DebugStep.stack:type_name -> gofi.v1.DebugFrame
+	4,  // 7: gofi.v1.DebugStep.locals:type_name -> gofi.v1.DebugVariable
+	4,  // 8: gofi.v1.DebugStep.changed_globals:type_name -> gofi.v1.DebugVariable
+	5,  // 9: gofi.v1.DebugStep.watches:type_name -> gofi.v1.DebugWatch
+	4,  // 10: gofi.v1.DebugStep.return_value:type_name -> gofi.v1.DebugVariable
+	4,  // 11: gofi.v1.DebugVariable.children:type_name -> gofi.v1.DebugVariable
+	50, // 12: gofi.v1.WorkerLogEntry.time:type_name -> google.protobuf.Timestamp
+	10, // 13: gofi.v1.SandboxDefinition.tests:type_name -> gofi.v1.FunctionTest
+	9,  // 14: gofi.v1.SandboxDefinition.egress:type_name -> gofi.v1.EgressRule
+	48, // 15: gofi.v1.EgressRule.pod_selector:type_name -> gofi.v1.EgressRule.PodSelectorEntry
+	49, // 16: gofi.v1.FunctionTest.fields:type_name -> google.protobuf.Struct
+	49, // 17: gofi.v1.FunctionTest.meta:type_name -> google.protobuf.Struct
+	49, // 18: gofi.v1.FunctionTest.config:type_name -> google.protobuf.Struct
+	49, // 19: gofi.v1.FunctionTest.expect_fields:type_name -> google.protobuf.Struct
+	8,  // 20: gofi.v1.ListSandboxesResponse.sandboxes:type_name -> gofi.v1.SandboxDefinition
+	11, // 21: gofi.v1.ListSandboxesResponse.statuses:type_name -> gofi.v1.SandboxStatus
+	8,  // 22: gofi.v1.GetSandboxResponse.sandbox:type_name -> gofi.v1.SandboxDefinition
+	11, // 23: gofi.v1.GetSandboxResponse.status:type_name -> gofi.v1.SandboxStatus
+	8,  // 24: gofi.v1.ApplySandboxRequest.sandbox:type_name -> gofi.v1.SandboxDefinition
+	8,  // 25: gofi.v1.ApplySandboxResponse.sandbox:type_name -> gofi.v1.SandboxDefinition
+	11, // 26: gofi.v1.ApplySandboxResponse.status:type_name -> gofi.v1.SandboxStatus
+	22, // 27: gofi.v1.LibraryFunction.params:type_name -> gofi.v1.FunctionParam
+	51, // 28: gofi.v1.FunctionParam.default:type_name -> google.protobuf.Value
+	21, // 29: gofi.v1.ListLibraryFunctionsResponse.functions:type_name -> gofi.v1.LibraryFunction
+	49, // 30: gofi.v1.WorkerDebugRequest.fields:type_name -> google.protobuf.Struct
+	49, // 31: gofi.v1.WorkerDebugRequest.meta:type_name -> google.protobuf.Struct
+	49, // 32: gofi.v1.WorkerDebugRequest.config:type_name -> google.protobuf.Struct
+	22, // 33: gofi.v1.WorkerFunction.params:type_name -> gofi.v1.FunctionParam
+	25, // 34: gofi.v1.WorkerListFunctionsResponse.functions:type_name -> gofi.v1.WorkerFunction
+	49, // 35: gofi.v1.WorkerInvokeRequest.fields:type_name -> google.protobuf.Struct
+	49, // 36: gofi.v1.WorkerInvokeRequest.meta:type_name -> google.protobuf.Struct
+	49, // 37: gofi.v1.WorkerInvokeRequest.config:type_name -> google.protobuf.Struct
+	49, // 38: gofi.v1.WorkerInvokeResponse.fields:type_name -> google.protobuf.Struct
+	32, // 39: gofi.v1.WorkerInvokeResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
+	49, // 40: gofi.v1.WorkerListenResponse.fields:type_name -> google.protobuf.Struct
+	49, // 41: gofi.v1.WorkerListenResponse.meta:type_name -> google.protobuf.Struct
+	32, // 42: gofi.v1.ValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
+	32, // 43: gofi.v1.WorkerValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
+	49, // 44: gofi.v1.RunFunctionRequest.fields:type_name -> google.protobuf.Struct
+	49, // 45: gofi.v1.RunFunctionRequest.meta:type_name -> google.protobuf.Struct
+	49, // 46: gofi.v1.RunFunctionRequest.config:type_name -> google.protobuf.Struct
+	49, // 47: gofi.v1.RunFunctionResponse.fields:type_name -> google.protobuf.Struct
+	32, // 48: gofi.v1.RunFunctionResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
+	49, // 49: gofi.v1.RunSourceRequest.fields:type_name -> google.protobuf.Struct
+	49, // 50: gofi.v1.RunSourceRequest.meta:type_name -> google.protobuf.Struct
+	49, // 51: gofi.v1.RunSourceRequest.config:type_name -> google.protobuf.Struct
+	45, // 52: gofi.v1.DescribePythonEnvironmentResponse.packages:type_name -> gofi.v1.PythonPackage
+	46, // 53: gofi.v1.DescribePythonEnvironmentResponse.decorators:type_name -> gofi.v1.PythonDecorator
+	12, // 54: gofi.v1.SandboxService.ListSandboxes:input_type -> gofi.v1.ListSandboxesRequest
+	14, // 55: gofi.v1.SandboxService.GetSandbox:input_type -> gofi.v1.GetSandboxRequest
+	16, // 56: gofi.v1.SandboxService.ApplySandbox:input_type -> gofi.v1.ApplySandboxRequest
+	18, // 57: gofi.v1.SandboxService.DeleteSandbox:input_type -> gofi.v1.DeleteSandboxRequest
+	20, // 58: gofi.v1.SandboxService.ListFunctions:input_type -> gofi.v1.ListLibraryFunctionsRequest
+	33, // 59: gofi.v1.SandboxService.FormatSource:input_type -> gofi.v1.FormatSourceRequest
+	35, // 60: gofi.v1.SandboxService.ValidateSource:input_type -> gofi.v1.ValidateSourceRequest
+	41, // 61: gofi.v1.SandboxService.RunFunction:input_type -> gofi.v1.RunFunctionRequest
+	43, // 62: gofi.v1.SandboxService.RunSource:input_type -> gofi.v1.RunSourceRequest
+	44, // 63: gofi.v1.SandboxService.DescribeEnvironment:input_type -> gofi.v1.DescribePythonEnvironmentRequest
+	6,  // 64: gofi.v1.SandboxService.WatchWorkerLogs:input_type -> gofi.v1.WatchWorkerLogsRequest
+	0,  // 65: gofi.v1.SandboxService.DebugFunction:input_type -> gofi.v1.DebugFunctionRequest
+	26, // 66: gofi.v1.WorkerService.ListFunctions:input_type -> gofi.v1.WorkerListFunctionsRequest
+	28, // 67: gofi.v1.WorkerService.Invoke:input_type -> gofi.v1.WorkerInvokeRequest
+	30, // 68: gofi.v1.WorkerService.Listen:input_type -> gofi.v1.WorkerListenRequest
+	37, // 69: gofi.v1.WorkerService.FormatSource:input_type -> gofi.v1.WorkerFormatSourceRequest
+	39, // 70: gofi.v1.WorkerService.ValidateSource:input_type -> gofi.v1.WorkerValidateSourceRequest
+	44, // 71: gofi.v1.WorkerService.DescribeEnvironment:input_type -> gofi.v1.DescribePythonEnvironmentRequest
+	24, // 72: gofi.v1.WorkerService.Debug:input_type -> gofi.v1.WorkerDebugRequest
+	13, // 73: gofi.v1.SandboxService.ListSandboxes:output_type -> gofi.v1.ListSandboxesResponse
+	15, // 74: gofi.v1.SandboxService.GetSandbox:output_type -> gofi.v1.GetSandboxResponse
+	17, // 75: gofi.v1.SandboxService.ApplySandbox:output_type -> gofi.v1.ApplySandboxResponse
+	19, // 76: gofi.v1.SandboxService.DeleteSandbox:output_type -> gofi.v1.DeleteSandboxResponse
+	23, // 77: gofi.v1.SandboxService.ListFunctions:output_type -> gofi.v1.ListLibraryFunctionsResponse
+	34, // 78: gofi.v1.SandboxService.FormatSource:output_type -> gofi.v1.FormatSourceResponse
+	36, // 79: gofi.v1.SandboxService.ValidateSource:output_type -> gofi.v1.ValidateSourceResponse
+	42, // 80: gofi.v1.SandboxService.RunFunction:output_type -> gofi.v1.RunFunctionResponse
+	42, // 81: gofi.v1.SandboxService.RunSource:output_type -> gofi.v1.RunFunctionResponse
+	47, // 82: gofi.v1.SandboxService.DescribeEnvironment:output_type -> gofi.v1.DescribePythonEnvironmentResponse
+	7,  // 83: gofi.v1.SandboxService.WatchWorkerLogs:output_type -> gofi.v1.WorkerLogEntry
+	1,  // 84: gofi.v1.SandboxService.DebugFunction:output_type -> gofi.v1.DebugRecording
+	27, // 85: gofi.v1.WorkerService.ListFunctions:output_type -> gofi.v1.WorkerListFunctionsResponse
+	29, // 86: gofi.v1.WorkerService.Invoke:output_type -> gofi.v1.WorkerInvokeResponse
+	31, // 87: gofi.v1.WorkerService.Listen:output_type -> gofi.v1.WorkerListenResponse
+	38, // 88: gofi.v1.WorkerService.FormatSource:output_type -> gofi.v1.WorkerFormatSourceResponse
+	40, // 89: gofi.v1.WorkerService.ValidateSource:output_type -> gofi.v1.WorkerValidateSourceResponse
+	47, // 90: gofi.v1.WorkerService.DescribeEnvironment:output_type -> gofi.v1.DescribePythonEnvironmentResponse
+	1,  // 91: gofi.v1.WorkerService.Debug:output_type -> gofi.v1.DebugRecording
+	73, // [73:92] is the sub-list for method output_type
+	54, // [54:73] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_gofi_v1_sandbox_proto_init() }
@@ -1852,15 +3791,16 @@ func file_gofi_v1_sandbox_proto_init() {
 	if File_gofi_v1_sandbox_proto != nil {
 		return
 	}
-	file_gofi_v1_sandbox_proto_msgTypes[17].OneofWrappers = []any{}
-	file_gofi_v1_sandbox_proto_msgTypes[30].OneofWrappers = []any{}
+	file_gofi_v1_sandbox_proto_msgTypes[10].OneofWrappers = []any{}
+	file_gofi_v1_sandbox_proto_msgTypes[29].OneofWrappers = []any{}
+	file_gofi_v1_sandbox_proto_msgTypes[42].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gofi_v1_sandbox_proto_rawDesc), len(file_gofi_v1_sandbox_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   31,
+			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

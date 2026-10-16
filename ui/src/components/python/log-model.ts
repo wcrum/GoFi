@@ -1,0 +1,119 @@
+// Runner-focused view of worker log lines: lifecycle events, hidden runtime
+// boilerplate, and invocation lines grouped into run blocks. Pure functions
+// (no React) so they are unit tested with node --test.
+
+export interface LogLine {
+  time?: string
+  stream: string
+  line: string
+  invocationId: string
+  function: string
+  kind?: string
+  level?: string
+}
+
+export type LifecycleTone = 'starting' | 'ready' | 'stopped' | 'error' | 'info'
+export type RunOutcome = 'running' | 'ok' | 'dropped' | 'error'
+export type LineSeverity = 'output' | 'stderr' | 'warn' | 'error' | 'system'
+
+export interface RunLine { time?: string; text: string; severity: LineSeverity }
+export type LogItem =
+  | { type: 'lifecycle'; key: string; time?: string; tone: LifecycleTone; text: string; functions?: string[] }
+  | { type: 'runtime'; key: string; time?: string; text: string }
+  | { type: 'line'; key: string; time?: string; text: string; severity: LineSeverity }
+  | { type: 'run'; key: string; id: string; function: string; kind: string; start?: string; durationUs?: number; outcome: RunOutcome; error?: string; errorLine?: number; lines: RunLine[]; debugSteps?: number }
+
+/** Uvicorn/ASGI server chatter: infrastructure, not user output. */
+const RUNTIME = [
+  /^Started server process/, /^Waiting for application (startup|shutdown)/, /^Application (startup|shutdown) complete/,
+  /^Uvicorn running on/, /^Shutting down/, /^Finished server process/,
+]
+export const isRuntimeLine = (entry: LogLine) => !entry.invocationId && entry.stream === 'system' && RUNTIME.some(pattern => pattern.test(entry.line))
+
+function lifecycle(entry: LogLine): { tone: LifecycleTone; text: string; functions?: string[] } {
+  const line = entry.line
+  const ready = /^worker ready: (.*)$/.exec(line)
+  if (ready) return { tone: 'ready', text: 'Worker ready', functions: ready[1].split(',').map(item => item.trim()).filter(Boolean) }
+  if (/^worker starting/.test(line)) return { tone: 'starting', text: line.replace(/^worker starting/, 'Worker starting') }
+  if (/^worker stopped/.test(line)) return { tone: 'stopped', text: 'Worker stopped — reattaching when it runs again' }
+  if (/^library failed to load/.test(line) || entry.level === 'error') return { tone: 'error', text: line.charAt(0).toUpperCase() + line.slice(1) }
+  if (entry.level === 'warn') return { tone: 'stopped', text: line.charAt(0).toUpperCase() + line.slice(1) }
+  return { tone: 'info', text: line.charAt(0).toUpperCase() + line.slice(1) }
+}
+
+const STARTED = /^(?:invocation|debug recording) started: (\S+) (.+)$/
+const FINISHED = /^invocation finished in (\d+) us( \(dropped\))?/
+const FAILED = /^invocation failed after (\d+) us(?: at line (\d+))?: (.*)$/s
+const KILLED = /^(?:invocation|debug run) killed: (.*)$|^invocation process exited without a result(.*)$/
+const DEBUG_DONE = /^debug recording finished: (.*)$/
+
+/** Groups lines into lifecycle rows, runtime rows (omitted unless
+ * `showRuntime`), standalone output, and one block per invocation id in
+ * order of first appearance. */
+export function buildLogItems(entries: LogLine[], showRuntime: boolean): LogItem[] {
+  const items: LogItem[] = []
+  const runs = new Map<string, Extract<LogItem, { type: 'run' }>>()
+  entries.forEach((entry, index) => {
+    const key = `${index}`
+    if (!entry.invocationId) {
+      if (isRuntimeLine(entry)) { if (showRuntime) items.push({ type: 'runtime', key, time: entry.time, text: entry.line }); return }
+      if (entry.stream === 'system') { items.push({ type: 'lifecycle', key, time: entry.time, ...lifecycle(entry) }); return }
+      items.push({ type: 'line', key, time: entry.time, text: entry.line, severity: entry.stream === 'stderr' ? 'stderr' : 'output' })
+      return
+    }
+    let run = runs.get(entry.invocationId)
+    if (!run) {
+      run = { type: 'run', key: `run:${entry.invocationId}`, id: entry.invocationId, function: entry.function, kind: entry.kind ?? '', start: entry.time, outcome: 'running', lines: [] }
+      runs.set(entry.invocationId, run)
+      items.push(run)
+    }
+    if (!run.function && entry.function) run.function = entry.function
+    if (!run.kind && entry.kind) run.kind = entry.kind
+    if (entry.stream !== 'system') { run.lines.push({ time: entry.time, text: entry.line, severity: entry.stream === 'stderr' ? 'stderr' : 'output' }); return }
+    const started = STARTED.exec(entry.line)
+    if (started) { run.start = entry.time ?? run.start; run.kind = run.kind || started[1]; run.function = run.function || started[2]; return }
+    const finished = FINISHED.exec(entry.line)
+    if (finished) { run.durationUs = Number(finished[1]); run.outcome = finished[2] ? 'dropped' : 'ok'; return }
+    const failed = FAILED.exec(entry.line)
+    if (failed) { run.durationUs = Number(failed[1]); run.outcome = 'error'; run.errorLine = failed[2] ? Number(failed[2]) : undefined; run.error = failed[3]; return }
+    const killed = KILLED.exec(entry.line)
+    if (killed) { run.outcome = 'error'; run.error = entry.line.charAt(0).toUpperCase() + entry.line.slice(1); return }
+    // Debugger bookkeeping is shown on the run header, not as program output.
+    const debugDone = DEBUG_DONE.exec(entry.line)
+    if (debugDone) { if (run.outcome === 'running') run.outcome = 'ok'; run.debugSteps = Number(/(\d+)/.exec(debugDone[1])?.[1] ?? 0); return }
+    // Other worker-internal lines inside a run are runtime details.
+    if (entry.level === 'error' || entry.level === 'warn') { run.lines.push({ time: entry.time, text: entry.line, severity: entry.level }); return }
+    if (showRuntime) run.lines.push({ time: entry.time, text: entry.line, severity: 'system' })
+  })
+  return items
+}
+
+/** Text filter over items; "only" keeps a single run's block. */
+export function filterLogItems(items: LogItem[], query: string, onlyRun?: string): LogItem[] {
+  const needle = query.trim().toLowerCase()
+  return items.filter(item => {
+    if (onlyRun) return item.type === 'run' && item.id === onlyRun && matches(item, needle)
+    return matches(item, needle)
+  })
+}
+
+function matches(item: LogItem, needle: string): boolean {
+  if (!needle) return true
+  const texts = item.type === 'run'
+    ? [item.function, item.kind, item.id, item.error ?? '', ...item.lines.map(line => line.text)]
+    : [item.text, ...(item.type === 'lifecycle' ? item.functions ?? [] : [])]
+  return texts.some(text => text.toLowerCase().includes(needle))
+}
+
+/** "1.2 ms", "350 µs", "2.41 s". */
+export function formatDuration(us?: number): string {
+  if (us === undefined || !Number.isFinite(us)) return ''
+  if (us < 1000) return `${us} µs`
+  if (us < 1_000_000) return `${(us / 1000).toFixed(us < 10_000 ? 1 : 0)} ms`
+  return `${(us / 1_000_000).toFixed(2)} s`
+}
+
+/** Elapsed seconds for an in-progress run, as "1.4s". */
+export function formatElapsed(ms: number): string {
+  return `${(Math.max(0, ms) / 1000).toFixed(1)}s`
+}

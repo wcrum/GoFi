@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package gofi.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+
+// ExpressionService manages the CEL expression library. Stages and sinks link
+// to entries by name (ExpressionRef in gofi.proto); entries are never copied.
+// Every check and evaluation uses the same CEL environment as the pipeline.
+service ExpressionService {
+  rpc ListExpressions(ListExpressionsRequest) returns (ListExpressionsResponse);
+  rpc GetExpression(GetExpressionRequest) returns (GetExpressionResponse);
+  // Apply rejects expressions that do not compile, and changes that would
+  // break a flow linked to the latest generation (FailedPrecondition).
+  rpc ApplyExpression(ApplyExpressionRequest) returns (ApplyExpressionResponse);
+  // Delete is refused while any flow references the expression.
+  rpc DeleteExpression(DeleteExpressionRequest) returns (DeleteExpressionResponse);
+  rpc CheckExpression(CheckExpressionRequest) returns (CheckExpressionResponse);
+  // Evaluate is bounded by the runtime cost limit, a deadline, and input caps.
+  rpc EvaluateExpression(EvaluateExpressionRequest) returns (EvaluateExpressionResponse);
+  rpc DescribeEnvironment(DescribeEnvironmentRequest) returns (DescribeEnvironmentResponse);
+}
+
+message CelExpression {
+  // Same naming rule as Python libraries: ^[a-z][a-z0-9-]{0,62}$.
+  string name = 1;
+  string description = 2;
+  string expression = 3;
+  repeated string tags = 4;
+  // "bool" (filters, sink conditions) or "any" (transform values, dedup keys).
+  string result_type = 5;
+  // Output only: incremented by the server whenever expression text changes.
+  int64 generation = 6;
+  // Output only: flows whose stages or sinks reference this expression.
+  repeated string used_by = 7;
+  // Output only: previous generations still pinned by a flow.
+  repeated ExpressionRevision pinned_revisions = 8;
+}
+message ExpressionRevision {
+  int64 generation = 1;
+  string expression = 2;
+}
+
+message ExpressionDiagnostic {
+  int32 line = 1;
+  int32 column = 2;
+  string message = 3;
+}
+
+message ListExpressionsRequest {
+  // Optional: return only entries carrying every listed tag.
+  repeated string tags = 1;
+}
+message ListExpressionsResponse { repeated CelExpression expressions = 1; }
+message GetExpressionRequest { string name = 1; }
+message GetExpressionResponse { CelExpression expression = 1; }
+message ApplyExpressionRequest { CelExpression expression = 1; }
+message ApplyExpressionResponse {
+  CelExpression expression = 1;
+  // Flows recompiled because they follow the latest generation.
+  repeated string reloaded_flows = 2;
+}
+message DeleteExpressionRequest { string name = 1; }
+message DeleteExpressionResponse {}
+
+message CheckExpressionRequest {
+  string expression = 1;
+  string result_type = 2;
+}
+message CheckExpressionResponse {
+  bool valid = 1;
+  repeated ExpressionDiagnostic diagnostics = 2;
+  // CEL type name of the checked output, e.g. "bool", "string", "dyn".
+  string output_type = 3;
+}
+
+message EvaluateExpressionRequest {
+  string expression = 1;
+  string result_type = 2;
+  // Evaluation input. When `flow` names a configured flow, `raw` is
+  // decoded and parsed with that flow's parser to produce fields (as the
+  // pipeline would); otherwise `fields` and `meta` are used as given.
+  bytes raw = 3;
+  google.protobuf.Struct fields = 4;
+  map<string, string> meta = 5;
+  string flow = 6;
+}
+message EvaluateExpressionResponse {
+  google.protobuf.Value value = 1;
+  // Set when evaluation failed; the request itself still succeeds.
+  string error = 2;
+  repeated ExpressionDiagnostic diagnostics = 3;
+  uint64 cost = 4;
+  int64 duration_us = 5;
+  // The fields, meta, and raw actually bound for this evaluation.
+  google.protobuf.Struct bound_fields = 6;
+  map<string, string> bound_meta = 7;
+}
+
+message DescribeEnvironmentRequest {}
+message CelVariable {
+  string name = 1;
+  string type = 2;
+  string description = 3;
+}
+message CelFunction {
+  string name = 1;
+  // Overload signatures, e.g. "string.startsWith(string) -> bool".
+  repeated string signatures = 2;
+  string description = 3;
+}
+message DescribeEnvironmentResponse {
+  repeated CelVariable variables = 1;
+  repeated CelFunction functions = 2;
+  // Runtime limits applied to every CEL program.
+  uint64 cost_limit = 3;
+  int32 max_expression_bytes = 4;
+}

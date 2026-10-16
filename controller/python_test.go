@@ -14,7 +14,7 @@ type bindingDriver struct {
 	err     error
 }
 
-func (d *bindingDriver) PythonBindingsCurrent(context.Context, spec.ListenerDefinition) (bool, error) {
+func (d *bindingDriver) PythonBindingsCurrent(context.Context, spec.FlowDefinition) (bool, error) {
 	return d.current, d.err
 }
 
@@ -22,7 +22,7 @@ func TestPythonBindingRefreshPreservesNewListenersAndRestartsOnlyStaleOnes(t *te
 	ctx := context.Background()
 	def := controllerDef()
 	def.Parser = spec.ParserCfg{Format: "python", Python: &spec.PythonRef{Library: "library", Function: "parse"}}
-	d := &bindingDriver{fakeDriver: &fakeDriver{definitions: map[string]spec.ListenerDefinition{def.Name: def}}, current: true}
+	d := &bindingDriver{fakeDriver: &fakeDriver{definitions: map[string]spec.FlowDefinition{def.Name: def}}, current: true}
 	c := New(d)
 	c.desired[def.Name] = def
 	// The first watcher tick used to delete even a freshly created listener.

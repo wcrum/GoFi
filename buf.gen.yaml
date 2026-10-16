@@ -8,4 +8,7 @@ plugins:
     opt: paths=source_relative
   - local: ui/node_modules/.bin/protoc-gen-es
     out: ui/src/gen
-    opt: target=ts
+    # Explicit .ts specifiers let Node's test runner load cross-file imports.
+    opt:
+      - target=ts
+      - import_extension=ts

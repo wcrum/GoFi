@@ -24,8 +24,10 @@ func New(cfg spec.ParserCfg) (Parser, error) {
 	var p Parser
 	switch cfg.Format {
 	case "python":
-		if err:=cfg.Python.Validate();err!=nil{return nil,err}
-		p=&pythonParser{ref:cfg.Python}
+		if err := cfg.Python.Validate(); err != nil {
+			return nil, err
+		}
+		p = &pythonParser{ref: cfg.Python}
 	case "xml":
 		p = &xmlParser{}
 	case "json":

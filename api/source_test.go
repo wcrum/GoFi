@@ -84,7 +84,7 @@ func (w *sourceWorker) Invoke(_ context.Context, req *connect.Request[gofiv1.Wor
 	if w.backend.owner(req.Header().Get("Authorization")) != "library" {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("library credential required"))
 	}
-	if req.Msg.Name == "empty" && req.Msg.Kind == "listener" {
+	if req.Msg.Name == "empty" && req.Msg.Kind == "encoder" {
 		return connect.NewResponse(&gofiv1.WorkerInvokeResponse{Raw: []byte{}}), nil
 	}
 	if req.Msg.Name != "decode" || req.Msg.Kind != "parser" {
@@ -179,7 +179,7 @@ func TestRunFunctionUsesSavedLibraryAndRetainsEnvelopeAndEmptyBytes(t *testing.T
 	if err != nil || result.Msg.Fields.AsMap()["raw"] != "sample" || result.Msg.Fields.AsMap()["value"] != float64(42) || result.Msg.Fields.AsMap()["source"] != "editor" {
 		t.Fatalf("function envelope: %v %v", result, err)
 	}
-	empty, err := client.RunFunction(context.Background(), connect.NewRequest(&gofiv1.RunFunctionRequest{Library: "library", Name: "empty", Kind: "listener"}))
+	empty, err := client.RunFunction(context.Background(), connect.NewRequest(&gofiv1.RunFunctionRequest{Library: "library", Name: "empty", Kind: "encoder"}))
 	if err != nil || empty.Msg.Raw == nil || !bytes.Equal(empty.Msg.Raw, []byte{}) {
 		t.Fatalf("explicit empty raw result lost presence: %v %v", empty, err)
 	}

@@ -37,6 +37,11 @@ func New(cfg spec.Framing, r io.Reader) (Framer, error) {
 		return newLengthPrefix(r, pl, max), nil
 	case "raw", "":
 		return newRaw(r, max), nil
+	case "python":
+		if err := cfg.Python.Validate(); err != nil {
+			return nil, fmt.Errorf("framing: mode 'python': %w", err)
+		}
+		return newPython(r, cfg.Python, max), nil
 	default:
 		return nil, fmt.Errorf("framing: unknown mode %q", cfg.Mode)
 	}

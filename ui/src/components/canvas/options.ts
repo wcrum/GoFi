@@ -1,7 +1,15 @@
-// Select-option lists shared by the canvas NodeInspector (and formerly by
-// the now-deleted CreateListenerModal). Kept in one place so ingress/sink
-// forms always offer the same choices.
-import type { SelectOption } from '../primitives'
+// Select-option lists shared by the canvas NodeInspector. Kept in one place
+// so source and sink forms always offer the same choices.
+/** Combobox option shape used by the inspector's fixed choice lists. */
+export interface SelectOption { value: string; label: string }
+
+/** Flow source types (docs/flows.md). Python sources are planned. */
+export const SOURCE_TYPE_OPTIONS: Array<SelectOption & { description: string }> = [
+  { value: 'listen', label: 'Listen', description: 'Senders connect to a GoFi TCP/UDP port' },
+  { value: 'fetch', label: 'Fetch', description: 'Poll an HTTP endpoint on an interval' },
+  { value: 'subscribe', label: 'Subscribe', description: 'NATS, MQTT, WebSocket, or SSE' },
+  { value: 'python', label: 'Python', description: 'Coming soon: @gofi.fetcher / @gofi.streamer in an isolated worker' },
+]
 
 export const NETWORK_OPTIONS: SelectOption[] = [
   { value: 'tcp', label: 'TCP' },

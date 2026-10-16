@@ -17,8 +17,8 @@ func TestKubeNodePortServiceLifecycleAndDrift(t *testing.T) {
 	k, cs := newTestKube("default")
 	ctx := context.Background()
 	def := testDef("udp-route", 9000)
-	def.Source.Network = "udp"
-	def.Source.Service = &spec.ServiceExposure{Type: "NodePort", NodePort: 31000, Port: 8000}
+	def.Source.Listen.Network = "udp"
+	def.Source.Listen.Service = &spec.ServiceExposure{Type: "NodePort", NodePort: 31000, Port: 8000}
 	if err := k.Create(ctx, def); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestKubeCreateRollsBackPodOnServiceConflict(t *testing.T) {
 	k, cs := newTestKube("default")
 	ctx := context.Background()
 	def := testDef("conflict", 9000)
-	def.Source.Service = &spec.ServiceExposure{Type: "ClusterIP"}
+	def.Source.Listen.Service = &spec.ServiceExposure{Type: "ClusterIP"}
 	_, err := cs.CoreV1().Services("default").Create(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: podName(def.Name)}}, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -120,12 +120,12 @@ func TestKubeCreateSetsLabelsAndEnv(t *testing.T) {
 	}
 	var gotEnv string
 	for _, e := range pod.Spec.Containers[0].Env {
-		if e.Name == "LISTENER_SPEC" {
+		if e.Name == "FLOW_SPEC" {
 			gotEnv = e.Value
 		}
 	}
 	if gotEnv == "" {
-		t.Fatal("LISTENER_SPEC env var not set")
+		t.Fatal("FLOW_SPEC env var not set")
 	}
 	if pod.Spec.SecurityContext.RunAsUser == nil || *pod.Spec.SecurityContext.RunAsUser != 65532 || pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
 		t.Fatal("listener pod must run unprivileged without Kubernetes credentials")
@@ -405,7 +405,7 @@ func TestDecodePodListenerSpec(t *testing.T) {
 	pod := &corev1.Pod{
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
-				{Env: []corev1.EnvVar{{Name: "LISTENER_SPEC", Value: string(raw)}}},
+				{Env: []corev1.EnvVar{{Name: "FLOW_SPEC", Value: string(raw)}}},
 			},
 		},
 	}

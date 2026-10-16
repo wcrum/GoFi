@@ -7,3 +7,4 @@ packages:
   - name: gofi
     path: ../
     ref: dev
+    flavor: upstream

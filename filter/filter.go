@@ -19,10 +19,47 @@ type Stage interface {
 // New builds a Stage from a spec.StageSpec, dispatching on Kind (and Type
 // for Kind=="filter").
 func New(cfg spec.StageSpec) (Stage, error) {
+	switch cfg.OnError {
+	case "", "pass":
+	case "drop":
+		if !celStage(cfg) {
+			return nil, fmt.Errorf("filter: onError %q applies only to CEL filter, transform set, and dedup stages", cfg.OnError)
+		}
+		st, err := build(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return dropOnError{st}, nil
+	default:
+		return nil, fmt.Errorf("filter: onError must be \"pass\" or \"drop\", got %q", cfg.OnError)
+	}
+	return build(cfg)
+}
+
+// celStage reports whether a stage evaluates a CEL expression per message.
+func celStage(cfg spec.StageSpec) bool {
+	return (cfg.Kind == "filter" && cfg.Type == "cel") || (cfg.Kind == "transform" && cfg.TransformOp == "set") || cfg.Kind == "dedup"
+}
+
+// dropOnError turns a stage's fail-open evaluation errors into drops. The
+// error is still returned so the pipeline logs and dead-letters it.
+type dropOnError struct{ Stage }
+
+func (d dropOnError) Process(msg *message.Message) (bool, error) {
+	pass, err := d.Stage.Process(msg)
+	if err != nil {
+		return false, err
+	}
+	return pass, nil
+}
+
+func build(cfg spec.StageSpec) (Stage, error) {
 	switch cfg.Kind {
 	case "python":
-		if err:=cfg.Python.Validate();err!=nil{return nil,err}
-		return &pythonStage{ref:cfg.Python},nil
+		if err := cfg.Python.Validate(); err != nil {
+			return nil, err
+		}
+		return &pythonStage{ref: cfg.Python}, nil
 	case "filter":
 		switch cfg.Type {
 		case "cel":

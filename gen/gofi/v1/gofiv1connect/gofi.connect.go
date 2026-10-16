@@ -33,17 +33,14 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// GoFiServiceListListenersProcedure is the fully-qualified name of the GoFiService's ListListeners
-	// RPC.
-	GoFiServiceListListenersProcedure = "/gofi.v1.GoFiService/ListListeners"
-	// GoFiServiceGetListenerProcedure is the fully-qualified name of the GoFiService's GetListener RPC.
-	GoFiServiceGetListenerProcedure = "/gofi.v1.GoFiService/GetListener"
-	// GoFiServiceUpsertListenerProcedure is the fully-qualified name of the GoFiService's
-	// UpsertListener RPC.
-	GoFiServiceUpsertListenerProcedure = "/gofi.v1.GoFiService/UpsertListener"
-	// GoFiServiceDeleteListenerProcedure is the fully-qualified name of the GoFiService's
-	// DeleteListener RPC.
-	GoFiServiceDeleteListenerProcedure = "/gofi.v1.GoFiService/DeleteListener"
+	// GoFiServiceListFlowsProcedure is the fully-qualified name of the GoFiService's ListFlows RPC.
+	GoFiServiceListFlowsProcedure = "/gofi.v1.GoFiService/ListFlows"
+	// GoFiServiceGetFlowProcedure is the fully-qualified name of the GoFiService's GetFlow RPC.
+	GoFiServiceGetFlowProcedure = "/gofi.v1.GoFiService/GetFlow"
+	// GoFiServiceUpsertFlowProcedure is the fully-qualified name of the GoFiService's UpsertFlow RPC.
+	GoFiServiceUpsertFlowProcedure = "/gofi.v1.GoFiService/UpsertFlow"
+	// GoFiServiceDeleteFlowProcedure is the fully-qualified name of the GoFiService's DeleteFlow RPC.
+	GoFiServiceDeleteFlowProcedure = "/gofi.v1.GoFiService/DeleteFlow"
 	// GoFiServiceGetRuntimeStatusProcedure is the fully-qualified name of the GoFiService's
 	// GetRuntimeStatus RPC.
 	GoFiServiceGetRuntimeStatusProcedure = "/gofi.v1.GoFiService/GetRuntimeStatus"
@@ -62,6 +59,8 @@ const (
 	GoFiServiceGetModeProcedure = "/gofi.v1.GoFiService/GetMode"
 	// GoFiServiceSimulateProcedure is the fully-qualified name of the GoFiService's Simulate RPC.
 	GoFiServiceSimulateProcedure = "/gofi.v1.GoFiService/Simulate"
+	// GoFiServiceDebugFrameProcedure is the fully-qualified name of the GoFiService's DebugFrame RPC.
+	GoFiServiceDebugFrameProcedure = "/gofi.v1.GoFiService/DebugFrame"
 	// GoFiServiceWatchTrafficProcedure is the fully-qualified name of the GoFiService's WatchTraffic
 	// RPC.
 	GoFiServiceWatchTrafficProcedure = "/gofi.v1.GoFiService/WatchTraffic"
@@ -69,10 +68,10 @@ const (
 
 // GoFiServiceClient is a client for the gofi.v1.GoFiService service.
 type GoFiServiceClient interface {
-	ListListeners(context.Context, *connect.Request[v1.ListListenersRequest]) (*connect.Response[v1.ListListenersResponse], error)
-	GetListener(context.Context, *connect.Request[v1.GetListenerRequest]) (*connect.Response[v1.GetListenerResponse], error)
-	UpsertListener(context.Context, *connect.Request[v1.UpsertListenerRequest]) (*connect.Response[v1.UpsertListenerResponse], error)
-	DeleteListener(context.Context, *connect.Request[v1.DeleteListenerRequest]) (*connect.Response[v1.DeleteListenerResponse], error)
+	ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error)
+	GetFlow(context.Context, *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.GetFlowResponse], error)
+	UpsertFlow(context.Context, *connect.Request[v1.UpsertFlowRequest]) (*connect.Response[v1.UpsertFlowResponse], error)
+	DeleteFlow(context.Context, *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error)
 	GetRuntimeStatus(context.Context, *connect.Request[v1.GetRuntimeStatusRequest]) (*connect.Response[v1.GetRuntimeStatusResponse], error)
 	ListEndpoints(context.Context, *connect.Request[v1.ListEndpointsRequest]) (*connect.Response[v1.ListEndpointsResponse], error)
 	ResolveTargets(context.Context, *connect.Request[v1.ResolveTargetsRequest]) (*connect.Response[v1.ResolveTargetsResponse], error)
@@ -80,8 +79,12 @@ type GoFiServiceClient interface {
 	GetConfiguration(context.Context, *connect.Request[v1.GetConfigurationRequest]) (*connect.Response[v1.GetConfigurationResponse], error)
 	GetMode(context.Context, *connect.Request[v1.GetModeRequest]) (*connect.Response[v1.GetModeResponse], error)
 	Simulate(context.Context, *connect.Request[v1.SimulateRequest]) (*connect.Response[v1.SimulateResponse], error)
-	// Empty name watches every configured listener over one connection. The
-	// inventory is refreshed continuously as listeners are added or replaced.
+	// DebugFrame runs a captured frame through the flow (simulation only,
+	// nothing is sent) up to a Python step, then records that step's execution
+	// with the exact input it received there.
+	DebugFrame(context.Context, *connect.Request[v1.DebugFrameRequest]) (*connect.Response[v1.DebugFrameResponse], error)
+	// Empty name watches every configured flow over one connection. The
+	// inventory is refreshed continuously as flows are added or replaced.
 	WatchTraffic(context.Context, *connect.Request[v1.WatchTrafficRequest]) (*connect.ServerStreamForClient[v1.WatchTrafficResponse], error)
 }
 
@@ -96,28 +99,28 @@ func NewGoFiServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	goFiServiceMethods := v1.File_gofi_v1_gofi_proto.Services().ByName("GoFiService").Methods()
 	return &goFiServiceClient{
-		listListeners: connect.NewClient[v1.ListListenersRequest, v1.ListListenersResponse](
+		listFlows: connect.NewClient[v1.ListFlowsRequest, v1.ListFlowsResponse](
 			httpClient,
-			baseURL+GoFiServiceListListenersProcedure,
-			connect.WithSchema(goFiServiceMethods.ByName("ListListeners")),
+			baseURL+GoFiServiceListFlowsProcedure,
+			connect.WithSchema(goFiServiceMethods.ByName("ListFlows")),
 			connect.WithClientOptions(opts...),
 		),
-		getListener: connect.NewClient[v1.GetListenerRequest, v1.GetListenerResponse](
+		getFlow: connect.NewClient[v1.GetFlowRequest, v1.GetFlowResponse](
 			httpClient,
-			baseURL+GoFiServiceGetListenerProcedure,
-			connect.WithSchema(goFiServiceMethods.ByName("GetListener")),
+			baseURL+GoFiServiceGetFlowProcedure,
+			connect.WithSchema(goFiServiceMethods.ByName("GetFlow")),
 			connect.WithClientOptions(opts...),
 		),
-		upsertListener: connect.NewClient[v1.UpsertListenerRequest, v1.UpsertListenerResponse](
+		upsertFlow: connect.NewClient[v1.UpsertFlowRequest, v1.UpsertFlowResponse](
 			httpClient,
-			baseURL+GoFiServiceUpsertListenerProcedure,
-			connect.WithSchema(goFiServiceMethods.ByName("UpsertListener")),
+			baseURL+GoFiServiceUpsertFlowProcedure,
+			connect.WithSchema(goFiServiceMethods.ByName("UpsertFlow")),
 			connect.WithClientOptions(opts...),
 		),
-		deleteListener: connect.NewClient[v1.DeleteListenerRequest, v1.DeleteListenerResponse](
+		deleteFlow: connect.NewClient[v1.DeleteFlowRequest, v1.DeleteFlowResponse](
 			httpClient,
-			baseURL+GoFiServiceDeleteListenerProcedure,
-			connect.WithSchema(goFiServiceMethods.ByName("DeleteListener")),
+			baseURL+GoFiServiceDeleteFlowProcedure,
+			connect.WithSchema(goFiServiceMethods.ByName("DeleteFlow")),
 			connect.WithClientOptions(opts...),
 		),
 		getRuntimeStatus: connect.NewClient[v1.GetRuntimeStatusRequest, v1.GetRuntimeStatusResponse](
@@ -162,6 +165,12 @@ func NewGoFiServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(goFiServiceMethods.ByName("Simulate")),
 			connect.WithClientOptions(opts...),
 		),
+		debugFrame: connect.NewClient[v1.DebugFrameRequest, v1.DebugFrameResponse](
+			httpClient,
+			baseURL+GoFiServiceDebugFrameProcedure,
+			connect.WithSchema(goFiServiceMethods.ByName("DebugFrame")),
+			connect.WithClientOptions(opts...),
+		),
 		watchTraffic: connect.NewClient[v1.WatchTrafficRequest, v1.WatchTrafficResponse](
 			httpClient,
 			baseURL+GoFiServiceWatchTrafficProcedure,
@@ -173,10 +182,10 @@ func NewGoFiServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // goFiServiceClient implements GoFiServiceClient.
 type goFiServiceClient struct {
-	listListeners    *connect.Client[v1.ListListenersRequest, v1.ListListenersResponse]
-	getListener      *connect.Client[v1.GetListenerRequest, v1.GetListenerResponse]
-	upsertListener   *connect.Client[v1.UpsertListenerRequest, v1.UpsertListenerResponse]
-	deleteListener   *connect.Client[v1.DeleteListenerRequest, v1.DeleteListenerResponse]
+	listFlows        *connect.Client[v1.ListFlowsRequest, v1.ListFlowsResponse]
+	getFlow          *connect.Client[v1.GetFlowRequest, v1.GetFlowResponse]
+	upsertFlow       *connect.Client[v1.UpsertFlowRequest, v1.UpsertFlowResponse]
+	deleteFlow       *connect.Client[v1.DeleteFlowRequest, v1.DeleteFlowResponse]
 	getRuntimeStatus *connect.Client[v1.GetRuntimeStatusRequest, v1.GetRuntimeStatusResponse]
 	listEndpoints    *connect.Client[v1.ListEndpointsRequest, v1.ListEndpointsResponse]
 	resolveTargets   *connect.Client[v1.ResolveTargetsRequest, v1.ResolveTargetsResponse]
@@ -184,27 +193,28 @@ type goFiServiceClient struct {
 	getConfiguration *connect.Client[v1.GetConfigurationRequest, v1.GetConfigurationResponse]
 	getMode          *connect.Client[v1.GetModeRequest, v1.GetModeResponse]
 	simulate         *connect.Client[v1.SimulateRequest, v1.SimulateResponse]
+	debugFrame       *connect.Client[v1.DebugFrameRequest, v1.DebugFrameResponse]
 	watchTraffic     *connect.Client[v1.WatchTrafficRequest, v1.WatchTrafficResponse]
 }
 
-// ListListeners calls gofi.v1.GoFiService.ListListeners.
-func (c *goFiServiceClient) ListListeners(ctx context.Context, req *connect.Request[v1.ListListenersRequest]) (*connect.Response[v1.ListListenersResponse], error) {
-	return c.listListeners.CallUnary(ctx, req)
+// ListFlows calls gofi.v1.GoFiService.ListFlows.
+func (c *goFiServiceClient) ListFlows(ctx context.Context, req *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error) {
+	return c.listFlows.CallUnary(ctx, req)
 }
 
-// GetListener calls gofi.v1.GoFiService.GetListener.
-func (c *goFiServiceClient) GetListener(ctx context.Context, req *connect.Request[v1.GetListenerRequest]) (*connect.Response[v1.GetListenerResponse], error) {
-	return c.getListener.CallUnary(ctx, req)
+// GetFlow calls gofi.v1.GoFiService.GetFlow.
+func (c *goFiServiceClient) GetFlow(ctx context.Context, req *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.GetFlowResponse], error) {
+	return c.getFlow.CallUnary(ctx, req)
 }
 
-// UpsertListener calls gofi.v1.GoFiService.UpsertListener.
-func (c *goFiServiceClient) UpsertListener(ctx context.Context, req *connect.Request[v1.UpsertListenerRequest]) (*connect.Response[v1.UpsertListenerResponse], error) {
-	return c.upsertListener.CallUnary(ctx, req)
+// UpsertFlow calls gofi.v1.GoFiService.UpsertFlow.
+func (c *goFiServiceClient) UpsertFlow(ctx context.Context, req *connect.Request[v1.UpsertFlowRequest]) (*connect.Response[v1.UpsertFlowResponse], error) {
+	return c.upsertFlow.CallUnary(ctx, req)
 }
 
-// DeleteListener calls gofi.v1.GoFiService.DeleteListener.
-func (c *goFiServiceClient) DeleteListener(ctx context.Context, req *connect.Request[v1.DeleteListenerRequest]) (*connect.Response[v1.DeleteListenerResponse], error) {
-	return c.deleteListener.CallUnary(ctx, req)
+// DeleteFlow calls gofi.v1.GoFiService.DeleteFlow.
+func (c *goFiServiceClient) DeleteFlow(ctx context.Context, req *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error) {
+	return c.deleteFlow.CallUnary(ctx, req)
 }
 
 // GetRuntimeStatus calls gofi.v1.GoFiService.GetRuntimeStatus.
@@ -242,6 +252,11 @@ func (c *goFiServiceClient) Simulate(ctx context.Context, req *connect.Request[v
 	return c.simulate.CallUnary(ctx, req)
 }
 
+// DebugFrame calls gofi.v1.GoFiService.DebugFrame.
+func (c *goFiServiceClient) DebugFrame(ctx context.Context, req *connect.Request[v1.DebugFrameRequest]) (*connect.Response[v1.DebugFrameResponse], error) {
+	return c.debugFrame.CallUnary(ctx, req)
+}
+
 // WatchTraffic calls gofi.v1.GoFiService.WatchTraffic.
 func (c *goFiServiceClient) WatchTraffic(ctx context.Context, req *connect.Request[v1.WatchTrafficRequest]) (*connect.ServerStreamForClient[v1.WatchTrafficResponse], error) {
 	return c.watchTraffic.CallServerStream(ctx, req)
@@ -249,10 +264,10 @@ func (c *goFiServiceClient) WatchTraffic(ctx context.Context, req *connect.Reque
 
 // GoFiServiceHandler is an implementation of the gofi.v1.GoFiService service.
 type GoFiServiceHandler interface {
-	ListListeners(context.Context, *connect.Request[v1.ListListenersRequest]) (*connect.Response[v1.ListListenersResponse], error)
-	GetListener(context.Context, *connect.Request[v1.GetListenerRequest]) (*connect.Response[v1.GetListenerResponse], error)
-	UpsertListener(context.Context, *connect.Request[v1.UpsertListenerRequest]) (*connect.Response[v1.UpsertListenerResponse], error)
-	DeleteListener(context.Context, *connect.Request[v1.DeleteListenerRequest]) (*connect.Response[v1.DeleteListenerResponse], error)
+	ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error)
+	GetFlow(context.Context, *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.GetFlowResponse], error)
+	UpsertFlow(context.Context, *connect.Request[v1.UpsertFlowRequest]) (*connect.Response[v1.UpsertFlowResponse], error)
+	DeleteFlow(context.Context, *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error)
 	GetRuntimeStatus(context.Context, *connect.Request[v1.GetRuntimeStatusRequest]) (*connect.Response[v1.GetRuntimeStatusResponse], error)
 	ListEndpoints(context.Context, *connect.Request[v1.ListEndpointsRequest]) (*connect.Response[v1.ListEndpointsResponse], error)
 	ResolveTargets(context.Context, *connect.Request[v1.ResolveTargetsRequest]) (*connect.Response[v1.ResolveTargetsResponse], error)
@@ -260,8 +275,12 @@ type GoFiServiceHandler interface {
 	GetConfiguration(context.Context, *connect.Request[v1.GetConfigurationRequest]) (*connect.Response[v1.GetConfigurationResponse], error)
 	GetMode(context.Context, *connect.Request[v1.GetModeRequest]) (*connect.Response[v1.GetModeResponse], error)
 	Simulate(context.Context, *connect.Request[v1.SimulateRequest]) (*connect.Response[v1.SimulateResponse], error)
-	// Empty name watches every configured listener over one connection. The
-	// inventory is refreshed continuously as listeners are added or replaced.
+	// DebugFrame runs a captured frame through the flow (simulation only,
+	// nothing is sent) up to a Python step, then records that step's execution
+	// with the exact input it received there.
+	DebugFrame(context.Context, *connect.Request[v1.DebugFrameRequest]) (*connect.Response[v1.DebugFrameResponse], error)
+	// Empty name watches every configured flow over one connection. The
+	// inventory is refreshed continuously as flows are added or replaced.
 	WatchTraffic(context.Context, *connect.Request[v1.WatchTrafficRequest], *connect.ServerStream[v1.WatchTrafficResponse]) error
 }
 
@@ -272,28 +291,28 @@ type GoFiServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	goFiServiceMethods := v1.File_gofi_v1_gofi_proto.Services().ByName("GoFiService").Methods()
-	goFiServiceListListenersHandler := connect.NewUnaryHandler(
-		GoFiServiceListListenersProcedure,
-		svc.ListListeners,
-		connect.WithSchema(goFiServiceMethods.ByName("ListListeners")),
+	goFiServiceListFlowsHandler := connect.NewUnaryHandler(
+		GoFiServiceListFlowsProcedure,
+		svc.ListFlows,
+		connect.WithSchema(goFiServiceMethods.ByName("ListFlows")),
 		connect.WithHandlerOptions(opts...),
 	)
-	goFiServiceGetListenerHandler := connect.NewUnaryHandler(
-		GoFiServiceGetListenerProcedure,
-		svc.GetListener,
-		connect.WithSchema(goFiServiceMethods.ByName("GetListener")),
+	goFiServiceGetFlowHandler := connect.NewUnaryHandler(
+		GoFiServiceGetFlowProcedure,
+		svc.GetFlow,
+		connect.WithSchema(goFiServiceMethods.ByName("GetFlow")),
 		connect.WithHandlerOptions(opts...),
 	)
-	goFiServiceUpsertListenerHandler := connect.NewUnaryHandler(
-		GoFiServiceUpsertListenerProcedure,
-		svc.UpsertListener,
-		connect.WithSchema(goFiServiceMethods.ByName("UpsertListener")),
+	goFiServiceUpsertFlowHandler := connect.NewUnaryHandler(
+		GoFiServiceUpsertFlowProcedure,
+		svc.UpsertFlow,
+		connect.WithSchema(goFiServiceMethods.ByName("UpsertFlow")),
 		connect.WithHandlerOptions(opts...),
 	)
-	goFiServiceDeleteListenerHandler := connect.NewUnaryHandler(
-		GoFiServiceDeleteListenerProcedure,
-		svc.DeleteListener,
-		connect.WithSchema(goFiServiceMethods.ByName("DeleteListener")),
+	goFiServiceDeleteFlowHandler := connect.NewUnaryHandler(
+		GoFiServiceDeleteFlowProcedure,
+		svc.DeleteFlow,
+		connect.WithSchema(goFiServiceMethods.ByName("DeleteFlow")),
 		connect.WithHandlerOptions(opts...),
 	)
 	goFiServiceGetRuntimeStatusHandler := connect.NewUnaryHandler(
@@ -338,6 +357,12 @@ func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(goFiServiceMethods.ByName("Simulate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	goFiServiceDebugFrameHandler := connect.NewUnaryHandler(
+		GoFiServiceDebugFrameProcedure,
+		svc.DebugFrame,
+		connect.WithSchema(goFiServiceMethods.ByName("DebugFrame")),
+		connect.WithHandlerOptions(opts...),
+	)
 	goFiServiceWatchTrafficHandler := connect.NewServerStreamHandler(
 		GoFiServiceWatchTrafficProcedure,
 		svc.WatchTraffic,
@@ -346,14 +371,14 @@ func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption
 	)
 	return "/gofi.v1.GoFiService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case GoFiServiceListListenersProcedure:
-			goFiServiceListListenersHandler.ServeHTTP(w, r)
-		case GoFiServiceGetListenerProcedure:
-			goFiServiceGetListenerHandler.ServeHTTP(w, r)
-		case GoFiServiceUpsertListenerProcedure:
-			goFiServiceUpsertListenerHandler.ServeHTTP(w, r)
-		case GoFiServiceDeleteListenerProcedure:
-			goFiServiceDeleteListenerHandler.ServeHTTP(w, r)
+		case GoFiServiceListFlowsProcedure:
+			goFiServiceListFlowsHandler.ServeHTTP(w, r)
+		case GoFiServiceGetFlowProcedure:
+			goFiServiceGetFlowHandler.ServeHTTP(w, r)
+		case GoFiServiceUpsertFlowProcedure:
+			goFiServiceUpsertFlowHandler.ServeHTTP(w, r)
+		case GoFiServiceDeleteFlowProcedure:
+			goFiServiceDeleteFlowHandler.ServeHTTP(w, r)
 		case GoFiServiceGetRuntimeStatusProcedure:
 			goFiServiceGetRuntimeStatusHandler.ServeHTTP(w, r)
 		case GoFiServiceListEndpointsProcedure:
@@ -368,6 +393,8 @@ func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption
 			goFiServiceGetModeHandler.ServeHTTP(w, r)
 		case GoFiServiceSimulateProcedure:
 			goFiServiceSimulateHandler.ServeHTTP(w, r)
+		case GoFiServiceDebugFrameProcedure:
+			goFiServiceDebugFrameHandler.ServeHTTP(w, r)
 		case GoFiServiceWatchTrafficProcedure:
 			goFiServiceWatchTrafficHandler.ServeHTTP(w, r)
 		default:
@@ -379,20 +406,20 @@ func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption
 // UnimplementedGoFiServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedGoFiServiceHandler struct{}
 
-func (UnimplementedGoFiServiceHandler) ListListeners(context.Context, *connect.Request[v1.ListListenersRequest]) (*connect.Response[v1.ListListenersResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.ListListeners is not implemented"))
+func (UnimplementedGoFiServiceHandler) ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.ListFlows is not implemented"))
 }
 
-func (UnimplementedGoFiServiceHandler) GetListener(context.Context, *connect.Request[v1.GetListenerRequest]) (*connect.Response[v1.GetListenerResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.GetListener is not implemented"))
+func (UnimplementedGoFiServiceHandler) GetFlow(context.Context, *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.GetFlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.GetFlow is not implemented"))
 }
 
-func (UnimplementedGoFiServiceHandler) UpsertListener(context.Context, *connect.Request[v1.UpsertListenerRequest]) (*connect.Response[v1.UpsertListenerResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.UpsertListener is not implemented"))
+func (UnimplementedGoFiServiceHandler) UpsertFlow(context.Context, *connect.Request[v1.UpsertFlowRequest]) (*connect.Response[v1.UpsertFlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.UpsertFlow is not implemented"))
 }
 
-func (UnimplementedGoFiServiceHandler) DeleteListener(context.Context, *connect.Request[v1.DeleteListenerRequest]) (*connect.Response[v1.DeleteListenerResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.DeleteListener is not implemented"))
+func (UnimplementedGoFiServiceHandler) DeleteFlow(context.Context, *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.DeleteFlow is not implemented"))
 }
 
 func (UnimplementedGoFiServiceHandler) GetRuntimeStatus(context.Context, *connect.Request[v1.GetRuntimeStatusRequest]) (*connect.Response[v1.GetRuntimeStatusResponse], error) {
@@ -421,6 +448,10 @@ func (UnimplementedGoFiServiceHandler) GetMode(context.Context, *connect.Request
 
 func (UnimplementedGoFiServiceHandler) Simulate(context.Context, *connect.Request[v1.SimulateRequest]) (*connect.Response[v1.SimulateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.Simulate is not implemented"))
+}
+
+func (UnimplementedGoFiServiceHandler) DebugFrame(context.Context, *connect.Request[v1.DebugFrameRequest]) (*connect.Response[v1.DebugFrameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.DebugFrame is not implemented"))
 }
 
 func (UnimplementedGoFiServiceHandler) WatchTraffic(context.Context, *connect.Request[v1.WatchTrafficRequest], *connect.ServerStream[v1.WatchTrafficResponse]) error {
