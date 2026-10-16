@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Card, Badge } from '@cnak-us/design-system'
+import { Card, Badge } from '../primitives'
 import { RiFilterLine, RiEditLine, RiSpeedLine, RiFingerprintLine, RiShieldCheckLine } from 'react-icons/ri'
 import { STAGE_KIND_COLOR, MOCK_STATE_RING, MOCK_STATE_BADGE_COLOR, MOCK_STATE_LABEL } from '../stageColors'
 import type { StageSpec } from '../../types'
@@ -11,6 +11,7 @@ const KIND_ICON: Record<StageSpec['kind'], typeof RiFilterLine> = {
   'rate-limit': RiSpeedLine,
   dedup: RiFingerprintLine,
   schema: RiShieldCheckLine,
+  python: RiEditLine,
 }
 
 const KIND_LABEL: Record<StageSpec['kind'], string> = {
@@ -19,12 +20,15 @@ const KIND_LABEL: Record<StageSpec['kind'], string> = {
   'rate-limit': 'Rate Limit',
   dedup: 'Deduplicate',
   schema: 'Schema',
+  python: 'Python Transformer',
 }
 
 /** One-line, kind-specific summary of a stage's config, shown in the node
  * body so the graph is scannable without opening the inspector. */
 function summarize(spec: StageSpec): string | undefined {
   switch (spec.kind) {
+    case 'python':
+      return spec.python ? `${spec.python.library}.${spec.python.function}` : 'Choose a Python function'
     case 'filter':
       return spec.expression
     case 'transform':

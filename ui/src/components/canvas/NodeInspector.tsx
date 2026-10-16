@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getEndpoints, getMode, type DeployModeInfo, type DiscoveredEndpoint } from '../../api'
 import { RiArrowDownSLine, RiArrowRightSLine } from 'react-icons/ri'
-import { Checkbox, DetailSection, FormField, Input, Select, TagsInput, PanelHeader } from '@cnak-us/design-system'
+import { Checkbox, DetailSection, FormField, Input, Select, TagsInput, PanelHeader } from '../primitives'
 import {
   NETWORK_OPTIONS,
   FRAMING_OPTIONS,
@@ -12,6 +13,8 @@ import {
   TRANSFORM_OP_OPTIONS,
 } from './options'
 import { KeyValueEditor } from './KeyValueEditor'
+import { SinkTargetTools } from './SinkTargetTools'
+import { useLibraryFunctions, functionOptions, pythonValue, parsePythonValue } from './python-functions'
 import type { FlowNode, IngressNodeData, StageNodeData, SinkNodeData } from './types'
 import type { HTTPAuth, NATSAuth } from '../../types'
 
@@ -68,6 +71,10 @@ function IngressInspector({
   onChange: (data: IngressNodeData) => void
 }) {
   const { source, framing, parser } = data
+  const { functions, error: registryError } = useLibraryFunctions()
+  const [deployment, setDeployment] = useState<DeployModeInfo | null>(null)
+  useEffect(() => { getMode().then(setDeployment).catch(() => {}) }, [])
+  const isKubernetes = deployment?.driverKind === 'kubernetes' || deployment?.mode === 'kubernetes'
 
   return (
     <DetailSection title="Source">
@@ -90,6 +97,17 @@ function IngressInspector({
         />
       </FormField>
 
+      <FormField label="Python listener hook (optional)" className="mb-3"><Select disabled={readOnly} value={source.python ? pythonValue(source.python) : ''} options={[{ value: '', label: 'Built-in socket listener' }, ...functionOptions(functions, 'listener', source.python)]} onChange={value => onChange({ ...data, source: { ...source, python: parsePythonValue(value) } })} /></FormField>
+      {registryError && <p className="text-xs text-amber-300 mb-3">Python function registry unavailable.</p>}
+      {isKubernetes && <>
+      <FormField label="Kubernetes exposure" className="mb-3">
+        <Select disabled={readOnly} value={source.service?.type ?? ''} options={[{ value: '', label: 'Internal listener only' }, { value: 'ClusterIP', label: 'ClusterIP service' }, { value: 'NodePort', label: 'NodePort service' }]} onChange={(value) => onChange({ ...data, source: { ...source, service: value ? { ...source.service, type: value as 'ClusterIP' | 'NodePort' } : undefined } })} />
+      </FormField>
+      {source.service && <FormField label="Service port (defaults to listener port)" className="mb-3"><Input disabled={readOnly} type="number" min={1} max={65535} value={source.service.port ?? ''} placeholder={String(source.port || 9000)} onChange={(event) => onChange({ ...data, source: { ...source, service: { ...source.service!, port: Number(event.target.value) || undefined } } })} /></FormField>}
+      {source.service?.type === 'NodePort' && <FormField label="NodePort (blank assigns automatically)" className="mb-3"><Input disabled={readOnly} type="number" min={1} max={65535} value={source.service.nodePort ?? ''} placeholder="30090" onChange={(event) => onChange({ ...data, source: { ...source, service: { ...source.service!, nodePort: Number(event.target.value) || undefined } } })} /></FormField>}
+      </>}
+      <p className="text-xs text-g-text-secondary mb-4 leading-relaxed">{isKubernetes ? 'Expose this listener through a ClusterIP or NodePort service.' : deployment?.mode === 'binary' ? 'Binary listeners bind a local TCP/UDP port.' : deployment ? 'Container listeners bind a TCP/UDP port. Publish it through your container runtime.' : 'Checking deployment mode…'}</p>
+
       <FormField label="Framing" className="mb-3">
         <Select
           disabled={readOnly}
@@ -110,14 +128,21 @@ function IngressInspector({
         </FormField>
       )}
 
-      <FormField label="Parser">
+      {framing.mode === 'length-prefix' && <FormField label="Prefix bytes" className="mb-3"><Select disabled={readOnly} value={String(framing.prefixLen ?? 4)} options={[{ value: '1', label: '1 byte' }, { value: '2', label: '2 bytes' }, { value: '4', label: '4 bytes' }]} onChange={(value) => onChange({ ...data, framing: { ...framing, prefixLen: Number(value) } })} /></FormField>}
+      <FormField label="Parser" className="mb-3">
         <Select
           disabled={readOnly}
-          value={parser.format}
-          onChange={(v) => onChange({ ...data, parser: { ...parser, format: v } })}
-          options={PARSER_OPTIONS}
+          value={parser.format === 'python' ? pythonValue(parser.python) : parser.format}
+          onChange={(v) => onChange({ ...data, parser: { ...parser, format: v.startsWith('python:') ? 'python' : v, python: parsePythonValue(v) } })}
+          options={[...PARSER_OPTIONS, ...(parser.format === 'python' && !parser.python ? [{ value: 'python', label: 'Choose a Python parser…' }] : []), ...functionOptions(functions, 'parser', parser.python)]}
         />
       </FormField>
+      <FormField label="Decoders (in order)" className="mb-3">
+        <Input disabled={readOnly} value={(parser.decoders ?? []).join(', ')} placeholder="base64, gzip" onChange={(event) => onChange({ ...data, parser: { ...parser, decoders: event.target.value.split(',').map((value) => value.trim()) } })} />
+      </FormField>
+      <p className="text-xs text-g-text-secondary mb-4 leading-relaxed">Apply base64, base64url, hex, gzip, zlib, or url before parsing. Comma-separated; for base64 of gzip data, use base64, gzip. Raw traffic is preserved.</p>
+      <FormField label="Decoded size limit (bytes)" className="mb-3"><Input type="number" min={1} disabled={readOnly} value={parser.maxDecodedBytes ?? ''} placeholder="1048576" onChange={(event) => onChange({ ...data, parser: { ...parser, maxDecodedBytes: Number(event.target.value) || undefined } })} /></FormField>
+      <FormField label="Decode / parse errors"><Select disabled={readOnly} value={parser.errorPolicy ?? 'continue'} onChange={(value) => onChange({ ...data, parser: { ...parser, errorPolicy: value as 'continue' | 'drop' } })} options={[{ value: 'continue', label: 'Continue and record parse error' }, { value: 'drop', label: 'Drop and send to dead-letter sink' }]} /></FormField>
     </DetailSection>
   )
 }
@@ -132,23 +157,18 @@ function StageInspector({
   onChange: (data: StageNodeData) => void
 }) {
   const { spec } = data
+  const { functions, error: registryError } = useLibraryFunctions()
 
   switch (spec.kind) {
+    case 'python':
+      return <DetailSection title="Python Transformer"><FormField label="Library function"><Select disabled={readOnly} value={pythonValue(spec.python)} options={[{ value: 'python', label: 'Choose a transformer…' }, ...functionOptions(functions, 'transformer', spec.python)]} onChange={value => onChange({ ...data, spec: { ...spec, python: parsePythonValue(value) } })} /></FormField><p className="mt-3 text-xs text-g-text-secondary">Functions run in GoFi's separate Python worker.</p>{registryError && <p className="mt-2 text-xs text-amber-300">Python function registry unavailable.</p>}</DetailSection>
     case 'filter':
       return (
         <DetailSection title="Filter">
-          {spec.type === 'cel' ? (
-            <FormField label="CEL Expression">
-              <Input
-                disabled={readOnly}
-                value={spec.expression ?? ''}
-                onChange={(e) => onChange({ ...data, spec: { ...spec, expression: e.target.value } })}
-                placeholder='fields["type"] == "a-f-G"'
-              />
-            </FormField>
-          ) : (
-            <p className="text-sm text-g-text-secondary">Unknown filter type "{spec.type}"</p>
-          )}
+          <FormField label="Expression library" className="mb-3"><Select disabled={readOnly} value={spec.type ?? 'cel'} onChange={(value) => onChange({ ...data, spec: { ...spec, type: value } })} options={[{ value: 'cel', label: 'Common Expression Language (CEL)' }, { value: 'regex', label: 'Regular expression (RE2)' }]} /></FormField>
+          <FormField label={spec.type === 'regex' ? 'Regular expression' : 'CEL expression'} className="mb-3"><Input disabled={readOnly} value={spec.expression ?? ''} onChange={(event) => onChange({ ...data, spec: { ...spec, expression: event.target.value } })} placeholder={spec.type === 'regex' ? '^event-' : 'fields["type"] == "a-f-G"'} /></FormField>
+          {spec.type === 'regex' && <FormField label="Field (blank uses original raw frame)" className="mb-3"><Input disabled={readOnly} value={spec.field ?? ''} placeholder="type" onChange={(event) => onChange({ ...data, spec: { ...spec, field: event.target.value } })} /></FormField>}
+          <p className="text-xs text-g-text-secondary leading-relaxed">{spec.type === 'regex' ? 'Matching messages continue. Use a parsed string field or match the original frame.' : 'A true result keeps the message. Use fields for parsed data, meta for metadata, and raw for the original frame.'} Test an example in Test flow before deploying.</p>
         </DetailSection>
       )
 
@@ -280,6 +300,9 @@ function SinkInspector({
   onChange: (data: SinkNodeData) => void
 }) {
   const { sink } = data
+  const { functions, error: registryError } = useLibraryFunctions()
+  const [endpoints, setEndpoints] = useState<DiscoveredEndpoint[]>([])
+  useEffect(() => { if (!readOnly) getEndpoints().then(setEndpoints).catch(() => {}) }, [readOnly])
   const [natsAuthOpen, setNatsAuthOpen] = useState<boolean>(() => hasNatsAuthValues(sink.natsAuth))
 
   return (
@@ -287,12 +310,14 @@ function SinkInspector({
       <FormField label="Sink Type" className="mb-3">
         <Select
           disabled={readOnly}
-          value={sink.type}
-          onChange={(v) => onChange({ ...data, sink: { ...sink, type: v } })}
-          options={SINK_OPTIONS}
+          value={sink.type === 'python' ? pythonValue(sink.python) : sink.type}
+          onChange={(v) => onChange({ ...data, sink: v === 'loki' ? { type: 'loki', url: 'http://loki:3100', bodyMode: 'wrapped', when: sink.when } : v === 'zenoh' ? { type: 'zenoh', url: 'http://zenoh:8000', subject: '', contentType: 'application/octet-stream', bodyMode: 'raw', when: sink.when } : v.startsWith('python:') ? { type: 'python', python: parsePythonValue(v), when: sink.when } : { ...sink, type: v, python: undefined, kubernetes: ['tcp', 'udp'].includes(v) ? sink.kubernetes : undefined } })}
+          options={[...SINK_OPTIONS, ...(sink.type === 'python' && !sink.python ? [{ value: 'python', label: 'Choose a Python sink…' }] : []), ...functionOptions(functions, 'sink', sink.python)]}
         />
       </FormField>
 
+      {sink.type === 'python' && <p className="mb-3 text-xs text-g-text-secondary">This sink executes in GoFi's separate Python worker.</p>}
+      {registryError && <p className="mb-3 text-xs text-amber-300">Python function registry unavailable.</p>}
       {!data.isDeadLetter && (
         <FormField label="Send When (optional)" className="mb-3">
           <Input
@@ -304,19 +329,39 @@ function SinkInspector({
         </FormField>
       )}
 
-      {(sink.type === 'nats' || sink.type === 'http') && (
-        <FormField label="URL" className="mb-3">
+      {(['nats', 'http', 'tcp', 'udp', 'aster', 'zenoh', 'loki'].includes(sink.type) && !sink.kubernetes) && (
+        <FormField label={sink.type === 'zenoh' ? 'Zenoh REST router URL' : sink.type === 'loki' ? 'Loki URL' : 'URL'} className="mb-3">
           <Input
             disabled={readOnly}
             value={sink.url ?? ''}
             onChange={(e) => onChange({ ...data, sink: { ...sink, url: e.target.value } })}
-            placeholder={sink.type === 'nats' ? 'nats://localhost:4222' : 'http://localhost:8080'}
+            placeholder={sink.type === 'nats' ? 'nats://broker:4222' : sink.type === 'tcp' ? 'tcp://application:9000' : sink.type === 'udp' ? 'udp://application:9000' : sink.type === 'zenoh' ? 'http://zenoh:8000' : sink.type === 'aster' ? 'http://127.0.0.1:8181' : 'http://application:8080'}
           />
         </FormField>
       )}
 
-      {sink.type === 'http' && (
+      {!sink.kubernetes && ['tcp', 'udp', 'http', 'nats'].includes(sink.type) && endpoints.length > 0 && !readOnly && <FormField label="Discover a destination" className="mb-3"><Select value="" options={[{ value: '', label: 'Choose an endpoint…' }, ...endpoints.flatMap((endpoint) => endpoint.ports.filter((port) => sink.type === 'udp' ? port.protocol === 'UDP' : port.protocol === 'TCP').map((port) => ({ value: `${sink.type}://${endpoint.host}:${port.port}`, label: `${endpoint.name}${endpoint.namespace ? ` (${endpoint.namespace})` : ''} :${port.port}` })))]} onChange={(value) => { if (value) onChange({ ...data, sink: { ...sink, url: value } }) }} /></FormField>}
+      {['tcp', 'udp'].includes(sink.type) && <SinkTargetTools sink={sink} readOnly={readOnly} onChange={value => onChange({ ...data, sink: value })} />}
+      {['tcp', 'udp'].includes(sink.type) && <><FormField label="Delimiter appended to each message" className="mb-3"><Input disabled={readOnly} value={sink.delimiter ?? ''} placeholder="Optional delimiter" onChange={(event) => onChange({ ...data, sink: { ...sink, delimiter: event.target.value } })} /></FormField><p className="text-xs text-g-text-secondary mb-4 leading-relaxed">Use a direct destination address or select matching Kubernetes pods. The delimiter is appended to each forwarded message.</p></>}
+
+      {sink.type === 'zenoh' && <><FormField label="Zenoh key expression" className="mb-3"><Input disabled={readOnly} value={sink.subject ?? ''} placeholder="telemetry/sensors" onChange={event => onChange({ ...data, sink: { ...sink, subject: event.target.value } })} /></FormField><FormField label="Content type" className="mb-3"><Input disabled={readOnly} value={sink.contentType ?? 'application/octet-stream'} onChange={event => onChange({ ...data, sink: { ...sink, contentType: event.target.value } })} /></FormField><p className="text-xs text-g-text-secondary mb-4">Publishes raw frames with HTTP PUT through Zenoh's REST plugin. Enable the REST plugin on your router.</p></>}
+      {sink.type === 'aster' && <>
+        <p className="text-xs text-g-text-secondary mb-4 leading-relaxed">Send through an Aster agent in this workload's network namespace. Its API must stay on loopback.</p>
+        <FormField label="Topic" className="mb-3"><Input disabled={readOnly} value={sink.aster?.topic ?? ''} onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { scope: '', ...sink.aster, topic: event.target.value } } })} /></FormField>
+        <FormField label="Scope" className="mb-3"><Input disabled={readOnly} value={sink.aster?.scope ?? ''} onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { topic: '', ...sink.aster, scope: event.target.value } } })} /></FormField>
+        <FormField label="Priority" className="mb-3"><Select disabled={readOnly} value={sink.aster?.priority ?? 'routine'} options={['routine', 'priority', 'immediate', 'flash'].map((value) => ({ value, label: value }))} onChange={(value) => onChange({ ...data, sink: { ...sink, aster: { topic: '', scope: '', ...sink.aster, priority: value as 'routine' | 'priority' | 'immediate' | 'flash' } } })} /></FormField>
+        <FormField label="Logical key" className="mb-3"><Input disabled={readOnly} value={sink.aster?.logicalKey ?? ''} onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { topic: '', scope: '', ...sink.aster, logicalKey: event.target.value, logicalKeyField: undefined } } })} /></FormField>
+        <FormField label="Logical key field (instead of static key)" className="mb-3"><Input disabled={readOnly} value={sink.aster?.logicalKeyField ?? ''} onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { topic: '', scope: '', ...sink.aster, logicalKeyField: event.target.value, logicalKey: undefined } } })} /></FormField>
+        <FormField label="Token file path" className="mb-3"><Input disabled={readOnly} value={sink.aster?.tokenFile ?? ''} placeholder="Uses GOFI_ASTER_TOKEN_FILE when empty" onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { topic: '', scope: '', ...sink.aster, tokenFile: event.target.value, token: undefined } } })} /></FormField>
+        <FormField label="Bearer token (instead of token file)" className="mb-3"><Input type="password" disabled={readOnly} value={sink.aster?.token ?? ''} autoComplete="off" onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { topic: '', scope: '', ...sink.aster, token: event.target.value, tokenFile: undefined } } })} /></FormField>
+        <FormField label="Timeout (seconds)" className="mb-3"><Input type="number" min={1} max={30} disabled={readOnly} value={sink.aster?.timeoutSeconds ?? ''} placeholder="10" onChange={(event) => onChange({ ...data, sink: { ...sink, aster: { topic: '', scope: '', ...sink.aster, timeoutSeconds: Number(event.target.value) || undefined } } })} /></FormField>
+        <FormField label="Body mode" className="mb-3"><Select disabled={readOnly} value={sink.bodyMode ?? 'raw'} options={BODY_MODE_OPTIONS} onChange={(value) => onChange({ ...data, sink: { ...sink, bodyMode: value as 'raw' | 'wrapped' } })} /></FormField>
+      </>}
+
+      {sink.type === 'loki' && <><FormField label="Static stream labels" className="mb-3"><KeyValueEditor disabled={readOnly} value={sink.labels ?? {}} onChange={labels => onChange({ ...data, sink: { ...sink, labels } })} keyPlaceholder="Label name" valuePlaceholder="Label value" /></FormField><p className="text-xs text-g-text-secondary mb-4">The app=gofi and listener labels are included by default. Use a Loki base URL or its push endpoint.</p></>}
+      {['http', 'loki'].includes(sink.type) && (
         <>
+          {sink.type === 'http' && <>
           <FormField label="Method" className="mb-3">
             <Select
               disabled={readOnly}
@@ -335,6 +380,7 @@ function SinkInspector({
             />
           </FormField>
 
+          </>}
           <FormField label="Body Mode" className="mb-3">
             <Select
               disabled={readOnly}

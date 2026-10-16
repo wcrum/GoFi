@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { RiAddLine, RiCloseLine } from 'react-icons/ri'
-import { Button, Input } from '@cnak-us/design-system'
+import { Button, Input } from '../primitives'
 
 interface KeyValueEditorProps {
   value: Record<string, string>

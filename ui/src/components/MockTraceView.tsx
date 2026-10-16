@@ -1,5 +1,5 @@
-import { Alert, Badge } from '@cnak-us/design-system'
-import type { BadgeColor } from '@cnak-us/design-system'
+import { Alert, Badge } from './primitives'
+import type { BadgeColor } from './primitives'
 import type { SimulateResult } from '../types'
 
 // Presentational renderer for a SimulateResult dry-run trace. No data

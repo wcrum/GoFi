@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/wcrum/gofi/api"
 	"github.com/wcrum/gofi/controller"
 	"github.com/wcrum/gofi/deploymode"
+	"github.com/wcrum/gofi/desired"
 	"github.com/wcrum/gofi/driver"
 	"github.com/wcrum/gofi/listener"
 	"github.com/wcrum/gofi/spec"
@@ -23,6 +26,7 @@ import (
 //go:generate sh -c "cd ui && npm run build"
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	slog.Info("=== gofi starting ===")
 
 	// Listener mode: run a single pipeline defined by the LISTENER_SPEC env var.
@@ -32,7 +36,7 @@ func main() {
 		return
 	}
 
-	// Controller mode: REST API + reconcile loop.
+	// Controller mode: ConnectRPC services + reconcile loop.
 	runControllerMode()
 }
 
@@ -63,7 +67,7 @@ func runListenerMode(raw string) {
 
 	// Expose this listener's tap over the network so the controller (running
 	// as a separate container/Pod under Docker/Kubernetes) can proxy live
-	// SSE traffic to it. See taprelay and driver.TapTarget.
+	// ConnectRPC traffic to it. See taprelay and driver.TapTarget.
 	relayAddr := envOrDefault("TAP_RELAY_ADDR", ":9091")
 	go func() {
 		if err := taprelay.New(ln.Tap).ListenAndServe(ctx, relayAddr); err != nil {
@@ -77,7 +81,7 @@ func runListenerMode(raw string) {
 	slog.Info("listener mode: shutting down", "name", def.Name)
 }
 
-// runControllerMode starts the event loop and REST API.
+// runControllerMode starts the event loop and ConnectRPC services.
 func runControllerMode() {
 	apiAddr := envOrDefault("INGRESS_API_ADDR", ":9090")
 
@@ -91,6 +95,34 @@ func runControllerMode() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	var store desired.Store
+	var err error
+	if d.Kind() == "kubernetes" {
+		store, err = desired.NewKubernetes(k8sNamespace())
+	} else {
+		path := os.Getenv("GOFI_CONFIG_FILE")
+		if path == "" {
+			dir, dirErr := os.UserConfigDir()
+			if dirErr != nil {
+				slog.Error("configuration directory unavailable", "error", dirErr)
+				os.Exit(1)
+			}
+			path = filepath.Join(dir, "gofi", "listeners.yaml")
+		}
+		store = &desired.File{Path: path}
+	}
+	if err != nil {
+		slog.Error("desired state initialization failed", "error", err)
+		os.Exit(1)
+	}
+	if store != nil {
+		if err = ctrl.WithStore(ctx, store); err != nil {
+			slog.Error("desired state load failed", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	manager := startSandboxes(ctx, ctrl, mode)
 	go ctrl.Run(ctx)
 
 	// Serve embedded SPA if the dist directory was bundled at build time.
@@ -100,9 +132,15 @@ func runControllerMode() {
 		staticFS = sub
 	}
 
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	srv := &http.Server{
-		Addr:    apiAddr,
-		Handler: api.New(ctrl, staticFS, mode),
+		Addr:              apiAddr,
+		Handler:           api.New(ctrl, staticFS, mode, manager),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       90 * time.Second,
+		Protocols:         protocols,
 	}
 
 	go func() {
@@ -121,7 +159,14 @@ func runControllerMode() {
 
 	slog.Info("shutting down...")
 	cancel()
-	srv.Shutdown(context.Background())
+	shutdownCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	_ = srv.Shutdown(shutdownCtx)
+	if manager != nil {
+		if err := manager.CloseTooling(shutdownCtx); err != nil {
+			slog.Warn("Python tooling cleanup failed", "error", err)
+		}
+	}
 }
 
 func envOrDefault(key, def string) string {

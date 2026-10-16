@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "enabledManagers": ["gomod", "npm", "dockerfile", "docker-compose", "github-actions", "pip_requirements", "helm-values"],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Review non-major JavaScript dependency updates together",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "portal dependencies"
+    },
+    {
+      "description": "Keep Go module and toolchain changes reviewable as one set",
+      "matchManagers": ["gomod"],
+      "groupName": "Go dependencies"
+    }
+  ]
+}

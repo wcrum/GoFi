@@ -3,14 +3,10 @@
 // runtime dependency (only its `Edge` type is imported) so these functions
 // are easy to reason about and manually verify without mounting a canvas.
 //
-// No test runner is configured in this package (see ui/package.json —
-// no "test" script), so no convert.test.ts is added. The functions below
-// are pure and total for well-formed input, which makes them straightforward
-// to exercise manually (e.g. in a scratch node REPL) if needed.
 import type { Edge } from '@xyflow/react'
 import type { ListenerDefinition } from '../../types'
 import type { FlowNode, IngressNode, StageNode, SinkNode } from './types'
-import { genId } from '../../lib/id'
+import { genId } from '../../lib/id.ts'
 
 const X_STEP = 280
 const SINK_Y_STEP = 140
@@ -120,7 +116,7 @@ export function flowToListener(name: string, nodes: FlowNode[], edges: Edge[]): 
     name,
     source: ingressNode.data.source,
     framing: ingressNode.data.framing,
-    parser: ingressNode.data.parser,
+    parser: { ...ingressNode.data.parser, decoders: ingressNode.data.parser.decoders?.map((value) => value.trim()).filter(Boolean) },
     stages: orderedStages.map((n) => n.data.spec),
     sinks: orderedSinks.map((n) => n.data.sink),
     deadLetterSink: deadletterNode?.data.sink,
@@ -230,7 +226,7 @@ function walkFlow(
 /** The ordered, non-deadletter sink NODE IDS reached at the fan-out point —
  * shares `flowToListener`'s validation walk (see `walkFlow`), so it throws
  * the exact same errors for an invalid graph. A `SimulateResult.sinks[i]`
- * (from `POST /api/simulate`) maps directly to a canvas node id via
+ * (from `GoFiService.Simulate`) maps directly to a canvas node id via
  * `orderedSinkNodeIds(nodes, edges)[i]`, since both are derived from the same
  * fan-out edge order. */
 export function orderedSinkNodeIds(nodes: FlowNode[], edges: Edge[]): string[] {

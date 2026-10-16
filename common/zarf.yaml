@@ -1,0 +1,20 @@
+kind: ZarfPackageConfig
+metadata:
+  name: gofi-common
+  description: Common GoFi chart definitions
+components:
+  - name: gofi
+    required: true
+    charts:
+      - name: uds-gofi-config
+        namespace: gofi
+        version: 0.1.0
+        localPath: ../chart
+        valuesFiles:
+          - ../chart/zarf-values.yaml
+      - name: gofi
+        namespace: gofi
+        version: 0.2.0
+        localPath: ../charts/gofi
+        valuesFiles:
+          - ../values/common-values.yaml

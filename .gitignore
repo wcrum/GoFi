@@ -3,3 +3,15 @@ ui/node_modules/
 ui/dist/
 # Keep the placeholder so go:embed doesn't break
 !ui/dist/index.html
+*.log
+zarf-package-*.tar.zst
+uds-bundle-*.tar.zst
+sboms/
+.DS_Store
+
+**/__pycache__/
+*.pyc
+python/.venv/
+
+# Grafana icon assets copied from the pinned dependency at build/dev time
+/ui/public/public/build/img/icons/

@@ -11,7 +11,7 @@ import {
   type Edge,
   type NodeMouseHandler,
 } from '@xyflow/react'
-import { Input } from '@cnak-us/design-system'
+import { Input, Button } from '../primitives'
 import { useToast } from '../Toast'
 import type { ListenerDefinition, StageSpec, TapEvent, TestCase } from '../../types'
 import { createListener, streamListener } from '../../api'
@@ -66,9 +66,12 @@ function findTerminalId(nodes: FlowNode[], edges: Edge[]): string {
 
 interface FlowCanvasProps {
   initial?: ListenerDefinition
-  mode: 'create' | 'view'
+  mode: 'create' | 'edit' | 'view'
   onSaved?: (def: ListenerDefinition) => void
   onClose: () => void
+  closeLabel?: string
+  onInspect?: () => void
+  onEdit?: () => void
 }
 
 export default function FlowCanvas(props: FlowCanvasProps) {
@@ -79,7 +82,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
+function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close', onInspect, onEdit }: FlowCanvasProps) {
   const addToast = useToast()
   const seed = useMemo(() => listenerToFlow(initial ?? DEFAULT_LISTENER), [initial])
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(seed.nodes)
@@ -219,7 +222,22 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
     [setNodes],
   )
 
-  async function handleCreate() {
+  function loadExample() {
+    const example: ListenerDefinition = {
+      name: 'application-events',
+      source: { port: 9000, network: 'tcp' },
+      framing: { mode: 'line' },
+      parser: { format: 'json', decoders: ['base64'], errorPolicy: 'drop' },
+      stages: [{ id: 'keep-info', kind: 'filter', type: 'cel', expression: 'fields["level"] == "info"' }],
+      sinks: [{ type: 'stdout' }],
+      testCases: [{ id: 'info-example', name: 'Keep an info event', raw: btoa(JSON.stringify({ level: 'info', message: 'Hello from GoFi' })) }, { id: 'debug-example', name: 'Drop a debug event', raw: btoa(JSON.stringify({ level: 'debug', message: 'Diagnostic event' })) }],
+    }
+    const graph = listenerToFlow(example)
+    setNodes(graph.nodes); setEdges(graph.edges); setName(example.name); setTestCases(example.testCases ?? [])
+    setSelectedId(null); setMockOpen(true)
+  }
+
+  async function handleSave() {
     setSaving(true)
     try {
       const def = { ...flowToListener(name.trim(), nodes, edges), testCases }
@@ -235,7 +253,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
 
   // --- Live stats (mode === 'view' only) ---
   // Aggregated in a ref (not per-event setState) to avoid a re-render per
-  // SSE message under load; flushed to node data on a throttled interval.
+  // streamed observation under load; flushed to node data on a throttled interval.
   const statsRef = useRef<{
     connected: boolean
     total: number
@@ -246,12 +264,13 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
   useEffect(() => {
     if (mode !== 'view' || !initial) return
 
-    statsRef.current = { connected: true, total: 0, perStage: new Map() }
+    statsRef.current = { connected: false, total: 0, perStage: new Map() }
 
     const stop = streamListener(
       initial.name,
       (ev: TapEvent) => {
         const s = statsRef.current
+        s.connected = true
         s.total += 1
         s.lastFields = ev.fields
         if (ev.dropped && ev.droppedBy) {
@@ -275,6 +294,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
       () => {
         statsRef.current.connected = false
       },
+      () => { statsRef.current.connected = true },
     )
 
     const flush = window.setInterval(() => {
@@ -313,45 +333,51 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
   return (
     <div className="absolute inset-0 flex flex-col bg-g-canvas">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-g-border-weak bg-g-primary">
-        {mode === 'create' ? (
+        {mode !== 'view' ? (
           <>
             <span className="text-sm text-g-text-secondary shrink-0">Name</span>
             <Input
               value={name}
+              disabled={mode === 'edit'}
+              aria-label="Listener name"
               onChange={(e) => setName(e.target.value)}
               placeholder="my-listener"
               className="max-w-xs"
             />
-            <button
-              onClick={handleCreate}
+            <Button
+              variant="primary"
+              onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 rounded-md text-sm font-medium bg-g-accent-main text-white hover:bg-g-accent-main/90 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 rounded text-sm font-medium bg-g-accent-main text-white hover:bg-g-accent-main/90 disabled:opacity-50 transition-colors"
             >
-              {saving ? 'Creating…' : 'Create'}
-            </button>
+              {saving ? 'Saving…' : mode === 'edit' ? 'Save flow' : 'Create'}
+            </Button>
+            {mode === 'create' && <Button onClick={loadExample} className="text-xs text-g-accent-main whitespace-nowrap hover:underline">Load example</Button>}
           </>
         ) : (
           <span className="text-sm font-semibold text-g-text">{initial?.name}</span>
         )}
-        <button
+        {onEdit && <Button onClick={onEdit} className="rounded border border-g-border-medium px-3 py-1.5 text-xs text-g-accent-main hover:bg-g-hover">Edit flow</Button>}
+        {onInspect && <Button onClick={onInspect} className="ml-auto rounded border border-g-border-medium px-3 py-1.5 text-xs text-g-accent-main hover:bg-g-hover">Inspect live traffic</Button>}
+        <Button
           onClick={() => {
             setMockOpen((o) => !o)
             setSelectedId(null)
           }}
-          className={`ml-auto px-3 py-1.5 rounded-md text-sm border transition-colors ${
+          className={`ml-auto px-3 py-1.5 rounded text-sm border transition-colors ${
             mockOpen
               ? 'border-g-accent-main/60 text-g-text bg-g-hover'
               : 'border-g-border-weak text-g-text-secondary hover:bg-g-hover'
           }`}
         >
-          {mockOpen ? 'Hide Mock Mode' : 'Mock Mode'}
-        </button>
-        <button
+          {mockOpen ? 'Hide Test flow' : 'Test flow'}
+        </Button>
+        <Button
           onClick={onClose}
-          className="px-3 py-1.5 rounded-md text-sm text-g-text-secondary border border-g-border-weak hover:bg-g-hover transition-colors"
+          className="px-3 py-1.5 rounded text-sm text-g-text-secondary border border-g-border-weak hover:bg-g-hover transition-colors"
         >
-          Close
-        </button>
+          {closeLabel}
+        </Button>
       </div>
 
       <div className="flex-1 flex min-h-0">
@@ -366,6 +392,8 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
 
         <div className="flex-1 min-w-0">
           <ReactFlow
+            className={readOnly ? 'gofi-flow-readonly' : 'gofi-flow-editor'}
+            defaultEdgeOptions={{ interactionWidth: 20 }}
             nodes={nodes}
             edges={edges}
             onNodesChange={readOnly ? undefined : onNodesChange}
@@ -378,6 +406,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose }: FlowCanvasProps) {
             nodesConnectable={!readOnly}
             elementsSelectable
             fitView
+            fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
             proOptions={{ hideAttribution: true }}
           >
             <Background />

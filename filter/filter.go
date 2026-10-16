@@ -20,10 +20,15 @@ type Stage interface {
 // for Kind=="filter").
 func New(cfg spec.StageSpec) (Stage, error) {
 	switch cfg.Kind {
+	case "python":
+		if err:=cfg.Python.Validate();err!=nil{return nil,err}
+		return &pythonStage{ref:cfg.Python},nil
 	case "filter":
 		switch cfg.Type {
 		case "cel":
 			return newCEL(cfg.Expression)
+		case "regex":
+			return newRegex(cfg)
 		default:
 			return nil, fmt.Errorf("filter: unknown filter type %q", cfg.Type)
 		}

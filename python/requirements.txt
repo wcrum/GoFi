@@ -1,0 +1,4 @@
+connectrpc==0.12.1
+protobuf==7.36.2
+uvicorn==0.54.0
+ruff==0.17.1

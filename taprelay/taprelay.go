@@ -1,52 +1,72 @@
-// Package taprelay runs a minimal HTTP server inside a listener-mode process
-// (see main.go's runListenerMode) that exposes its pipeline.Tap over the
-// network. This is the piece that makes live traffic viewing work when a
-// listener is running as a separate Docker container or Kubernetes Pod,
-// rather than in-process: the controller's API layer reverse-proxies SSE
-// requests to this server (driver.TapTarget.Addr), reusing infrastructure
-// that already exists in each environment (Compose's embedded DNS,
-// Kubernetes' flat Pod-IP routing) instead of adding a new hard dependency
-// like NATS just for tap streaming.
+// Package taprelay exposes a listener process's traffic as the same typed
+// ConnectRPC stream used by the portal, across Docker and Kubernetes networks.
 package taprelay
 
 import (
 	"context"
 	"net/http"
+	"time"
 
+	"connectrpc.com/connect"
+	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
+	"github.com/wcrum/gofi/gen/gofi/v1/gofiv1connect"
+	"github.com/wcrum/gofi/observability"
 	"github.com/wcrum/gofi/pipeline"
 	"github.com/wcrum/gofi/tapstream"
 )
 
-// Server exposes a single listener's tap over HTTP.
 type Server struct {
+	gofiv1connect.UnimplementedGoFiServiceHandler
 	tap *pipeline.Tap
 }
 
-// New builds a tap relay server for the given tap.
-func New(tap *pipeline.Tap) *Server {
-	return &Server{tap: tap}
+func New(tap *pipeline.Tap) *Server { return &Server{tap: tap} }
+
+func (s *Server) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.WatchTrafficRequest], stream *connect.ServerStream[gofiv1.WatchTrafficResponse]) error {
+	ch := s.tap.Subscribe()
+	defer s.tap.Unsubscribe(ch)
+	if err := stream.Send(&gofiv1.WatchTrafficResponse{Heartbeat: true}); err != nil {
+		return err
+	}
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-heartbeat.C:
+			if err := stream.Send(&gofiv1.WatchTrafficResponse{Heartbeat: true}); err != nil {
+				return err
+			}
+		case event := <-ch:
+			converted, err := tapstream.Event(event)
+			if err != nil || converted == nil {
+				continue
+			}
+			if err := stream.Send(&gofiv1.WatchTrafficResponse{Listener: req.Msg.Name, Event: converted}); err != nil {
+				return err
+			}
+		}
+	}
 }
 
-// ListenAndServe starts the relay's HTTP server on addr and blocks until ctx
-// is cancelled or the server errors. It exposes:
-//
-//	GET /stream   - SSE live traffic stream (see tapstream.Serve)
-//	GET /healthz  - trivial liveness check
-func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-		_ = tapstream.Serve(r.Context(), w, s.tap)
-	})
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	srv := &http.Server{Addr: addr, Handler: mux}
+	mux.Handle("/metrics", observability.Handler())
+	path, handler := gofiv1connect.NewGoFiServiceHandler(s)
+	mux.Handle(path, handler)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	return mux
+}
+func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
+	srv := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
-		srv.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+		_ = srv.Close()
 	}()
-
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}

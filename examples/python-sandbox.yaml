@@ -1,0 +1,18 @@
+apiVersion: gofi.wcrum.dev/v1alpha1
+kind: Sandbox
+metadata:
+  name: telemetry-library
+spec:
+  timeoutSeconds: 5
+  memoryMib: 128
+  sourceCode: |
+    import json
+    import gofi
+
+    @gofi.parser("telemetry")
+    def telemetry(raw):
+        return json.loads(raw)
+
+    @gofi.transformer("normalize")
+    def normalize(fields, meta):
+        return {**fields, "app": str(fields.get("app", "unknown")).lower()}

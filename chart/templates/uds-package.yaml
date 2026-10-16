@@ -1,0 +1,105 @@
+apiVersion: uds.dev/v1alpha1
+kind: Package
+metadata:
+  name: gofi
+  namespace: {{ .Release.Namespace }}
+spec:
+  {{- if .Values.sso.enabled }}
+  sso:
+    - name: GoFi Login
+      clientId: uds-wcrum-gofi
+      protocol: openid-connect
+      redirectUris:
+        - {{ printf "https://gofi.%s%s/login" (ternary "admin." "" (eq .Values.gateway "admin")) .Values.domain | quote }}
+      secretConfig:
+        name: {{ .Values.sso.secretConfig.name }}
+      enableAuthserviceSelector:
+        {{- toYaml .Values.selector | nindent 8 }}
+      {{- with .Values.sso.groups }}
+      groups:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- end }}
+  monitor:
+    - description: GoFi controller metrics
+      selector:
+        {{- toYaml .Values.selector | nindent 8 }}
+      targetPort: {{ .Values.service.port }}
+      portName: http
+      path: /metrics
+      kind: ServiceMonitor
+    - description: GoFi listener pipeline metrics
+      selector:
+        gofi.io/managed-by: "true"
+      targetPort: 9091
+      portName: metrics
+      path: /metrics
+      kind: PodMonitor
+  network:
+    serviceMesh:
+      mode: ambient
+    expose:
+      - description: GoFi administrator portal API and live traffic
+        service: {{ .Values.service.name }}
+        selector:
+          {{- toYaml .Values.selector | nindent 10 }}
+        gateway: {{ .Values.gateway }}
+        host: gofi
+        port: {{ .Values.service.port }}
+    allow:
+      - direction: Ingress
+        selector:
+          {{- toYaml .Values.selector | nindent 10 }}
+        remoteGenerated: IntraNamespace
+        description: Controller RPC within GoFi namespace
+      - direction: Egress
+        selector:
+          {{- toYaml .Values.selector | nindent 10 }}
+        remoteGenerated: IntraNamespace
+        description: Controller to listener taps and Python workers
+      - direction: Ingress
+        selector:
+          gofi.io/managed-by: "true"
+        remoteGenerated: IntraNamespace
+        description: TCP listener data and Connect taps inside GoFi namespace
+      - direction: Ingress
+        selector:
+          gofi.io/managed-by: "true"
+        remoteGenerated: IntraNamespace
+        remoteProtocol: UDP
+        description: UDP listener data inside GoFi namespace
+      - direction: Egress
+        selector:
+          gofi.io/managed-by: "true"
+        remoteGenerated: IntraNamespace
+        description: TCP listener destinations and Python worker RPC
+      - direction: Egress
+        selector:
+          gofi.io/managed-by: "true"
+        remoteGenerated: IntraNamespace
+        remoteProtocol: UDP
+        description: UDP listener destinations inside GoFi namespace
+      - direction: Ingress
+        selector:
+          app.kubernetes.io/name: gofi-python
+        remoteNamespace: {{ .Release.Namespace }}
+        remoteSelector:
+          app.kubernetes.io/component: controller
+        port: 8080
+        description: Controller to isolated Python function registry
+      - direction: Ingress
+        selector:
+          app.kubernetes.io/name: gofi-python
+        remoteNamespace: {{ .Release.Namespace }}
+        remoteSelector:
+          gofi.io/managed-by: "true"
+        port: 8080
+        description: Listener to isolated Python functions
+      - direction: Egress
+        selector:
+          {{- toYaml .Values.selector | nindent 10 }}
+        remoteGenerated: KubeAPI
+        description: Reconcile Listener resources Pods and Services
+      {{- with .Values.additionalNetworkAllow }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}

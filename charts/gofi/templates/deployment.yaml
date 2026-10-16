@@ -1,14 +1,22 @@
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail "GoFi requires replicaCount=1 because controller leader election is not implemented" }}
+{{- end }}
+{{- range .Values.env }}
+{{- if has .name (list "GOFI_DEPLOY_MODE" "GOFI_IMAGE" "GOFI_K8S_NAMESPACE" "INGRESS_API_ADDR" "GOFI_LISTENER_POD_TEMPLATE" "LISTENER_SPEC") }}
+{{- fail (printf "env.%s is reserved by the GoFi chart" .name) }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "gofi.fullname" . }}
   labels:
     {{- include "gofi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
 spec:
-  # replicaCount MUST stay 1 - see comment in values.yaml. The controller
-  # keeps its reconciliation state in memory and is not horizontally
-  # scalable in its current form.
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "gofi.selectorLabels" . | nindent 6 }}
@@ -20,13 +28,18 @@ spec:
       {{- end }}
       labels:
         {{- include "gofi.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
     spec:
       serviceAccountName: {{ include "gofi.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: gofi
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # This Deployment runs the controller itself (REST API + embedded
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          # This Deployment runs the controller itself (ConnectRPC + embedded
           # SPA + operator reconciliation loop). It deliberately does NOT set
           # LISTENER_SPEC - that env var is only injected into Pods spawned
           # by the Kubernetes operator driver for individual listeners.
@@ -41,6 +54,14 @@ spec:
             # to configure it twice / risk drift.
             - name: GOFI_IMAGE
               value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            - name: GOFI_SANDBOX_IMAGE
+              value: "{{ .Values.sandboxImage.repository }}:{{ .Values.sandboxImage.tag }}"
+            - name: GOFI_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GOFI_LISTENER_POD_TEMPLATE
+              value: {{ .Values.listenerPodTemplate | toJson | quote }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -50,12 +71,16 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /
+              path: /readyz
               port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

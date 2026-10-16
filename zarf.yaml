@@ -1,0 +1,39 @@
+kind: ZarfPackageConfig
+metadata:
+  name: gofi
+  description: GoFi live traffic pipelines, declarative listeners, and UDS SSO
+  version: dev
+  url: https://github.com/wcrum/GoFi
+  annotations:
+    dev.uds.title: GoFi
+    dev.uds.categories: "Data Engineering, Networking, Observability"
+    dev.uds.keywords: "Traffic, Pipelines, CEL, Python, Aster"
+    dev.uds.tagline: "Observe and route application traffic through configurable pipelines."
+documentation:
+  readme: README.md
+  application: docs/application.md
+  deployment: docs/deployment.md
+  aster: docs/aster.md
+  configuration: docs/configuration.md
+  python: docs/python.md
+  observability: docs/observability.md
+  zenoh: docs/zenoh.md
+  test-environment: docs/test-environment.md
+  justifications: docs/justifications.md
+variables:
+  - name: DOMAIN
+    default: uds.dev
+components:
+  - name: gofi
+    required: true
+    only:
+      flavor: upstream
+    import:
+      path: common
+    charts:
+      - name: gofi
+        valuesFiles:
+          - values/upstream-values.yaml
+    images:
+      - ghcr.io/wcrum/gofi:0.2.0
+      - ghcr.io/wcrum/gofi-python:0.2.0

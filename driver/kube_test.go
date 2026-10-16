@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"github.com/wcrum/gofi/spec"
 	"testing"
 	"time"
 
@@ -11,6 +12,79 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestKubeNodePortServiceLifecycleAndDrift(t *testing.T) {
+	k, cs := newTestKube("default")
+	ctx := context.Background()
+	def := testDef("udp-route", 9000)
+	def.Source.Network = "udp"
+	def.Source.Service = &spec.ServiceExposure{Type: "NodePort", NodePort: 31000, Port: 8000}
+	if err := k.Create(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := cs.CoreV1().Services("default").Get(ctx, podName(def.Name), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.Spec.Type != corev1.ServiceTypeNodePort || svc.Spec.Ports[0].NodePort != 31000 || svc.Spec.Ports[0].TargetPort.IntValue() != 9000 || svc.Spec.Ports[0].Protocol != corev1.ProtocolUDP {
+		t.Fatalf("unexpected service: %+v", svc.Spec)
+	}
+	svc.Spec.Ports[0].Port = 1234
+	if _, err := cs.CoreV1().Services("default").Update(ctx, svc, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	pod, _ := cs.CoreV1().Pods("default").Get(ctx, podName(def.Name), metav1.GetOptions{})
+	pod.Status.Phase = corev1.PodRunning
+	if _, err := cs.CoreV1().Pods("default").UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.List(ctx); err != nil {
+		t.Fatal(err)
+	}
+	svc, _ = cs.CoreV1().Services("default").Get(ctx, podName(def.Name), metav1.GetOptions{})
+	if svc.Spec.Ports[0].Port != 8000 {
+		t.Fatal("service drift not repaired")
+	}
+	if err := k.Delete(ctx, def.Name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.CoreV1().Services("default").Get(ctx, podName(def.Name), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("service not deleted: %v", err)
+	}
+}
+
+func TestKubeCreateRollsBackPodOnServiceConflict(t *testing.T) {
+	k, cs := newTestKube("default")
+	ctx := context.Background()
+	def := testDef("conflict", 9000)
+	def.Source.Service = &spec.ServiceExposure{Type: "ClusterIP"}
+	_, err := cs.CoreV1().Services("default").Create(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: podName(def.Name)}}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Create(ctx, def); err == nil {
+		t.Fatal("expected unmanaged service conflict")
+	}
+	if _, err := cs.CoreV1().Pods("default").Get(ctx, podName(def.Name), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatal("partially created pod not rolled back")
+	}
+}
+
+func TestKubeDiscoversLoadBalancerEndpoints(t *testing.T) {
+	k, cs := newTestKube("apps")
+	ctx := context.Background()
+	_, err := cs.CoreV1().Services("apps").Create(ctx, &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "receiver", Namespace: "apps"}, Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeLoadBalancer, ClusterIP: "10.0.0.1", Ports: []corev1.ServicePort{{Port: 8080, Protocol: corev1.ProtocolTCP, NodePort: 31080}}}, Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "192.0.2.10"}}}}}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoints, err := k.Endpoints(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(endpoints) != 1 || endpoints[0].Host != "receiver.apps.svc.cluster.local" || endpoints[0].Ports[0].URL != "tcp://receiver.apps.svc.cluster.local:8080" || endpoints[0].ExternalAddresses[0] != "192.0.2.10" {
+		t.Fatalf("unexpected discovery: %+v", endpoints)
+	}
+}
 
 func newTestKube(namespace string) (*Kube, *fake.Clientset) {
 	cs := fake.NewSimpleClientset()
@@ -52,6 +126,34 @@ func TestKubeCreateSetsLabelsAndEnv(t *testing.T) {
 	}
 	if gotEnv == "" {
 		t.Fatal("LISTENER_SPEC env var not set")
+	}
+	if pod.Spec.SecurityContext.RunAsUser == nil || *pod.Spec.SecurityContext.RunAsUser != 65532 || pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
+		t.Fatal("listener pod must run unprivileged without Kubernetes credentials")
+	}
+}
+
+func TestKubeListenerPodTemplate(t *testing.T) {
+	template, err := parseListenerPodTemplate(`{"containers":[{"name":"aster-agent","image":"example.test/aster-agent:1.2.3","volumeMounts":[{"name":"state","mountPath":"/state"}]}],"volumes":[{"name":"state","emptyDir":{}}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, cs := newTestKube("default")
+	k.podTemplate = template
+	ctx := context.Background()
+	if err := k.Create(ctx, testDef("with-agent", 9000)); err != nil {
+		t.Fatal(err)
+	}
+	pod, err := cs.CoreV1().Pods("default").Get(ctx, podName("with-agent"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pod.Spec.Containers) != 2 || pod.Spec.Containers[0].Name != "gofi-listener" || pod.Spec.Containers[1].Name != "aster-agent" || len(pod.Spec.Volumes) != 1 {
+		t.Fatalf("template not injected: %+v", pod.Spec)
+	}
+	for _, raw := range []string{`{"containers":[{"name":"gofi-listener","image":"bad"}]}`, `{"containers":[{"name":"agent"}]}`, `{"volumes":[{"name":"state"},{"name":"state"}]}`, `invalid`} {
+		if _, err := parseListenerPodTemplate(raw); err == nil {
+			t.Errorf("accepted invalid template %s", raw)
+		}
 	}
 }
 

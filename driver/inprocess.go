@@ -59,6 +59,7 @@ func (d *InProcess) Delete(_ context.Context, name string) error {
 		return fmt.Errorf("listener %q not found", name)
 	}
 	e.cancel()
+	e.ln.Close()
 	delete(d.running, name)
 	return nil
 }

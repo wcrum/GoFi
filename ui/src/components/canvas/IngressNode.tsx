@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Card, Badge } from '@cnak-us/design-system'
+import { Card, Badge } from '../primitives'
 import { RiWifiLine } from 'react-icons/ri'
 import { FRAMING_COLOR, PARSER_COLOR, MOCK_STATE_RING, MOCK_STATE_BADGE_COLOR, MOCK_STATE_LABEL } from '../stageColors'
 import type { IngressNode as IngressNodeType } from './types'
@@ -27,11 +27,15 @@ export function IngressNode({ data, selected }: NodeProps<IngressNodeType>) {
 
       <div className="text-xs text-g-text-secondary mb-2">
         {(source.network || 'tcp')}:{source.port || '—'}
+        {source.service && <span className="block mt-1 text-g-accent-main">{source.service.type}{source.service.nodePort ? ` :${source.service.nodePort}` : ''}</span>}
       </div>
 
+      {source.python && <p className="text-xs text-g-text-secondary truncate mb-2">Hook: {source.python.library}.{source.python.function}</p>}
+      {parser.python && <p className="text-xs text-g-text-secondary truncate mb-2">Parser: {parser.python.library}.{parser.python.function}</p>}
       <div className="flex flex-wrap gap-1.5 mb-1">
         <Badge text={framing.mode} color={FRAMING_COLOR[framing.mode] ?? 'gray'} />
         <Badge text={parser.format || 'none'} color={PARSER_COLOR[parser.format] ?? 'gray'} />
+        {(parser.decoders ?? []).filter(Boolean).map((decoder, index) => <Badge key={`${decoder}-${index}`} text={decoder} color="purple" />)}
       </div>
 
       {stats && (

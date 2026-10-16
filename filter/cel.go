@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/cel-go/cel"
+	"cel.dev/cel-go/cel"
 
 	"github.com/wcrum/gofi/message"
 )
@@ -47,6 +47,14 @@ func Env() (*cel.Env, error) {
 // ready-to-evaluate Program. Callers should compile once at construction
 // time and reuse the returned Program across many Eval calls.
 func CompileCEL(expression string) (cel.Program, error) {
+	return compileCEL(expression, false)
+}
+
+// CompilePredicate rejects known non-boolean expressions during configuration.
+// Dynamically typed field lookups remain valid and are checked per message.
+func CompilePredicate(expression string) (cel.Program, error) { return compileCEL(expression, true) }
+
+func compileCEL(expression string, predicate bool) (cel.Program, error) {
 	env, err := Env()
 	if err != nil {
 		return nil, fmt.Errorf("cel: env init: %w", err)
@@ -54,6 +62,9 @@ func CompileCEL(expression string) (cel.Program, error) {
 	ast, issues := env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, issues.Err()
+	}
+	if predicate && !ast.OutputType().IsExactType(cel.BoolType) && !ast.OutputType().IsExactType(cel.DynType) {
+		return nil, fmt.Errorf("cel: condition must return a bool")
 	}
 	prog, err := env.Program(ast)
 	if err != nil {
@@ -125,7 +136,7 @@ func (f *celFilter) compile() (cel.Program, error) {
 	}
 	f.mu.RUnlock()
 
-	prog, err := CompileCEL(f.expr)
+	prog, err := CompilePredicate(f.expr)
 	if err != nil {
 		return nil, err
 	}

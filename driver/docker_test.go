@@ -48,7 +48,7 @@ func newFakeDockerAPI() *fakeDockerAPI {
 	return &fakeDockerAPI{containers: make(map[string]*fakeContainer)}
 }
 
-func (f *fakeDockerAPI) ContainerCreate(_ context.Context, config *container.Config, hostConfig *container.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (container.CreateResponse, error) {
+func (f *fakeDockerAPI) ContainerCreate(_ context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (container.CreateResponse, error) {
 	f.createCalls = append(f.createCalls, createCall{name: containerName, config: config, host: hostConfig})
 
 	if f.createErrOnce {
@@ -60,11 +60,21 @@ func (f *fakeDockerAPI) ContainerCreate(_ context.Context, config *container.Con
 		return container.CreateResponse{}, cerrdefs.ErrConflict
 	}
 
+	nets := map[string]*network.EndpointSettings{}
+	if hostConfig.NetworkMode != "" {
+		nets[string(hostConfig.NetworkMode)] = &network.EndpointSettings{}
+	}
+	if networkingConfig != nil {
+		for key, value := range networkingConfig.EndpointsConfig {
+			nets[key] = value
+		}
+	}
 	f.containers[containerName] = &fakeContainer{
 		id:     containerName + "-id",
 		name:   containerName,
 		config: config,
 		labels: config.Labels,
+		nets:   nets,
 	}
 	return container.CreateResponse{ID: containerName + "-id"}, nil
 }
@@ -92,6 +102,17 @@ func (f *fakeDockerAPI) ContainerList(_ context.Context, options container.ListO
 		if wantLabel != "" && c.labels[wantLabel] != wantValue {
 			continue
 		}
+		if networks := options.Filters.Get("network"); len(networks) != 0 {
+			match := false
+			for _, name := range networks {
+				if _, found := c.nets[name]; found {
+					match = true
+				}
+			}
+			if !match {
+				continue
+			}
+		}
 		out = append(out, container.Summary{ID: c.id, Names: []string{"/" + c.name}, Labels: c.labels})
 	}
 	return out, nil
@@ -112,19 +133,23 @@ func (f *fakeDockerAPI) ContainerInspect(_ context.Context, containerID string) 
 
 func (f *fakeDockerAPI) ContainerStop(_ context.Context, containerID string, _ container.StopOptions) error {
 	f.stopCalls = append(f.stopCalls, containerID)
-	if _, ok := f.containers[containerID]; !ok {
-		return cerrdefs.ErrNotFound
+	for _, c := range f.containers {
+		if c.id == containerID || c.name == containerID {
+			return nil
+		}
 	}
-	return nil
+	return cerrdefs.ErrNotFound
 }
 
 func (f *fakeDockerAPI) ContainerRemove(_ context.Context, containerID string, _ container.RemoveOptions) error {
 	f.removeCalls = append(f.removeCalls, containerID)
-	if _, ok := f.containers[containerID]; !ok {
-		return cerrdefs.ErrNotFound
+	for key, c := range f.containers {
+		if c.id == containerID || c.name == containerID {
+			delete(f.containers, key)
+			return nil
+		}
 	}
-	delete(f.containers, containerID)
-	return nil
+	return cerrdefs.ErrNotFound
 }
 
 func testDef(name string, port int) spec.ListenerDefinition {
@@ -285,8 +310,11 @@ func TestDockerCreateNameConflictRetriesOnce(t *testing.T) {
 	fake := newFakeDockerAPI()
 	// Pre-populate a stale container with the same name gofi would generate.
 	fake.containers["gofi-listener-cot-ingest"] = &fakeContainer{
-		id:   "stale-id",
-		name: "gofi-listener-cot-ingest",
+		id:     "stale-id",
+		name:   "gofi-listener-cot-ingest",
+		config: &container.Config{Labels: map[string]string{labelManaged: "true", labelListener: "cot-ingest"}},
+		labels: map[string]string{labelManaged: "true", labelListener: "cot-ingest"},
+		nets:   map[string]*network.EndpointSettings{"net": {}},
 	}
 
 	d, err := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "net"})
@@ -302,7 +330,7 @@ func TestDockerCreateNameConflictRetriesOnce(t *testing.T) {
 	if len(fake.createCalls) != 2 {
 		t.Fatalf("expected 2 create calls (initial conflict + retry), got %d", len(fake.createCalls))
 	}
-	if len(fake.removeCalls) != 1 || fake.removeCalls[0] != "gofi-listener-cot-ingest" {
+	if len(fake.removeCalls) != 1 || fake.removeCalls[0] != "stale-id" {
 		t.Errorf("expected exactly one remove call for the stale container, got %v", fake.removeCalls)
 	}
 	if _, ok := fake.containers["gofi-listener-cot-ingest"]; !ok {
@@ -322,6 +350,7 @@ func TestDockerListDecodesSpecFromEnv(t *testing.T) {
 			Labels: map[string]string{labelManaged: "true", labelListener: "cot-ingest"},
 		},
 		labels: map[string]string{labelManaged: "true", labelListener: "cot-ingest"},
+		nets:   map[string]*network.EndpointSettings{"net": {}},
 	}
 	// A non-managed container should be excluded.
 	fake.containers["other"] = &fakeContainer{
@@ -364,6 +393,9 @@ func TestDockerTapReturnsContainerAddr(t *testing.T) {
 	d, err := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "net"})
 	if err != nil {
 		t.Fatalf("newDockerWithClient: %v", err)
+	}
+	if err := d.Create(context.Background(), testDef("cot-ingest", 9000)); err != nil {
+		t.Fatal(err)
 	}
 	target, ok, err := d.Tap(context.Background(), "cot-ingest")
 	if err != nil || !ok {
@@ -473,5 +505,89 @@ func TestDockerRuntimeStatusNotFound(t *testing.T) {
 	}
 	if ok {
 		t.Error("expected ok=false for nonexistent container")
+	}
+}
+
+func TestDockerNeverReplacesUnmanagedOrOtherDeploymentNameConflicts(t *testing.T) {
+	for _, kind := range []string{"unmanaged", "another-network"} {
+		t.Run(kind, func(t *testing.T) {
+			fake := newFakeDockerAPI()
+			labels := map[string]string{}
+			selectedNetwork := "net"
+			if kind == "another-network" {
+				labels = map[string]string{labelManaged: "true", labelListener: "route"}
+				selectedNetwork = "other"
+			}
+			foreign := &fakeContainer{id: "foreign-id", name: containerName("route"), config: &container.Config{Labels: labels}, labels: labels, nets: map[string]*network.EndpointSettings{selectedNetwork: {}}}
+			fake.containers[foreign.name] = foreign
+			d, err := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "net"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := d.Create(context.Background(), testDef("route", 9000)); err == nil {
+				t.Fatal("foreign container conflict was replaced")
+			}
+			if len(fake.removeCalls) != 0 || len(fake.stopCalls) != 0 || fake.containers[foreign.name] != foreign {
+				t.Fatal("Create mutated a foreign container")
+			}
+			if err := d.Delete(context.Background(), "route"); err == nil {
+				t.Fatal("Delete accepted a foreign container")
+			}
+			if len(fake.removeCalls) != 0 || len(fake.stopCalls) != 0 {
+				t.Fatal("Delete mutated a foreign container")
+			}
+			if _, found, err := d.Tap(context.Background(), "route"); err != nil || found {
+				t.Fatalf("foreign traffic tap exposed: found=%v err=%v", found, err)
+			}
+			if _, found, err := d.RuntimeStatus(context.Background(), "route"); err != nil || found {
+				t.Fatalf("foreign runtime status exposed: found=%v err=%v", found, err)
+			}
+		})
+	}
+}
+func TestDockerInventoryAndDeletionAreScopedToDeploymentNetwork(t *testing.T) {
+	fake := newFakeDockerAPI()
+	current, _ := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "current"})
+	other, _ := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "other"})
+	if err := current.Create(context.Background(), testDef("local", 9000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Create(context.Background(), testDef("foreign", 9001)); err != nil {
+		t.Fatal(err)
+	}
+	defs, err := current.List(context.Background())
+	if err != nil || len(defs) != 1 || defs[0].Name != "local" {
+		t.Fatalf("inventory crossed deployment networks: %+v %v", defs, err)
+	}
+	if err := current.Delete(context.Background(), "local"); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.removeCalls) != 1 || fake.removeCalls[0] != containerName("local")+"-id" {
+		t.Fatalf("delete must use the inspected immutable ID: %v", fake.removeCalls)
+	}
+	if _, found := fake.containers[containerName("foreign")]; !found {
+		t.Fatal("foreign deployment runtime deleted")
+	}
+}
+func TestDockerOwnershipRetainsAdditionalPythonNetwork(t *testing.T) {
+	t.Setenv("GOFI_PYTHON_BINDINGS", `{"library":{"endpoint":"http://worker:8080","token":"example","timeoutSeconds":5}}`)
+	t.Setenv("GOFI_SANDBOX_NETWORK", "private-python")
+	fake := newFakeDockerAPI()
+	d, _ := newDockerWithClient(fake, DockerConfig{Image: "img", Network: "application"})
+	def := testDef("python-route", 9000)
+	def.Source.Python = &spec.PythonRef{Library: "library", Function: "hook"}
+	if err := d.Create(context.Background(), def); err != nil {
+		t.Fatal(err)
+	}
+	created := fake.containers[containerName(def.Name)]
+	if _, found := created.nets["application"]; !found {
+		t.Fatal("application network lost")
+	}
+	if _, found := created.nets["private-python"]; !found {
+		t.Fatal("Python worker network lost")
+	}
+	defs, err := d.List(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("Python listener no longer belongs to its deployment: %+v %v", defs, err)
 	}
 }

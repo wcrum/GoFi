@@ -1,7 +1,7 @@
 // Shared color maps for pipeline-stage badges, used by both the list-view
 // ListenerCard and the flow-canvas node components so there is one source
 // of truth for stage coloring.
-import type { BadgeColor } from '@cnak-us/design-system'
+import type { BadgeColor } from './primitives'
 
 export type StageColor = BadgeColor
 
@@ -22,6 +22,11 @@ export const SINK_COLOR: Record<string, StageColor> = {
   nats: 'green',
   http: 'blue',
   stdout: 'gray',
+  tcp: 'purple',
+  aster: 'green',
+  zenoh: 'blue',
+  loki: 'orange',
+  udp: 'orange',
 }
 
 // Per-stage-kind color, keyed by StageSpec['kind'], used by the flow-canvas
@@ -33,6 +38,7 @@ export const STAGE_KIND_COLOR: Record<string, StageColor> = {
   'rate-limit': 'purple',
   dedup: 'orange',
   schema: 'green',
+  python: 'purple',
 }
 
 // Ring/border classes for the transient mock-playback highlight on canvas

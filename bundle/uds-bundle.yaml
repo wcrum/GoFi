@@ -1,0 +1,9 @@
+kind: UDSBundle
+metadata:
+  name: gofi-test
+  description: GoFi on an existing UDS Core base and identity authorization installation
+  version: dev
+packages:
+  - name: gofi
+    path: ../
+    ref: dev

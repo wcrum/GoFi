@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Card, Badge } from '@cnak-us/design-system'
+import { Card, Badge } from '../primitives'
 import { RiSendPlaneLine, RiErrorWarningLine } from 'react-icons/ri'
 import { SINK_COLOR, MOCK_STATE_RING, MOCK_STATE_BADGE_COLOR, MOCK_STATE_LABEL } from '../stageColors'
 import type { SinkNode as SinkNodeType } from './types'
@@ -31,6 +31,8 @@ export function SinkNode({ data, selected, id }: NodeProps<SinkNodeType>) {
 
       {isDeadLetter && <Badge text="dead letter" color="orange" className="mb-2" />}
 
+      {sink.kubernetes && <p className="text-xs text-g-text-secondary font-mono truncate" title={JSON.stringify(sink.kubernetes)}>Pods :{sink.kubernetes.port} · {Object.entries(sink.kubernetes.selector).map(([key,value]) => `${key}=${value}`).join(", ")}</p>}
+      {sink.python && <p className="text-xs text-g-text-secondary font-mono truncate" title={`${sink.python.library}.${sink.python.function}`}>{sink.python.library}.{sink.python.function}</p>}
       {sink.url && (
         <div className="text-xs text-g-text-secondary font-mono truncate" title={sink.url}>
           {sink.url}

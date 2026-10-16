@@ -25,8 +25,18 @@ type TestCase struct {
 
 // Source defines the network endpoint to listen on.
 type Source struct {
-	Port    int    `json:"port"`
-	Network string `json:"network"` // "tcp" | "udp"
+	Python  *PythonRef       `json:"python,omitempty"`
+	Port    int              `json:"port"`
+	Network string           `json:"network"`           // "tcp" | "udp"
+	Service *ServiceExposure `json:"service,omitempty"` // Kubernetes exposure; nil leaves the listener private
+}
+
+// ServiceExposure publishes a listener through a stable Kubernetes Service.
+// Destinations are addressed by DNS/URL; pod selectors are internal to GoFi.
+type ServiceExposure struct {
+	Type     string `json:"type"`               // "ClusterIP" | "NodePort"
+	Port     int    `json:"port,omitempty"`     // defaults to source.port
+	NodePort int    `json:"nodePort,omitempty"` // 0 requests allocation from the cluster
 }
 
 // Framing controls how the raw byte stream is split into discrete frames.
@@ -44,11 +54,21 @@ type Framing struct {
 
 // ParserCfg selects how a frame's bytes are decoded into Message.Fields.
 type ParserCfg struct {
+	Python *PythonRef `json:"python,omitempty"`
 	// Format is one of: "xml", "json", "none".
 	//   xml  — top-level attributes and first-level child text nodes become Fields
 	//   json — top-level keys become Fields
 	//   none — Fields["raw"] = frame as UTF-8 string
 	Format string `json:"format"`
+
+	// Decoders run in order before parsing: base64, base64url, hex, gzip,
+	// zlib, or url (URL query escaping). Raw frame bytes remain unchanged.
+	Decoders []string `json:"decoders,omitempty"`
+	// MaxDecodedBytes caps the output of each decoding step; 0 = 1 MiB.
+	MaxDecodedBytes int `json:"maxDecodedBytes,omitempty"`
+	// ErrorPolicy is "continue" (default) or "drop". Drop sends malformed
+	// frames to the dead-letter sink when configured, before running stages.
+	ErrorPolicy string `json:"errorPolicy,omitempty"`
 }
 
 // StageSpec configures one processing block in the ordered chain between
@@ -62,16 +82,17 @@ type ParserCfg struct {
 //
 // Messages that are dropped by any stage short-circuit the remaining chain.
 type StageSpec struct {
-	ID   string `json:"id"`   // client-generated, stable, unique in chain
-	Kind string `json:"kind"` // "filter" | "transform" | "rate-limit" | "dedup" | "schema"
+	Python *PythonRef `json:"python,omitempty"`
+	ID     string     `json:"id"`   // client-generated, stable, unique in chain
+	Kind   string     `json:"kind"` // "filter" | "transform" | "rate-limit" | "dedup" | "schema"
 
 	// Kind == "filter"
-	Type       string `json:"type,omitempty"`       // "cel" (only type today); no default — empty/unknown = error
-	Expression string `json:"expression,omitempty"` // cel-specific
+	Type       string `json:"type,omitempty"`       // "cel" | "regex"; empty/unknown = error
+	Expression string `json:"expression,omitempty"` // CEL expression or RE2 regular expression
 
 	// Kind == "transform"
 	TransformOp string `json:"transformOp,omitempty"` // "set" | "rename" | "remove"
-	Field       string `json:"field,omitempty"`       // target field (all ops)
+	Field       string `json:"field,omitempty"`       // transform target; regex input field (empty uses original raw frame)
 	NewField    string `json:"newField,omitempty"`    // "rename": destination field name
 	ValueExpr   string `json:"valueExpr,omitempty"`   // "set": CEL expression producing the new value (same fields/meta/raw env as filters)
 
@@ -88,9 +109,13 @@ type StageSpec struct {
 
 // SinkCfg describes the destination for passing messages.
 type SinkCfg struct {
-	Type    string `json:"type"`              // "nats" | "http" | "stdout"
-	URL     string `json:"url,omitempty"`     // NATS URL or HTTP base URL
-	Subject string `json:"subject,omitempty"` // NATS subject or HTTP path suffix
+	Labels     map[string]string `json:"labels,omitempty"` // Loki static stream labels.
+	Kubernetes *KubernetesTarget `json:"kubernetes,omitempty"`
+	Python     *PythonRef        `json:"python,omitempty"`
+	Type       string            `json:"type"`                // "nats" | "http" | "tcp" | "udp" | "aster" | "stdout"
+	URL        string            `json:"url,omitempty"`       // NATS URL or HTTP base URL
+	Subject    string            `json:"subject,omitempty"`   // NATS subject or HTTP path suffix
+	Delimiter  string            `json:"delimiter,omitempty"` // TCP/UDP: suffix appended to each payload; empty preserves bytes
 
 	// HTTP-specific (Type == "http")
 	Method      string            `json:"method,omitempty"`      // GET|POST|PUT|PATCH|DELETE; default POST
@@ -101,6 +126,9 @@ type SinkCfg struct {
 
 	// NATS-specific (Type == "nats")
 	NATSAuth *NATSAuth `json:"natsAuth,omitempty"` // nil = no auth (today's behavior)
+
+	// Aster-specific (Type == "aster"). URL must be literal loopback HTTP.
+	Aster *AsterCfg `json:"aster,omitempty"`
 
 	// When is an optional CEL expression (same fields/meta/raw env as filters)
 	// evaluated per-message to decide whether THIS sink should receive it.

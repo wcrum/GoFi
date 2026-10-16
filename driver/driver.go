@@ -20,7 +20,7 @@ import (
 type TapTarget struct {
 	// Local is the live pipeline tap, non-nil only for the in-process driver.
 	Local *pipeline.Tap
-	// Addr is a "host:port" the caller should reverse-proxy SSE requests to,
+	// Addr is a "host:port" the caller uses for ConnectRPC traffic streams,
 	// set only for remote drivers (Docker/Kubernetes).
 	Addr string
 }
@@ -54,6 +54,6 @@ type Driver interface {
 	// false if the listener is not found.
 	RuntimeStatus(ctx context.Context, name string) (RuntimeInfo, bool, error)
 	// Kind identifies the driver implementation (e.g. "inprocess", "docker",
-	// "kubernetes"), surfaced via /api/mode's driverKind field.
+	// "kubernetes"), surfaced by the GetMode RPC.
 	Kind() string
 }

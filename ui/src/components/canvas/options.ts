@@ -1,7 +1,7 @@
 // Select-option lists shared by the canvas NodeInspector (and formerly by
 // the now-deleted CreateListenerModal). Kept in one place so ingress/sink
 // forms always offer the same choices.
-import type { SelectOption } from '@cnak-us/design-system'
+import type { SelectOption } from '../primitives'
 
 export const NETWORK_OPTIONS: SelectOption[] = [
   { value: 'tcp', label: 'TCP' },
@@ -24,7 +24,12 @@ export const PARSER_OPTIONS: SelectOption[] = [
 export const SINK_OPTIONS: SelectOption[] = [
   { value: 'stdout', label: 'Stdout (debug)' },
   { value: 'nats', label: 'NATS' },
-  { value: 'http', label: 'HTTP POST' },
+  { value: 'http', label: 'HTTP' },
+  { value: 'tcp', label: 'TCP socket' },
+  { value: 'udp', label: 'UDP socket' },
+  { value: 'aster', label: 'Aster secure relay' },
+  { value: 'zenoh', label: 'Zenoh REST router' },
+  { value: 'loki', label: 'Grafana Loki' },
 ]
 
 export const HTTP_METHOD_OPTIONS: SelectOption[] = [

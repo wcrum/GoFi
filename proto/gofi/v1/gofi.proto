@@ -1,0 +1,241 @@
+syntax = "proto3";
+
+package gofi.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+
+// All GoFi management and live traffic operations use ConnectRPC. Kubernetes
+// Listener resources remain the durable, declarative configuration boundary.
+service GoFiService {
+  rpc ListListeners(ListListenersRequest) returns (ListListenersResponse);
+  rpc GetListener(GetListenerRequest) returns (GetListenerResponse);
+  rpc UpsertListener(UpsertListenerRequest) returns (UpsertListenerResponse);
+  rpc DeleteListener(DeleteListenerRequest) returns (DeleteListenerResponse);
+  rpc GetRuntimeStatus(GetRuntimeStatusRequest) returns (GetRuntimeStatusResponse);
+  rpc ListEndpoints(ListEndpointsRequest) returns (ListEndpointsResponse);
+  rpc ResolveTargets(ResolveTargetsRequest) returns (ResolveTargetsResponse);
+  rpc Replay(ReplayRequest) returns (ReplayResponse);
+  rpc GetConfiguration(GetConfigurationRequest) returns (GetConfigurationResponse);
+  rpc GetMode(GetModeRequest) returns (GetModeResponse);
+  rpc Simulate(SimulateRequest) returns (SimulateResponse);
+  // Empty name watches every configured listener over one connection. The
+  // inventory is refreshed continuously as listeners are added or replaced.
+  rpc WatchTraffic(WatchTrafficRequest) returns (stream WatchTrafficResponse);
+}
+
+message Listener {
+  string name = 1;
+  Source source = 2;
+  Framing framing = 3;
+  ParserConfig parser = 4;
+  repeated Stage stages = 5;
+  repeated Sink sinks = 6;
+  Sink dead_letter_sink = 7;
+  repeated TestCase test_cases = 8;
+}
+message Source {
+  int32 port = 1;
+  string network = 2;
+  ServiceExposure service = 3;
+  PythonRef python = 4;
+}
+message PythonRef { string library = 1; string function = 2; }
+message ServiceExposure {
+  string type = 1;
+  int32 port = 2;
+  int32 node_port = 3;
+}
+message Framing {
+  string mode = 1;
+  string delimiter = 2;
+  int32 prefix_len = 3;
+  int32 max_bytes = 4;
+}
+message ParserConfig {
+  string format = 1;
+  repeated string decoders = 2;
+  int32 max_decoded_bytes = 3;
+  string error_policy = 4;
+  PythonRef python = 5;
+}
+message Stage {
+  string id = 1;
+  string kind = 2;
+  string type = 3;
+  string expression = 4;
+  string transform_op = 5;
+  string field = 6;
+  string new_field = 7;
+  string value_expr = 8;
+  double max_per_second = 9;
+  string key_expr = 10;
+  string window = 11;
+  repeated string required_fields = 12;
+  PythonRef python = 13;
+}
+message KubernetesTarget {
+ string namespace = 1;
+ map<string,string> selector = 2;
+ int32 port = 3;
+}
+message Sink {
+  string type = 1;
+  string url = 2;
+  string subject = 3;
+  string delimiter = 4;
+  string method = 5;
+  map<string, string> headers = 6;
+  string content_type = 7;
+  string body_mode = 8;
+  HTTPAuth auth = 9;
+  NATSAuth nats_auth = 10;
+  AsterConfig aster = 11;
+  string when = 12;
+  KubernetesTarget kubernetes = 14;
+  PythonRef python = 13;
+  map<string,string> labels = 15;
+}
+message HTTPAuth {
+  string type = 1;
+  string token = 2;
+  string username = 3;
+  string password = 4;
+  string header_name = 5;
+  string api_key = 6;
+}
+message NATSAuth {
+  string username = 1;
+  string password = 2;
+  string token = 3;
+  string nkey_seed = 4 [json_name = "nkeySeed"];
+  string creds = 5;
+  string tls_cert = 6;
+  string tls_key = 7;
+  string tls_ca = 8;
+  bool insecure_skip_verify = 9;
+}
+message AsterConfig {
+  string topic = 1;
+  string scope = 2;
+  string priority = 3;
+  string logical_key = 4;
+  string logical_key_field = 5;
+  string token = 6;
+  string token_file = 7;
+  int32 timeout_seconds = 8;
+}
+message TestCase {
+  string id = 1;
+  string name = 2;
+  string raw = 3;
+}
+message RuntimeInfo {
+  string kind = 1;
+  string id = 2;
+  string status = 3;
+  google.protobuf.Timestamp started_at = 4;
+  string node = 5;
+  string ip = 6 [json_name = "ip"];
+}
+message Endpoint {
+  string name = 1;
+  string namespace = 2;
+  string kind = 3;
+  string type = 4;
+  string host = 5;
+  string cluster_ip = 6 [json_name = "clusterIP"];
+  repeated string external_addresses = 7;
+  repeated EndpointPort ports = 8;
+  map<string,string> labels = 9;
+  bool ready = 10;
+}
+message EndpointPort {
+  string name = 1;
+  int32 port = 2;
+  string protocol = 3;
+  int32 node_port = 4;
+  string url = 5;
+}
+message Configuration {
+  string source = 1;
+  string api_version = 2;
+  string kind = 3;
+  string namespace = 4;
+  string path = 5;
+}
+message TrafficEvent {
+  string ts = 1;
+  bool dropped = 2;
+  string dropped_by = 3;
+  google.protobuf.Struct fields = 4;
+  map<string, string> meta = 5;
+  string raw = 6;
+}
+message StageTrace {
+  string id = 1;
+  string kind = 2;
+  string type = 3;
+  bool pass = 4;
+  string error = 5;
+  string note = 6;
+  google.protobuf.Struct fields = 7;
+}
+message SinkOutcome {
+  int32 index = 1;
+  string type = 2;
+  bool sent = 3;
+  string reason = 4;
+}
+message SimulateResult {
+  string parse_error = 1;
+  google.protobuf.Struct parsed_fields = 2;
+  repeated StageTrace stages = 3;
+  bool dropped = 4;
+  string dropped_by = 5;
+  bool dead_letter = 6;
+  repeated SinkOutcome sinks = 7;
+}
+
+message ListListenersRequest {}
+message ListListenersResponse { repeated Listener listeners = 1; }
+message GetListenerRequest { string name = 1; }
+message GetListenerResponse { Listener listener = 1; }
+message UpsertListenerRequest { Listener listener = 1; }
+message UpsertListenerResponse { Listener listener = 1; }
+message DeleteListenerRequest { string name = 1; }
+message DeleteListenerResponse {}
+message GetRuntimeStatusRequest { string name = 1; }
+message GetRuntimeStatusResponse { RuntimeInfo runtime = 1; }
+message ListEndpointsRequest {}
+message ListEndpointsResponse { repeated Endpoint endpoints = 1; }
+message GetConfigurationRequest {}
+message GetConfigurationResponse { Configuration configuration = 1; }
+message GetModeRequest {}
+message GetModeResponse {
+  string mode = 1;
+  string process_role = 2;
+  string driver_kind = 3;
+}
+message SimulateRequest {
+  Listener listener = 1;
+  string raw = 2;
+}
+message SimulateResponse { SimulateResult result = 1; }
+message WatchTrafficRequest { string name = 1; }
+message WatchTrafficResponse {
+  string listener = 1;
+  TrafficEvent event = 2;
+  bool heartbeat = 3;
+}
+
+
+message ResolveTargetsRequest { KubernetesTarget target = 1; string network = 2; }
+message ResolveTargetsResponse { repeated Endpoint endpoints = 1; }
+// Replay transmits exactly raw, including any framing bytes, to a direct URL
+// or every ready Pod in a selector. It does not alter Listener resources.
+message ReplayRequest { KubernetesTarget target = 1; string network = 2; string url = 3; bytes raw = 4; }
+message ReplayDelivery { Endpoint endpoint = 1; bool sent = 2; string error = 3; }
+message ReplayResponse { repeated ReplayDelivery deliveries = 1; }

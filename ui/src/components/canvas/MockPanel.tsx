@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Edge } from '@xyflow/react'
-import { PanelHeader, Input, Spinner, Badge } from '@cnak-us/design-system'
+import { PanelHeader, Input, Spinner, Badge } from '../primitives'
 import { useToast } from '../Toast'
 import { RiPlayLine, RiDeleteBinLine, RiAddLine, RiMagicLine } from 'react-icons/ri'
 import type { SimulateResult, TestCase } from '../../types'
@@ -189,7 +189,7 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
 
   return (
     <aside className="w-80 shrink-0 border-l border-g-border-weak bg-g-primary flex flex-col overflow-y-auto">
-      <PanelHeader title="Mock" onClose={onClose} />
+      <PanelHeader title="Test flow" onClose={onClose} />
 
       <div className="p-4 space-y-4">
         {/* Test case list */}
@@ -282,7 +282,7 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
             <button
               onClick={handlePlay}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium bg-g-accent-main text-white hover:bg-g-accent-main/90 disabled:opacity-50 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded text-sm font-medium bg-g-accent-main text-white hover:bg-g-accent-main/90 disabled:opacity-50 transition-colors"
             >
               <RiPlayLine /> {loading ? 'Running…' : 'Play'}
             </button>

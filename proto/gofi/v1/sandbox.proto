@@ -1,0 +1,76 @@
+syntax = "proto3";
+package gofi.v1;
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+import "google/protobuf/struct.proto";
+
+// Sandboxes are durable Python function libraries executed in separate workers.
+service SandboxService {
+ rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse);
+ rpc GetSandbox(GetSandboxRequest) returns (GetSandboxResponse);
+ rpc ApplySandbox(ApplySandboxRequest) returns (ApplySandboxResponse);
+ rpc DeleteSandbox(DeleteSandboxRequest) returns (DeleteSandboxResponse);
+ rpc ListFunctions(ListLibraryFunctionsRequest) returns (ListLibraryFunctionsResponse);
+ rpc FormatSource(FormatSourceRequest) returns (FormatSourceResponse);
+ rpc ValidateSource(ValidateSourceRequest) returns (ValidateSourceResponse);
+ rpc RunFunction(RunFunctionRequest) returns (RunFunctionResponse);
+}
+message SandboxDefinition { string name=1; string source_code=2; int32 timeout_seconds=3; int32 memory_mib=4; }
+message SandboxStatus { string name=1; string phase=2; string error=3; }
+message ListSandboxesRequest {}
+message ListSandboxesResponse { repeated SandboxDefinition sandboxes=1; repeated SandboxStatus statuses=2; }
+message GetSandboxRequest { string name=1; }
+message GetSandboxResponse { SandboxDefinition sandbox=1; SandboxStatus status=2; }
+message ApplySandboxRequest { SandboxDefinition sandbox=1; }
+message ApplySandboxResponse { SandboxDefinition sandbox=1; SandboxStatus status=2; }
+message DeleteSandboxRequest { string name=1; }
+message DeleteSandboxResponse {}
+message ListLibraryFunctionsRequest { string library=1; }
+message LibraryFunction { string library=1; string name=2; string kind=3; string description=4; }
+message ListLibraryFunctionsResponse { repeated LibraryFunction functions=1; }
+
+// WorkerService is private: the supervisor supplies authentication metadata.
+service WorkerService {
+ rpc ListFunctions(WorkerListFunctionsRequest) returns (WorkerListFunctionsResponse);
+ rpc Invoke(WorkerInvokeRequest) returns (WorkerInvokeResponse);
+ rpc Listen(WorkerListenRequest) returns (stream WorkerListenResponse);
+ rpc FormatSource(WorkerFormatSourceRequest) returns (WorkerFormatSourceResponse);
+ rpc ValidateSource(WorkerValidateSourceRequest) returns (WorkerValidateSourceResponse);
+}
+message WorkerFunction { string name=1; string kind=2; string description=3; }
+message WorkerListFunctionsRequest {}
+message WorkerListFunctionsResponse { repeated WorkerFunction functions=1; }
+message WorkerInvokeRequest { string name=1; string kind=2; bytes raw=3; google.protobuf.Struct fields=4; google.protobuf.Struct meta=5; }
+message WorkerInvokeResponse { google.protobuf.Struct fields=1; optional bytes raw=2; bool drop=3; }
+message WorkerListenRequest { string name=1; }
+message WorkerListenResponse { bytes raw=1; google.protobuf.Struct fields=2; google.protobuf.Struct meta=3; }
+
+// Formatting and validation run only in the private tooling worker. They never
+// import or execute the submitted source in the controller or tooling worker.
+message SourceDiagnostic {
+ int32 line = 1;
+ int32 column = 2;
+ string code = 3;
+ string message = 4;
+}
+message FormatSourceRequest { string source = 1; }
+message FormatSourceResponse { string source = 1; }
+message ValidateSourceRequest { string source = 1; }
+message ValidateSourceResponse { bool valid = 1; repeated SourceDiagnostic diagnostics = 2; }
+message WorkerFormatSourceRequest { string source = 1; }
+message WorkerFormatSourceResponse { string source = 1; }
+message WorkerValidateSourceRequest { string source = 1; }
+message WorkerValidateSourceResponse { bool valid = 1; repeated SourceDiagnostic diagnostics = 2; }
+// RunFunction invokes a registered function in its saved library worker.
+message RunFunctionRequest {
+ string library = 1;
+ string name = 2;
+ string kind = 3;
+ bytes raw = 4;
+ google.protobuf.Struct fields = 5;
+ google.protobuf.Struct meta = 6;
+}
+message RunFunctionResponse {
+ google.protobuf.Struct fields = 1;
+ optional bytes raw = 2;
+ bool drop = 3;
+}

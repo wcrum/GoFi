@@ -1,5 +1,11 @@
 version: '3'
 
+env:
+  GOWORK: 'off'
+
+vars:
+  GOFI_IMAGE: '{{default "ghcr.io/wcrum/gofi:0.2.0" .GOFI_IMAGE}}'
+
 tasks:
   default:
     desc: Run the gofi server (with embedded UI)
@@ -23,10 +29,12 @@ tasks:
 
   docker:build:
     desc: Build the gofi Docker image
-    cmd: docker build --build-context designsystem=../cnak-design-system -t gofi:local .
+    cmd: docker build -t '{{.GOFI_IMAGE}}' .
 
   docker:up:
     desc: Build (if needed) and start gofi via Docker Compose
+    env:
+      GOFI_IMAGE: '{{.GOFI_IMAGE}}'
     cmd: docker compose up --build -d
 
   ui:dev:
@@ -42,4 +50,4 @@ tasks:
   ui:install:
     desc: Install UI dependencies
     dir: ui
-    cmd: npm install
+    cmd: npm ci

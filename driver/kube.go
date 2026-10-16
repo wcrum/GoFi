@@ -2,40 +2,93 @@ package driver
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/wcrum/gofi/functionrpc"
 	"github.com/wcrum/gofi/spec"
 )
 
-// Kube creates one bare Pod per ListenerDefinition using client-go — no
-// Deployment, no ConfigMap, no per-Pod Service.
+// Kube creates one bare Pod per ListenerDefinition, plus an optional
+// ClusterIP or NodePort Service when source.service is configured.
 //
 // Deliberately bare Pods, not Deployment+Service: a Deployment's own
 // ReplicaSet reconciler would fight GoFi's own controller.sync reconciler
 // over the same object (both would "want" to keep exactly one replica
-// alive, double-managing recreation on crash). A Service adds no value here
-// either — Pod IPs are already flat-routable cluster-internally, and the
-// controller already does a Get per tap request (see Tap below), so there's
-// no benefit to the extra indirection/DNS a Service would add.
+// alive, double-managing recreation on crash). Services provide stable DNS
+// and optional NodePort ingress; tap traffic still uses the private Pod IP.
 //
 // The spec is injected directly as a Pod env var (LISTENER_SPEC), not via a
 // ConfigMap — a ConfigMap per listener would be one more object for the
 // controller to garbage-collect in lockstep with the Pod, for no benefit
 // over an inline env var.
 type Kube struct {
-	cs        kubernetes.Interface
-	namespace string
-	image     string
+	cs          kubernetes.Interface
+	namespace   string
+	image       string
+	podTemplate ListenerPodTemplate
+}
+
+// ListenerPodTemplate adds operator-supplied protocol sidecars and their
+// volumes to each listener Pod. Use per-Pod ephemeral volumes for state;
+// a shared ReadWriteOnce claim cannot safely back independent listeners.
+type ListenerPodTemplate struct {
+	Containers   []corev1.Container   `json:"containers,omitempty"`
+	Volumes      []corev1.Volume      `json:"volumes,omitempty"`
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"` // mounted into the main GoFi listener
+	Env          []corev1.EnvVar      `json:"env,omitempty"`          // added to the main listener, never overrides LISTENER_SPEC
+}
+
+func parseListenerPodTemplate(raw string) (ListenerPodTemplate, error) {
+	var template ListenerPodTemplate
+	if raw == "" {
+		return template, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&template); err != nil {
+		return template, fmt.Errorf("GOFI_LISTENER_POD_TEMPLATE: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return template, fmt.Errorf("GOFI_LISTENER_POD_TEMPLATE: expected a single JSON object")
+	}
+	names := map[string]bool{"gofi-listener": true}
+	for _, c := range template.Containers {
+		if c.Name == "" || c.Image == "" || names[c.Name] {
+			return template, fmt.Errorf("GOFI_LISTENER_POD_TEMPLATE: sidecars require unique names and an explicit image")
+		}
+		names[c.Name] = true
+	}
+	names = map[string]bool{}
+	for _, v := range template.Volumes {
+		if v.Name == "" || names[v.Name] {
+			return template, fmt.Errorf("GOFI_LISTENER_POD_TEMPLATE: volume names must be unique and nonempty")
+		}
+		names[v.Name] = true
+	}
+	for _, e := range template.Env {
+		if e.Name == "LISTENER_SPEC" || e.Name == "GOFI_K8S_NAMESPACE" || e.Name == "GOFI_PYTHON_BINDINGS" {
+			return template, fmt.Errorf("GOFI_LISTENER_POD_TEMPLATE: %s is reserved", e.Name)
+		}
+	}
+	return template, nil
 }
 
 // Labels applied to every Pod the Kubernetes driver creates. Namespaced
@@ -65,6 +118,10 @@ func NewKube(namespace, image string) (*Kube, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("kube driver: namespace could not be determined (GOFI_K8S_NAMESPACE or in-cluster serviceaccount namespace file)")
 	}
+	template, err := parseListenerPodTemplate(os.Getenv("GOFI_LISTENER_POD_TEMPLATE"))
+	if err != nil {
+		return nil, err
+	}
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("kube driver: in-cluster config: %w", err)
@@ -73,16 +130,35 @@ func NewKube(namespace, image string) (*Kube, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kube driver: clientset: %w", err)
 	}
-	return &Kube{cs: cs, namespace: namespace, image: image}, nil
+	return &Kube{cs: cs, namespace: namespace, image: image, podTemplate: template}, nil
 }
 
 // podName derives a stable, valid Pod name for a listener.
 func podName(name string) string {
-	return "gofi-listener-" + sanitizeName(name)
+	base := "gofi-listener-" + sanitizeName(name)
+	if len(base) > 63 {
+		sum := sha256.Sum256([]byte(name))
+		base = strings.TrimRight(base[:54], "-") + fmt.Sprintf("-%x", sum[:4])
+	}
+	return base
 }
 
 // Create starts a new bare Pod running the given listener definition.
 func (k *Kube) Create(ctx context.Context, def spec.ListenerDefinition) error {
+	if err := def.Source.Validate(); err != nil {
+		return err
+	}
+	sinks := append([]spec.SinkCfg(nil), def.Sinks...)
+	if def.DeadLetterSink != nil {
+		sinks = append(sinks, *def.DeadLetterSink)
+	}
+	for _, sink := range sinks {
+		if sink.Kubernetes != nil {
+			if err := k.validateTarget(sink.Kubernetes, sink.Type); err != nil {
+				return err
+			}
+		}
+	}
 	raw, err := json.Marshal(def)
 	if err != nil {
 		return fmt.Errorf("kube driver: marshal spec for %q: %w", def.Name, err)
@@ -98,24 +174,70 @@ func (k *Kube) Create(ctx context.Context, def spec.ListenerDefinition) error {
 			},
 		},
 		Spec: corev1.PodSpec{
+			AutomountServiceAccountToken: boolPtr(false),
+			SecurityContext:              &corev1.PodSecurityContext{RunAsNonRoot: boolPtr(true), RunAsUser: int64Ptr(65532), RunAsGroup: int64Ptr(65532), FSGroup: int64Ptr(65532), SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}},
 			// GoFi's own periodic resync (controller.Controller.Run), not
 			// Kubernetes, is the recreate path on crash — this keeps
 			// crashes visible instead of silently hidden by kubelet restarts.
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
-					Name:  "gofi-listener",
-					Image: k.image,
+					Name:            "gofi-listener",
+					Ports:           []corev1.ContainerPort{{Name: "metrics", ContainerPort: 9091, Protocol: corev1.ProtocolTCP}},
+					Image:           k.image,
+					SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: boolPtr(false), ReadOnlyRootFilesystem: boolPtr(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
+					Resources:       corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m"), corev1.ResourceMemory: resource.MustParse("64Mi")}, Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("512Mi")}},
 					Env: []corev1.EnvVar{
 						{Name: "LISTENER_SPEC", Value: string(raw)},
+						{Name: "GOFI_K8S_NAMESPACE", Value: k.namespace},
 					},
 				},
 			},
 		},
 	}
+	if def.UsesPython() {
+		bindings, err := functionrpc.Environment(ctx, def)
+		if err != nil {
+			return err
+		}
+		pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, corev1.EnvVar{Name: "GOFI_PYTHON_BINDINGS", Value: bindings})
+	}
+	for _, sidecar := range k.podTemplate.Containers {
+		pod.Spec.Containers = append(pod.Spec.Containers, *sidecar.DeepCopy())
+	}
+	for _, env := range k.podTemplate.Env {
+		pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, *env.DeepCopy())
+	}
+	for _, mount := range k.podTemplate.VolumeMounts {
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, *mount.DeepCopy())
+	}
+	for _, volume := range k.podTemplate.Volumes {
+		pod.Spec.Volumes = append(pod.Spec.Volumes, *volume.DeepCopy())
+	}
 
-	if _, err := k.cs.CoreV1().Pods(k.namespace).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+	created, err := k.cs.CoreV1().Pods(k.namespace).Create(ctx, pod, metav1.CreateOptions{})
+	if apierrors.IsAlreadyExists(err) {
+		old, getErr := k.cs.CoreV1().Pods(k.namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+		if getErr == nil && old.Labels[kubeLabelManaged] == "true" && (old.Status.Phase == corev1.PodFailed || old.Status.Phase == corev1.PodSucceeded) {
+			if err := k.Delete(ctx, def.Name); err != nil {
+				return err
+			}
+			created, err = k.cs.CoreV1().Pods(k.namespace).Create(ctx, pod, metav1.CreateOptions{})
+		}
+	}
+	if err != nil {
 		return fmt.Errorf("kube driver: create pod for %q: %w", def.Name, err)
+	}
+	err = k.reconcileService(ctx, def, created)
+	if err == nil {
+		err = k.reconcileTargetServices(ctx, def, created)
+	}
+	if err != nil {
+		// A partial create must be retryable by the controller.
+		if cleanupErr := k.cs.CoreV1().Pods(k.namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); cleanupErr != nil && !apierrors.IsNotFound(cleanupErr) {
+			return fmt.Errorf("%w; pod rollback: %v", err, cleanupErr)
+		}
+		return err
 	}
 	return nil
 }
@@ -128,6 +250,12 @@ func (k *Kube) Create(ctx context.Context, def spec.ListenerDefinition) error {
 // racing a new Create against it.
 func (k *Kube) Delete(ctx context.Context, name string) error {
 	pn := podName(name)
+	if err := k.deleteTargetServices(ctx, name); err != nil {
+		return err
+	}
+	if err := k.deleteService(ctx, name); err != nil {
+		return err
+	}
 
 	if err := k.cs.CoreV1().Pods(k.namespace).Delete(ctx, pn, metav1.DeleteOptions{}); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -174,6 +302,12 @@ func (k *Kube) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 		if !ok {
 			slog.Warn("kube driver: managed pod missing/invalid LISTENER_SPEC, skipping", "pod", pod.Name)
 			continue
+		}
+		if err := k.reconcileService(ctx, def, &pod); err != nil {
+			return nil, err
+		}
+		if err := k.reconcileTargetServices(ctx, def, &pod); err != nil {
+			return nil, err
 		}
 		out = append(out, def)
 	}
@@ -241,3 +375,110 @@ func (k *Kube) RuntimeStatus(ctx context.Context, name string) (RuntimeInfo, boo
 
 // Kind identifies this driver implementation.
 func (k *Kube) Kind() string { return "kubernetes" }
+
+func boolPtr(value bool) *bool    { return &value }
+func int64Ptr(value int64) *int64 { return &value }
+
+func (k *Kube) deleteService(ctx context.Context, name string) error {
+	svc, err := k.cs.CoreV1().Services(k.namespace).Get(ctx, podName(name), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if svc.Labels[kubeLabelManaged] != "true" || svc.Labels[kubeLabelListener] != name {
+		// Unrelated Services may happen to share the generated name when
+		// exposure is disabled. They are outside this driver's ownership.
+		return nil
+	}
+	err = k.cs.CoreV1().Services(k.namespace).Delete(ctx, svc.Name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func (k *Kube) reconcileService(ctx context.Context, def spec.ListenerDefinition, pod *corev1.Pod) error {
+	if def.Source.Service == nil {
+		return k.deleteService(ctx, def.Name)
+	}
+	cfg := def.Source.Service
+	port := cfg.Port
+	if port == 0 {
+		port = def.Source.Port
+	}
+	protocol := corev1.ProtocolTCP
+	if def.Source.Network == "udp" {
+		protocol = corev1.ProtocolUDP
+	}
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: k.namespace,
+			Labels:          map[string]string{kubeLabelManaged: "true", kubeLabelListener: def.Name},
+			OwnerReferences: []metav1.OwnerReference{{APIVersion: "v1", Kind: "Pod", Name: pod.Name, UID: pod.UID}}},
+		Spec: corev1.ServiceSpec{Type: corev1.ServiceType(cfg.Type),
+			Selector: map[string]string{kubeLabelManaged: "true", kubeLabelListener: def.Name},
+			Ports:    []corev1.ServicePort{{Name: "data", Protocol: protocol, Port: int32(port), TargetPort: intstr.FromInt(def.Source.Port), NodePort: int32(cfg.NodePort)}}},
+	}
+	services := k.cs.CoreV1().Services(k.namespace)
+	current, err := services.Get(ctx, desired.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = services.Create(ctx, desired, metav1.CreateOptions{})
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if current.Labels[kubeLabelManaged] != "true" || current.Labels[kubeLabelListener] != def.Name {
+		return fmt.Errorf("kube driver: service %q already exists and is unmanaged", desired.Name)
+	}
+	if cfg.Type == "NodePort" && cfg.NodePort == 0 && len(current.Spec.Ports) == 1 {
+		desired.Spec.Ports[0].NodePort = current.Spec.Ports[0].NodePort
+	}
+	// Preserve allocated IPs and admission/defaulted fields while restoring
+	// the declared routing fields on every periodic reconciliation.
+	current.Spec.Type = desired.Spec.Type
+	current.Spec.Selector = desired.Spec.Selector
+	current.Spec.Ports = desired.Spec.Ports
+	current.OwnerReferences = desired.OwnerReferences
+	_, err = services.Update(ctx, current, metav1.UpdateOptions{})
+	return err
+}
+
+func (k *Kube) Endpoints(ctx context.Context) ([]Endpoint, error) {
+	services, err := k.cs.CoreV1().Services(k.namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("kube driver: discover services: %w", err)
+	}
+	out := make([]Endpoint, 0, len(services.Items))
+	for _, svc := range services.Items {
+		host := svc.Name + "." + svc.Namespace + ".svc.cluster.local"
+		if svc.Spec.Type == corev1.ServiceTypeExternalName {
+			host = svc.Spec.ExternalName
+		}
+		e := Endpoint{Name: svc.Name, Namespace: svc.Namespace, Kind: "kubernetes", Type: string(svc.Spec.Type), Host: host, ClusterIP: svc.Spec.ClusterIP, Ports: []EndpointPort{}}
+		e.ExternalAddresses = append(e.ExternalAddresses, svc.Spec.ExternalIPs...)
+		for _, ingress := range svc.Status.LoadBalancer.Ingress {
+			if ingress.IP != "" {
+				e.ExternalAddresses = append(e.ExternalAddresses, ingress.IP)
+			}
+			if ingress.Hostname != "" {
+				e.ExternalAddresses = append(e.ExternalAddresses, ingress.Hostname)
+			}
+		}
+		for _, port := range svc.Spec.Ports {
+			protocol := string(port.Protocol)
+			if protocol == "" {
+				protocol = "TCP"
+			}
+			e.Ports = append(e.Ports, EndpointPort{Name: port.Name, Port: port.Port, Protocol: protocol, NodePort: port.NodePort, URL: strings.ToLower(protocol) + "://" + net.JoinHostPort(host, strconv.Itoa(int(port.Port)))})
+		}
+		out = append(out, e)
+	}
+	pods, err := k.podEndpoints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, pods...)
+	return out, nil
+}

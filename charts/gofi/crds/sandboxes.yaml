@@ -1,0 +1,44 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sandboxes.gofi.wcrum.dev
+spec:
+  group: gofi.wcrum.dev
+  scope: Namespaced
+  names:
+    plural: sandboxes
+    singular: sandbox
+    kind: Sandbox
+    listKind: SandboxList
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required: [sourceCode]
+              properties:
+                sourceCode:
+                  type: string
+                  minLength: 1
+                  maxLength: 65536
+                timeoutSeconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 30
+                  default: 5
+                memoryMib:
+                  type: integer
+                  minimum: 64
+                  maximum: 1024
+                  default: 128

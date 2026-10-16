@@ -20,3 +20,47 @@
   --xy-controls-button-border-color-default: var(--g-border-weak);
   --xy-background-pattern-dots-color-default: var(--g-border-medium);
 }
+
+/* React Flow's explicit dark mode must use the same GoFi surface tokens. */
+.react-flow.dark {
+  --xy-background-color: rgb(var(--g-canvas));
+  --xy-edge-stroke: var(--g-border-medium);
+  --xy-controls-button-background-color: rgb(var(--g-primary));
+  --xy-controls-button-background-color-hover: rgb(var(--g-secondary));
+  --xy-controls-button-color: rgb(var(--g-text-primary));
+  --xy-background-pattern-dots-color: var(--g-border-weak);
+}
+
+/* Idle panning and connection hit areas keep a stable cursor. */
+.react-flow .react-flow__pane,
+.gofi-flow-readonly .react-flow__edge,
+.gofi-flow-readonly .react-flow__edge-path,
+.gofi-flow-readonly .react-flow__edge-interaction,
+.gofi-flow-readonly .react-flow__handle,
+.gofi-flow-editor .react-flow__node.draggable,
+.gofi-flow-editor .react-flow__handle.connectionindicator { cursor: default; }
+.gofi-flow-editor .react-flow__edge,
+.gofi-flow-editor .react-flow__edge-path,
+.gofi-flow-editor .react-flow__edge-interaction { cursor: pointer; }
+.react-flow .react-flow__pane.dragging,
+.gofi-flow-editor .react-flow__node.dragging { cursor: grabbing; }
+.gofi-flow-editor .react-flow__handle.connectingfrom,
+.gofi-flow-editor .react-flow__handle.connectingto { cursor: crosshair; }
+.react-flow__edge-path,
+.react-flow__edge-interaction { transition: none; }
+
+/* Ports sit outside panel borders, above the stroke they connect to. */
+.react-flow__node { overflow: visible; }
+.react-flow__node .react-flow__handle {
+  z-index: 20;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgb(var(--g-canvas));
+  box-shadow: 0 0 0 2px rgb(var(--g-canvas));
+  background: rgb(var(--g-accent-main));
+}
+.react-flow__node .react-flow__handle-left { left: -2px; }
+.react-flow__node .react-flow__handle-right { right: -2px; }
+.react-flow__node .react-flow__handle-top { top: -2px; }
+.react-flow__node .react-flow__handle-bottom { bottom: -2px; }
+.react-flow__edge-textbg { fill-opacity: 1; }

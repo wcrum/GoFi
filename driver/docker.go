@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"github.com/wcrum/gofi/functionrpc"
 	"github.com/wcrum/gofi/spec"
 )
 
@@ -206,6 +208,13 @@ func (d *Docker) Create(ctx context.Context, def spec.ListenerDefinition) error 
 			labelManaged:  "true",
 		},
 	}
+	if def.UsesPython() {
+		bindings, err := functionrpc.Environment(ctx, def)
+		if err != nil {
+			return err
+		}
+		cfg.Env = append(cfg.Env, "GOFI_PYTHON_BINDINGS="+bindings)
+	}
 	hostCfg := &container.HostConfig{
 		NetworkMode: container.NetworkMode(d.network),
 		PortBindings: nat.PortMap{
@@ -219,13 +228,30 @@ func (d *Docker) Create(ctx context.Context, def spec.ListenerDefinition) error 
 		},
 	}
 
-	_, err = d.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
-	if err != nil && cerrdefs.IsConflict(err) {
-		slog.Warn("docker driver: stale container with conflicting name, removing and retrying", "name", name)
-		if rerr := d.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true}); rerr != nil && !cerrdefs.IsNotFound(rerr) {
-			return fmt.Errorf("docker driver: remove stale container %q: %w", name, rerr)
+	var networks *network.NetworkingConfig
+	if def.UsesPython() {
+		sandboxNetwork := os.Getenv("GOFI_SANDBOX_NETWORK")
+		if sandboxNetwork == "" {
+			sandboxNetwork = "gofi-sandbox"
 		}
-		_, err = d.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
+		networks = &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{d.network: {}, sandboxNetwork: {}}}
+	}
+	_, err = d.cli.ContainerCreate(ctx, cfg, hostCfg, networks, nil, name)
+	if err != nil && cerrdefs.IsConflict(err) {
+		existing, inspectErr := d.cli.ContainerInspect(ctx, name)
+		if inspectErr != nil && !cerrdefs.IsNotFound(inspectErr) {
+			return fmt.Errorf("docker driver: inspect conflicting container %q: %w", name, inspectErr)
+		}
+		if inspectErr == nil {
+			if !d.owns(existing, def.Name) {
+				return fmt.Errorf("docker driver: container name %q is already used by an unmanaged container or another deployment; refusing to remove it", name)
+			}
+			slog.Warn("docker driver: removing owned stale container and retrying", "name", name)
+			if rerr := d.cli.ContainerRemove(ctx, existing.ID, container.RemoveOptions{Force: true}); rerr != nil && !cerrdefs.IsNotFound(rerr) {
+				return fmt.Errorf("docker driver: remove stale container %q: %w", name, rerr)
+			}
+		}
+		_, err = d.cli.ContainerCreate(ctx, cfg, hostCfg, networks, nil, name)
 	}
 	if err != nil {
 		return fmt.Errorf("docker driver: create %q: %w", def.Name, err)
@@ -244,7 +270,19 @@ func (d *Docker) Create(ctx context.Context, def spec.ListenerDefinition) error 
 // a container name conflict.
 func (d *Docker) Delete(ctx context.Context, name string) error {
 	cn := containerName(name)
-
+	info, err := d.cli.ContainerInspect(ctx, cn)
+	if cerrdefs.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("docker driver: inspect before delete %q: %w", name, err)
+	}
+	if !d.owns(info, name) {
+		return fmt.Errorf("docker driver: refusing to delete container %q outside this deployment", cn)
+	}
+	// Act on the inspected ID so a concurrent rename/replacement cannot turn
+	// this request into deletion of an unrelated container with the same name.
+	cn = info.ID
 	timeoutSec := 5
 	if err := d.cli.ContainerStop(ctx, cn, container.StopOptions{Timeout: &timeoutSec}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("docker driver: stop %q: %w", name, err)
@@ -261,6 +299,7 @@ func (d *Docker) Delete(ctx context.Context, name string) error {
 func (d *Docker) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 	f := filters.NewArgs()
 	f.Add("label", labelManaged+"=true")
+	f.Add("network", d.network)
 
 	summaries, err := d.cli.ContainerList(ctx, container.ListOptions{All: false, Filters: f})
 	if err != nil {
@@ -277,6 +316,9 @@ func (d *Docker) List(ctx context.Context) ([]spec.ListenerDefinition, error) {
 		def, ok := decodeListenerSpec(info)
 		if !ok {
 			slog.Warn("docker driver: managed container missing/invalid LISTENER_SPEC, skipping", "container", s.ID)
+			continue
+		}
+		if !d.owns(info, def.Name) {
 			continue
 		}
 		out = append(out, def)
@@ -304,11 +346,27 @@ func decodeListenerSpec(info container.InspectResponse) (spec.ListenerDefinition
 	return spec.ListenerDefinition{}, false
 }
 
-// Tap returns the address of the listener's tap relay server. This is pure
-// string formatting (no I/O): Compose's per-project user-defined network
-// already gives embedded DNS-by-container-name, so the container's own name
-// is a routable hostname for any other container on the same network.
-func (d *Docker) Tap(_ context.Context, name string) (TapTarget, bool, error) {
+// owns verifies both the managed identity and the selected deployment network.
+func (d *Docker) owns(info container.InspectResponse, name string) bool {
+	if info.ContainerJSONBase == nil || info.ID == "" || info.Config == nil || info.Config.Labels[labelManaged] != "true" || info.Config.Labels[labelListener] != name || info.NetworkSettings == nil {
+		return false
+	}
+	_, attached := info.NetworkSettings.Networks[d.network]
+	return attached
+}
+
+// Tap resolves only a listener owned by this deployment's selected network.
+func (d *Docker) Tap(ctx context.Context, name string) (TapTarget, bool, error) {
+	info, err := d.cli.ContainerInspect(ctx, containerName(name))
+	if cerrdefs.IsNotFound(err) {
+		return TapTarget{}, false, nil
+	}
+	if err != nil {
+		return TapTarget{}, false, fmt.Errorf("docker driver: inspect tap %q: %w", name, err)
+	}
+	if !d.owns(info, name) {
+		return TapTarget{}, false, nil
+	}
 	return TapTarget{Addr: containerName(name) + ":" + tapRelayPort}, true, nil
 }
 
@@ -325,6 +383,9 @@ func (d *Docker) RuntimeStatus(ctx context.Context, name string) (RuntimeInfo, b
 		return RuntimeInfo{}, false, fmt.Errorf("docker driver: inspect %q: %w", name, err)
 	}
 
+	if !d.owns(info, name) {
+		return RuntimeInfo{}, false, nil
+	}
 	out := RuntimeInfo{Kind: "docker"}
 	if info.ContainerJSONBase != nil {
 		out.ID = info.ID
@@ -342,3 +403,29 @@ func (d *Docker) RuntimeStatus(ctx context.Context, name string) (RuntimeInfo, b
 
 // Kind identifies this driver implementation.
 func (d *Docker) Kind() string { return "docker" }
+
+// Endpoints lists running containers attached to the controller's network.
+// Only exposed or published ports are advertised; DNS names remain usable
+// directly for containers whose image does not document EXPOSE ports.
+func (d *Docker) Endpoints(ctx context.Context) ([]Endpoint, error) {
+	containers, err := d.cli.ContainerList(ctx, container.ListOptions{Filters: filters.NewArgs(filters.Arg("network", d.network))})
+	if err != nil {
+		return nil, fmt.Errorf("docker driver: discover endpoints: %w", err)
+	}
+	out := make([]Endpoint, 0, len(containers))
+	for _, c := range containers {
+		name := c.ID
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		e := Endpoint{Name: name, Kind: "docker", Type: "container", Host: name, Ports: []EndpointPort{}}
+		for _, port := range c.Ports {
+			e.Ports = append(e.Ports, EndpointPort{Port: int32(port.PrivatePort), Protocol: strings.ToUpper(port.Type), NodePort: int32(port.PublicPort), URL: port.Type + "://" + net.JoinHostPort(name, strconv.Itoa(int(port.PrivatePort)))})
+			if port.PublicPort != 0 && port.IP != "" {
+				e.ExternalAddresses = append(e.ExternalAddresses, port.IP)
+			}
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}

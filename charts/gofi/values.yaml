@@ -1,55 +1,57 @@
-# Default values for gofi.
-
 image:
   repository: ghcr.io/wcrum/gofi
-  tag: latest
+  tag: "0.2.0"
   pullPolicy: IfNotPresent
+sandboxImage:
+  repository: ghcr.io/wcrum/gofi-python
+  tag: "0.2.0"
 
-# IMPORTANT: replicaCount MUST stay at 1.
-# The GoFi controller keeps its reconciliation state (controller.Controller) in
-# memory only. There is no leader election, no shared/external state store, and
-# no work-sharding between replicas today, so running more than one replica
-# will cause multiple controllers to race to create/delete the same listener
-# Pods. Do not scale this deployment horizontally until the controller gains
-# real distributed-state support.
+# Exactly one active controller; persistent resources do not provide leader election.
 replicaCount: 1
-
 service:
   type: ClusterIP
   port: 9090
-
+  nodePort: null
+  annotations: {}
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
 serviceAccount:
-  # Whether a ServiceAccount should be created for the controller.
   create: true
-  # Name of the ServiceAccount to use. If not set and create is true, a name
-  # is generated using the fullname template.
   name: ""
-
 rbac:
-  # Whether to create the Role/RoleBinding the controller needs to manage
-  # listener Pods in its own namespace (see driver/kube.go).
   create: true
-
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
 resources:
   requests:
     cpu: 50m
     memory: 64Mi
   limits:
-    cpu: 250m
-    memory: 256Mi
-
-# Extra environment variables to add to the controller container, e.g. to
-# override tuning knobs. GOFI_DEPLOY_MODE is NOT configurable here - the
-# deployment template always sets it to "kubernetes" directly, since this
-# chart only ever runs the controller inside a Kubernetes cluster.
+    cpu: 500m
+    memory: 512Mi
+# Additional controller environment; chart-owned runtime variables are reserved.
 env: []
-# - name: SOME_EXTRA_VAR
-#   value: "some-value"
-
+# Applied independently to every listener Pod. Supply sidecar images explicitly.
+# Use per-Pod ephemeral volumes for state, not a shared ReadWriteOnce claim.
+listenerPodTemplate:
+  containers: []
+  volumes: []
+  volumeMounts: []
+  env: []
+# Initial Listener definitions, with name plus source/framing/parser/stages/sinks.
+# Helm owns these resources; kubectl-managed resources may be applied separately.
+listeners: []
 podAnnotations: {}
-
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}

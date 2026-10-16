@@ -1,40 +1,133 @@
-# gofi
+# GoFi Helm chart
 
-A Helm chart for the GoFi data-ingress controller.
+Installs the GoFi portal/controller, namespaced permissions, and the
+`Listener` CRD (`gofi.wcrum.dev/v1alpha1`). The default image is
+`ghcr.io/wcrum/gofi:0.2.0`.
 
-## Install
-
+```sh
+helm upgrade --install gofi ./charts/gofi --namespace gofi --create-namespace
+kubectl -n gofi port-forward svc/gofi 9090:9090
 ```
-helm install gofi ./charts/gofi
+
+Open `http://localhost:9090`. UDS deployments expose this Service through the
+admin tenant gateway and configure portal SSO in the companion UDS package.
+The standalone chart expects the operator to provide any required authentication.
+
+## Declarative flows
+
+Kubernetes mode persists portal edits to namespaced `Listener` resources and
+reconciles externally applied changes every 30 seconds. Controller restarts
+reload these resources. A resource's `metadata.name` identifies the listener;
+its `spec` contains the pipeline definition without a redundant `name`.
+
+```yaml
+apiVersion: gofi.wcrum.dev/v1alpha1
+kind: Listener
+metadata:
+  name: telemetry
+  namespace: gofi
+spec:
+  source:
+    port: 9000
+    network: tcp
+    service:
+      type: NodePort
+      nodePort: 31000
+  framing:
+    mode: line
+  parser:
+    format: json
+  stages:
+    - id: active
+      kind: filter
+      type: cel
+      expression: fields.active == true
+  sinks:
+    - type: tcp
+      url: tcp://receiver.apps.svc.cluster.local:9001
+      delimiter: "\n"
 ```
 
-## Values that matter
+The data path is `node:31000 → listener Service → listener Pod → receiver`.
+Source Services can use `ClusterIP` or `NodePort`; omitting `source.service`
+leaves ingress private to the listener Pod. Sink URLs address containers,
+Services, or other explicit destinations. Kubernetes selectors stay internal
+to GoFi. The portal discovers Services in the controller's own namespace,
+including NodePort and LoadBalancer addresses; other namespaces can be
+addressed explicitly by DNS if network policy permits.
 
-- `image.tag` - defaults to `latest`; pin this to a specific released tag for
-  anything other than local experimentation.
-- `replicaCount` - **must stay at `1`**. The controller keeps its
-  reconciliation state (`controller.Controller`) in memory only, with no
-  leader election or shared state store, so running more than one replica
-  will cause multiple controllers to race over the same listener Pods.
-- `rbac.create` - when `true` (default), installs a namespaced `Role` and
-  `RoleBinding` granting the controller's ServiceAccount permission to
-  `get`/`list`/`watch`/`create`/`delete` `pods` and `get` `pods/log` in its own
-  namespace. This anticipates the Kubernetes operator driver
-  (`driver/kube.go`), which will spawn one Pod per listener definition. If you
-  disable this, the operator driver will not be able to manage listener Pods.
-- `serviceAccount.create` / `serviceAccount.name` - controls whether a
-  ServiceAccount is created for the controller, or an existing one is used.
-- `service.port` - port for both the Service and the container's REST
-  API/embedded UI (default `9090`).
+For Helm-owned flows, supply the same `spec` plus `name` under the `listeners`
+values array. For independently managed flows, apply `Listener` YAML separately.
+Helm release values and external GitOps should have a single declared owner for
+each resource. Stage and sink objects preserve their fields in the CRD;
+source, framing, and parser settings have structural schemas.
 
-## Deployment mode
+## Controller and exposure settings
 
-This chart always sets `GOFI_DEPLOY_MODE=kubernetes` on the controller
-container, in addition to the standard in-cluster `KUBERNETES_SERVICE_HOST`
-env var Kubernetes sets automatically.
+- `replicaCount` is fixed at `1`. Upgrade strategy is `Recreate`; durable desired
+  state does not provide leader election between concurrent controllers.
+- `image.repository` and `image.tag` select both controller and listener images.
+- `service.type` supports `ClusterIP` (default), `NodePort`, and `LoadBalancer`.
+  Set `service.nodePort` for a fixed public portal port; `service.annotations`,
+  `service.loadBalancerIP`, and `service.loadBalancerSourceRanges` configure
+  controller Service exposure. Listener ingress is configured per flow instead.
+- `rbac.create` grants namespaced Pod lifecycle, Service lifecycle/discovery, and
+  Listener resource CRUD/watch access. No cluster-wide discovery permission is
+  installed. Set `serviceAccount.create/name` and `rbac.create=false` to provide
+  your own equivalent account and permissions.
+- Controller Pods run as UID/GID `65532`, drop Linux capabilities, use a read-only
+  root filesystem, and expose `/healthz` and `/readyz` probes. Listener Pods use
+  the same UID with no mounted Kubernetes API token.
+- `env` adds controller variables; chart-owned runtime/image/namespace variables
+  are reserved. `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, and
+  `affinity` configure the controller Pod.
 
-## Uninstall
+## Listener sidecars and mounted tokens
 
+`listenerPodTemplate` applies independently to every listener Pod. Its fields
+are `containers` (additional sidecars), `volumes`, `volumeMounts` (main GoFi
+container mounts), and `env` (main GoFi container environment). `LISTENER_SPEC`
+is reserved. Provide every sidecar image explicitly and ensure it supports the
+Pod's non-root security settings.
+
+```yaml
+listenerPodTemplate:
+  containers: [] # Supply your provider's agent image and configuration here.
+  volumes:
+    - name: aster-token
+      secret:
+        secretName: gofi-aster-token
+        defaultMode: 0440
+  volumeMounts:
+    - name: aster-token
+      mountPath: /run/secrets/aster
+      readOnly: true
+  env:
+    - name: GOFI_ASTER_TOKEN_FILE
+      value: /run/secrets/aster/token
 ```
-helm uninstall gofi
+
+Mount the same Secret into a provider sidecar as required by that provider.
+Stateful sidecars need independent state for each listener: use generic
+ephemeral or CSI ephemeral volumes for per-Pod claims. A shared ReadWriteOnce
+PVC is unsuitable for independent listener Pods. No provider image or storage
+claim is installed by default. See the repository's Aster integration guide
+for the loopback publish contract and agent setup.
+
+## Validation and upgrades
+
+```sh
+helm lint charts/gofi --strict
+helm template gofi charts/gofi --namespace gofi --include-crds
 ```
+
+Helm installs CRDs on initial installation and retains them during uninstall;
+it does not upgrade existing CRDs automatically. Apply the current CRD before
+an upgrade that changes its schema:
+
+```sh
+kubectl apply --server-side -f charts/gofi/crds/listeners.yaml
+helm upgrade gofi ./charts/gofi --namespace gofi
+```
+
+Removing the Helm release retains the CRD and its stored Listener resources.

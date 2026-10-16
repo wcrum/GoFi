@@ -65,7 +65,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
 
   return (
     <div
-      className={`pointer-events-auto flex items-start gap-2.5 min-w-64 max-w-sm px-3.5 py-3 rounded-lg border bg-g-secondary shadow-lg ${border}`}
+      className={`pointer-events-auto flex items-start gap-2.5 min-w-64 max-w-sm px-3.5 py-3 rounded border bg-g-secondary shadow-lg ${border}`}
     >
       <Icon className={`shrink-0 mt-0.5 text-base ${accent}`} />
       <span className="flex-1 text-sm text-g-text leading-snug">{toast.message}</span>

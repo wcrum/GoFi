@@ -1,6 +1,8 @@
 package pipeline
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/wcrum/gofi/filter"
@@ -66,10 +68,31 @@ func Simulate(def spec.ListenerDefinition, raw []byte) (*SimulateResult, error) 
 
 	msg := message.New(raw, def.Name, "mock")
 	result := &SimulateResult{}
+	if drop, hookErr := applySourceHook(context.Background(), def.Source.Python, msg); drop || hookErr != nil {
+		result.Dropped = true
+		result.DroppedBy = "listener"
+		msg.Meta["droppedBy"] = "listener"
+		if hookErr != nil {
+			result.ParseError = hookErr.Error()
+			msg.Meta["sourceError"] = hookErr.Error()
+		}
+		result.ParsedFields = cloneFields(msg.Fields)
+		result.DeadLetter = simulateDeadLetter(def.DeadLetterSink, msg)
+		return result, nil
+	}
 	if perr := pr.Parse(msg); perr != nil {
-		// Matches Pipeline.Run: a parse error is logged/reported but
-		// processing continues with whatever Fields got populated.
-		result.ParseError = perr.Error()
+		if !errors.Is(perr, parser.ErrRejected) {
+			result.ParseError = perr.Error()
+			msg.Meta["parseError"] = perr.Error()
+		}
+		if parser.ShouldDrop(def.Parser, perr) {
+			result.ParsedFields = cloneFields(msg.Fields)
+			result.Dropped = true
+			result.DroppedBy = "parser"
+			msg.Meta["droppedBy"] = result.DroppedBy
+			result.DeadLetter = simulateDeadLetter(def.DeadLetterSink, msg)
+			return result, nil
+		}
 	}
 	result.ParsedFields = cloneFields(msg.Fields)
 
@@ -92,7 +115,8 @@ func Simulate(def spec.ListenerDefinition, raw []byte) (*SimulateResult, error) 
 		if !pass {
 			result.Dropped = true
 			result.DroppedBy = s.ID
-			result.DeadLetter = def.DeadLetterSink != nil
+			msg.Meta["droppedBy"] = result.DroppedBy
+			result.DeadLetter = simulateDeadLetter(def.DeadLetterSink, msg)
 			return result, nil
 		}
 	}
@@ -125,4 +149,19 @@ func cloneFields(f map[string]interface{}) map[string]interface{} {
 		out[k] = v
 	}
 	return out
+}
+
+func simulateDeadLetter(cfg *spec.SinkCfg, msg *message.Message) bool {
+	if cfg == nil {
+		return false
+	}
+	if cfg.When == "" {
+		return true
+	}
+	program, err := filter.CompileCEL(cfg.When)
+	if err != nil {
+		return false
+	}
+	send, err := filter.EvalCELBool(program, msg)
+	return err == nil && send
 }

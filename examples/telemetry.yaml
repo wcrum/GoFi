@@ -1,0 +1,46 @@
+apiVersion: gofi.wcrum.dev/v1alpha1
+kind: Listener
+metadata:
+  name: telemetry
+spec:
+  source:
+    port: 7000
+    network: tcp
+    service:
+      type: NodePort
+      port: 7000
+      nodePort: 31080
+  framing:
+    mode: line
+    maxBytes: 1048576
+  parser:
+    format: json
+    decoders: [base64]
+    maxDecodedBytes: 1048576
+    errorPolicy: drop
+  stages:
+    - id: application
+      kind: filter
+      type: regex
+      field: app
+      expression: '^payments$'
+    - id: successful
+      kind: filter
+      type: cel
+      expression: '"status" in fields && fields["status"] >= 200 && fields["status"] < 300'
+  sinks:
+    - type: http
+      url: http://receiver.gofi.svc.cluster.local:8080
+      subject: events
+      method: POST
+      bodyMode: wrapped
+      when: 'fields["app"] == "payments"'
+  deadLetterSink:
+    type: stdout
+  testCases:
+    - id: accepted
+      name: Successful payment
+      raw: eyJhcHAiOiJwYXltZW50cyIsInN0YXR1cyI6MjAxLCJhbW91bnQiOjQyfQ==
+    - id: rejected
+      name: Payment error
+      raw: eyJhcHAiOiJwYXltZW50cyIsInN0YXR1cyI6NTAzfQ==

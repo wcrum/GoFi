@@ -1,0 +1,11 @@
+includes:
+  - create: https://raw.githubusercontent.com/defenseunicorns/uds-common/v1.32.0/tasks/create.yaml
+tasks:
+  - name: package
+    description: Build the upstream GoFi Zarf package
+    actions:
+      - cmd: uds zarf package create --flavor upstream --skip-sbom --confirm
+  - name: deploy
+    description: Deploy the built test bundle into the current UDS cluster
+    actions:
+      - cmd: uds deploy bundle/uds-bundle-gofi-test-*.tar.zst --confirm

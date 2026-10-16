@@ -14,7 +14,7 @@ func (s *stdoutSink) Send(msg *message.Message) error {
 		"fields": msg.Fields,
 		"meta":   msg.Meta,
 	}
-	data, err := json.MarshalIndent(out, "", "  ")
+	data, err := json.Marshal(out)
 	if err != nil {
 		return err
 	}

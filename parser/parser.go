@@ -15,14 +15,25 @@ type Parser interface {
 
 // New returns a Parser for the given config.
 func New(cfg spec.ParserCfg) (Parser, error) {
+	if cfg.MaxDecodedBytes < 0 {
+		return nil, fmt.Errorf("parser: maxDecodedBytes must not be negative")
+	}
+	if cfg.ErrorPolicy != "" && cfg.ErrorPolicy != "continue" && cfg.ErrorPolicy != "drop" {
+		return nil, fmt.Errorf("parser: unknown errorPolicy %q", cfg.ErrorPolicy)
+	}
+	var p Parser
 	switch cfg.Format {
+	case "python":
+		if err:=cfg.Python.Validate();err!=nil{return nil,err}
+		p=&pythonParser{ref:cfg.Python}
 	case "xml":
-		return &xmlParser{}, nil
+		p = &xmlParser{}
 	case "json":
-		return &jsonParser{}, nil
+		p = &jsonParser{}
 	case "none", "":
-		return &passthroughParser{}, nil
+		p = &passthroughParser{}
 	default:
 		return nil, fmt.Errorf("parser: unknown format %q", cfg.Format)
 	}
+	return withDecoders(p, cfg)
 }

@@ -82,3 +82,32 @@ func TestListener_StatefulStageSharedAcrossConnections(t *testing.T) {
 		t.Fatalf("expected exactly 1 message dropped by the shared rate-limit across connections, got %d", dropped)
 	}
 }
+
+func TestUDPDatagramsReachLiveTap(t *testing.T) {
+	l, err := New(spec.ListenerDefinition{Name: "udp-ingest", Source: spec.Source{Network: "udp"}, Framing: spec.Framing{Mode: "raw"}, Parser: spec.ParserCfg{Format: "json"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := l.Tap.Subscribe()
+	defer l.Tap.Unsubscribe(sub)
+	go l.Run(ctx)
+	conn, err := net.Dial("udp", l.packet.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.Write([]byte(`{"value":42}`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-sub:
+		if string(event.Msg.Raw) != `{"value":42}` {
+			t.Fatalf("got %s", event.Msg.Raw)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("UDP packet did not reach live tap")
+	}
+}

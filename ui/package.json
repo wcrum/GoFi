@@ -6,23 +6,36 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types --test src/*.test.mjs src/components/canvas/*.test.mjs",
+    "prebuild": "node scripts/copy-grafana-assets.mjs",
+    "predev": "node scripts/copy-grafana-assets.mjs"
   },
   "dependencies": {
-    "@cnak-us/design-system": "file:../../cnak-design-system",
-    "@xyflow/react": "^12.11.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-icons": "^5.0.0"
+    "@bufbuild/protobuf": "^2.16.0",
+    "@connectrpc/connect": "^2.2.0",
+    "@connectrpc/connect-web": "^2.2.0",
+    "@grafana/data": "13.2.4",
+    "@grafana/ui": "13.2.4",
+    "@xyflow/react": "12.12.0",
+    "monaco-editor": "0.34.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-icons": "5.7.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "typescript": "~5.7.2",
-    "vite": "^6.1.0"
+    "@bufbuild/buf": "^1.74.0",
+    "@bufbuild/protoc-gen-es": "^2.16.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "postcss": "8.5.30",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

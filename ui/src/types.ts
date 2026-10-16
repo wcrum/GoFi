@@ -1,6 +1,10 @@
+export interface PythonFunctionRef { library: string; function: string }
+
 export interface Source {
+  python?: PythonFunctionRef
   port: number
   network: string
+  service?: { type: 'ClusterIP' | 'NodePort'; port?: number; nodePort?: number }
 }
 
 export interface Framing {
@@ -11,14 +15,19 @@ export interface Framing {
 }
 
 export interface ParserCfg {
+  python?: PythonFunctionRef
   format: string
+  decoders?: string[]
+  maxDecodedBytes?: number
+  errorPolicy?: 'continue' | 'drop'
 }
 
 export interface StageSpec {
+  python?: PythonFunctionRef
   id: string
-  kind: 'filter' | 'transform' | 'rate-limit' | 'dedup' | 'schema'
+  kind: 'filter' | 'transform' | 'rate-limit' | 'dedup' | 'schema' | 'python'
   // kind === 'filter'
-  type?: string // 'cel' (only type today)
+  type?: string // 'cel' or 'regex'
   expression?: string
   // kind === 'transform'
   transformOp?: 'set' | 'rename' | 'remove'
@@ -55,7 +64,23 @@ export interface NATSAuth {
   insecureSkipVerify?: boolean
 }
 
+export interface AsterCfg {
+  topic: string
+  scope: string
+  priority?: 'routine' | 'priority' | 'immediate' | 'flash'
+  logicalKey?: string
+  logicalKeyField?: string
+  token?: string
+  tokenFile?: string
+  timeoutSeconds?: number
+}
+
+export interface KubernetesTarget { namespace?: string; selector: Record<string, string>; port: number }
+
 export interface SinkCfg {
+  labels?: Record<string, string>
+  kubernetes?: KubernetesTarget
+  python?: PythonFunctionRef
   type: string
   url?: string
   subject?: string
@@ -69,6 +94,8 @@ export interface SinkCfg {
   natsAuth?: NATSAuth
   // optional CEL expression; empty/absent = always send (fan-out); set = conditional (routing)
   when?: string
+  delimiter?: string
+  aster?: AsterCfg
 }
 
 export interface TestCase {
@@ -88,7 +115,7 @@ export interface ListenerDefinition {
   testCases?: TestCase[]
 }
 
-// --- Mock-mode simulation contract (POST /api/simulate) ---
+// --- Mock-mode simulation contract (GoFiService.Simulate) ---
 // Mirrors the backend's dry-run trace shape exactly. A Simulate call is
 // side-effect-free: it never dispatches to a real sink, so `sent` on a
 // SinkOutcome reflects only whether the sink *would* have received the

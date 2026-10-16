@@ -11,7 +11,7 @@ var embeddedUIRaw embed.FS
 
 // embeddedUI is the rooted filesystem for the built SPA.
 // If the ui/dist directory wasn't built yet, it will be empty and the
-// controller falls back to serving only the REST API.
+// controller falls back to serving only its ConnectRPC services.
 var embeddedUI fs.FS = embeddedUIRaw
 
 func init() {

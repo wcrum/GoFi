@@ -18,10 +18,23 @@ type Sink interface {
 // as the NATS connection name for observability.
 func New(cfg spec.SinkCfg, listenerName string) (Sink, error) {
 	switch cfg.Type {
+	case "python":
+		if err := cfg.Python.Validate(); err != nil {
+			return nil, err
+		}
+		return &pythonSink{ref: cfg.Python}, nil
 	case "nats":
 		return newNATS(cfg, listenerName)
+	case "loki":
+		return newLoki(cfg, listenerName)
+	case "zenoh":
+		return newZenoh(cfg)
 	case "http":
 		return newHTTP(cfg)
+	case "aster":
+		return newAster(cfg)
+	case "tcp", "udp":
+		return newNetwork(cfg, listenerName)
 	case "stdout", "":
 		return &stdoutSink{}, nil
 	default:

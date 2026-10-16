@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: gofi.wcrum.dev/v1alpha1
+    kind: Listener
+    metadata:
+      name: real-events
+      labels:
+        app.kubernetes.io/part-of: gofi-test
+    spec:
+      source:
+        port: 17000
+        network: tcp
+      framing:
+        mode: line
+        maxBytes: 1048576
+      parser:
+        format: json
+        errorPolicy: drop
+      stages:
+        - id: mark-observed
+          kind: transform
+          transformOp: set
+          field: observedBy
+          valueExpr: '"gofi"'
+      sinks:
+        - type: http
+          url: http://receiver:8080/events
+          method: POST
+          bodyMode: wrapped
+      deadLetterSink:
+        type: stdout

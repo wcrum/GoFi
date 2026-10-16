@@ -1,0 +1,20 @@
+domain: uds.dev
+gateway: admin
+service:
+  name: gofi
+  port: 9090
+selector:
+  app.kubernetes.io/name: gofi
+  app.kubernetes.io/instance: gofi
+  app.kubernetes.io/component: controller
+sso:
+  enabled: true
+  secretConfig:
+    name: gofi-sso
+  groups: {}
+# Only listener Services named gofi-listener-* may use NodePort.
+nodePort:
+  enabled: true
+# Add least-privilege data ingress/egress rules for your actual endpoints.
+# Use backend listener ports, not the allocated NodePort number.
+additionalNetworkAllow: []

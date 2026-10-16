@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Card, Badge } from '@cnak-us/design-system'
-import { RiDeleteBinLine, RiEyeLine, RiWifiLine, RiNodeTree } from 'react-icons/ri'
+import { Card, Badge, Button } from './primitives'
+import { RiDeleteBinLine, RiEyeLine, RiWifiLine, RiNodeTree, RiEditLine } from 'react-icons/ri'
+import { getRuntimeStatus, type RuntimeInfo } from '../api'
 import type { ListenerDefinition } from '../types'
 import { FRAMING_COLOR, PARSER_COLOR, SINK_COLOR, STAGE_KIND_COLOR } from './stageColors'
 
@@ -9,30 +10,19 @@ interface Props {
   onDelete: () => void
   onInspect: () => void
   onOpenCanvas: () => void
+  onEdit: () => void
 }
 
 const MAX_STAGE_BADGES = 3
 
-// Local, self-contained shape of GET /api/listeners/{name}/status — kept
-// inline here rather than in ../types since that file is owned elsewhere.
-interface RuntimeInfo {
-  kind: string
-  id?: string
-  status?: string
-  startedAt?: string
-  node?: string
-  ip?: string
-}
-
-export function ListenerCard({ def, onDelete, onInspect, onOpenCanvas }: Props) {
+export function ListenerCard({ def, onDelete, onInspect, onOpenCanvas, onEdit }: Props) {
   const stages = def.stages ?? []
   const sinks = def.sinks ?? []
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/listeners/${encodeURIComponent(def.name)}/status`)
-      .then((res) => (res.ok ? (res.json() as Promise<RuntimeInfo>) : null))
+    getRuntimeStatus(def.name)
       .then((info) => {
         if (!cancelled) setRuntime(info)
       })
@@ -58,27 +48,28 @@ export function ListenerCard({ def, onDelete, onInspect, onOpenCanvas }: Props) 
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
+          <Button fill="text" onClick={onEdit} title="Edit flow" aria-label={`Edit ${def.name}`} className="p-1.5 rounded text-g-text-secondary hover:text-g-accent-main hover:bg-g-hover"><RiEditLine /></Button>
+          <Button fill="text"
             onClick={onOpenCanvas}
             title="View pipeline"
             className="p-1.5 rounded text-g-text-secondary hover:text-g-accent-main hover:bg-g-hover transition-colors"
           >
             <RiNodeTree />
-          </button>
-          <button
+          </Button>
+          <Button fill="text"
             onClick={onInspect}
             title="Inspect live traffic"
             className="p-1.5 rounded text-g-text-secondary hover:text-g-accent-main hover:bg-g-hover transition-colors"
           >
             <RiEyeLine />
-          </button>
-          <button
+          </Button>
+          <Button fill="text"
             onClick={onDelete}
             title="Delete listener"
             className="p-1.5 rounded text-g-text-secondary hover:text-red-400 hover:bg-g-hover transition-colors"
           >
             <RiDeleteBinLine />
-          </button>
+          </Button>
         </div>
       </div>
 

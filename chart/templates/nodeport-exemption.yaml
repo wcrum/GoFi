@@ -1,0 +1,17 @@
+{{- if .Values.nodePort.enabled }}
+apiVersion: uds.dev/v1alpha1
+kind: Exemption
+metadata:
+  name: gofi-listener-nodeports
+  namespace: uds-policy-exemptions
+spec:
+  exemptions:
+    - title: GoFi listener NodePort endpoints
+      description: Explicit user-configured traffic ingress to GoFi pipelines; portal stays behind authenticated admin gateway
+      policies:
+        - DisallowNodePortServices
+      matcher:
+        namespace: {{ .Release.Namespace }}
+        name: "^gofi-listener-.*$"
+        kind: service
+{{- end }}

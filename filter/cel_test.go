@@ -319,3 +319,15 @@ func TestEnv_ReturnsSameInstanceEachCall(t *testing.T) {
 		t.Fatal("Env() should return the same lazily-initialized shared instance")
 	}
 }
+
+func TestPredicateRejectsStaticallyNonBooleanResult(t *testing.T) {
+	if _, err := CompilePredicate("123"); err == nil {
+		t.Fatal("non-boolean condition accepted")
+	}
+	if _, err := CompilePredicate(`fields["enabled"]`); err != nil {
+		t.Fatalf("dynamic field condition rejected: %v", err)
+	}
+	if _, err := CompilePredicate(`fields["status"] > 200`); err != nil {
+		t.Fatalf("boolean comparison rejected: %v", err)
+	}
+}
