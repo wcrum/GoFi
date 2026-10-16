@@ -75,7 +75,7 @@ library in `examples/python-library.py`.
 
 The editor's Format and Validate actions call generated worker RPC methods.
 Formatting uses pinned Ruff 0.17.1; validation uses Python AST parsing plus
-Ruff's syntax/undefined-name checks and verifies a GoFi decorator is present.
+Ruff's syntax/undefined-name checks. Saving a library separately requires a GoFi decorator.
 Requested source is never imported or executed by either action. Static
 validation does not resolve arbitrary third-party imports or establish that a
 function will succeed on every input. Run invokes the saved registered

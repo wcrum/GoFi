@@ -58,7 +58,7 @@ export function StageNode({ data, selected }: NodeProps<StageNodeType>) {
   return (
     <Card
       padding="sm"
-      className={`w-56 !bg-g-secondary ${ringClass}`}
+      className={`w-56 ${ringClass}`}
     >
       <Handle type="target" position={Position.Left} />
 

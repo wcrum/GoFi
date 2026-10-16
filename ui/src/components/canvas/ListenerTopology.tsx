@@ -4,12 +4,13 @@ import { RiArrowRightLine, RiCodeSSlashLine, RiFilterLine, RiServerLine, RiWifiL
 import type { ListenerDefinition } from '../../types'
 import { streamAllListeners } from '../../api'
 import { listenersToTopology, type ListenerObservation, type TopologyNode } from './topology'
+import { Card } from '../primitives'
 import './flow-theme.css'
 
 function OverviewNode({ data }: NodeProps<TopologyNode>) {
   const Icon = data.role === 'listener' ? RiWifiLine : data.role === 'decode' ? RiCodeSSlashLine : data.role === 'stage' ? RiFilterLine : RiServerLine
   return (
-    <div className={`w-56 h-44 rounded border border-g-border-medium bg-g-primary shadow-sm flex flex-col ${data.role === 'listener' ? 'border-l-2 border-l-g-accent-main' : ''}`}>
+    <Card padding="none" className="w-56 h-44 shadow-sm flex flex-col" style={data.role === 'listener' ? { borderLeft: '2px solid rgb(var(--g-accent-main))' } : undefined}>
       {data.role !== 'listener' && <Handle type="target" position={Position.Left} />}
       <div className="p-3 flex-1 min-h-0 overflow-hidden">
         <div className="flex items-center gap-2 text-xs text-g-text-secondary"><Icon className={data.role === 'decode' ? 'text-purple-300' : 'text-g-accent-main'} /><span>{data.role === 'listener' ? 'Listener' : data.role === 'destination' ? 'Destination' : data.role === 'decode' ? 'Decoding' : 'Processing'}</span></div>
@@ -19,7 +20,7 @@ function OverviewNode({ data }: NodeProps<TopologyNode>) {
       {data.observation && <div className="px-3 py-2 border-t border-g-border-weak text-[10px] text-g-text-secondary"><div className="flex justify-between"><span className={data.observation.state === 'connected' ? 'text-emerald-300' : 'text-amber-300'}>{data.observation.state === 'connected' ? 'Stream connected' : data.observation.state === 'connecting' ? 'Connecting stream…' : 'Stream reconnecting…'}</span><span className="font-mono tabular-nums">{data.observation.observed} observed</span></div><div className="mt-1 flex justify-between"><span>{data.observation.dropped} rejected</span><span>{data.observation.parseErrors} parse errors</span></div></div>}
       {data.role !== 'destination' && <Handle type="source" position={Position.Right} />}
       {data.hasDeadLetter && <Handle id="rejected" type="source" position={Position.Bottom} />}
-    </div>
+    </Card>
   )
 }
 const NODE_TYPES = { topology: OverviewNode }

@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/gofi.v1.': 'http://localhost:9090',
+      '/gofi.v1.': process.env.GOFI_API_PROXY ?? 'http://localhost:9090',
     },
   },
   build: {

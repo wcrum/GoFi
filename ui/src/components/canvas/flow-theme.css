@@ -1,34 +1,30 @@
 @import '@xyflow/react/dist/style.css';
 
-/* Theme React Flow's `--xy-*` custom properties with this repo's `g-*`
- * design tokens. `g-*` tokens that are space-separated RGB triplets (meant
- * for `rgb(var(--g-x))`) are wrapped accordingly; tokens that are already
- * full color values (e.g. --g-border-weak, an rgba(...) literal) are used
- * directly. Since `g-*` tokens already redefine themselves under `.dark`,
- * this requires zero extra dark-mode logic. */
+/* React Flow consumes the same root RGB-triplet palette as Tailwind and
+ * Grafana. View components share panel surfaces and border/radius tokens. */
 .react-flow {
   --xy-background-color-default: rgb(var(--g-canvas));
-  --xy-node-background-color-default: rgb(var(--g-secondary));
-  --xy-node-border-default: 1px solid var(--g-border-weak);
+  --xy-node-background-color-default: rgb(var(--g-primary));
+  --xy-node-border-default: 1px solid rgb(var(--g-border-weak));
   --xy-node-color-default: rgb(var(--g-text-primary));
-  --xy-edge-stroke-default: var(--g-border-medium);
+  --xy-edge-stroke-default: rgb(var(--g-border-medium));
   --xy-edge-stroke-selected-default: rgb(var(--g-accent-main));
   --xy-connectionline-stroke-default: rgb(var(--g-accent-main));
   --xy-handle-background-color-default: rgb(var(--g-accent-main));
   --xy-controls-button-background-color-default: rgb(var(--g-primary));
   --xy-controls-button-background-color-hover-default: rgb(var(--g-secondary));
-  --xy-controls-button-border-color-default: var(--g-border-weak);
-  --xy-background-pattern-dots-color-default: var(--g-border-medium);
+  --xy-controls-button-border-color-default: rgb(var(--g-border-weak));
+  --xy-background-pattern-dots-color-default: rgb(var(--g-border-medium));
 }
 
 /* React Flow's explicit dark mode must use the same GoFi surface tokens. */
 .react-flow.dark {
   --xy-background-color: rgb(var(--g-canvas));
-  --xy-edge-stroke: var(--g-border-medium);
+  --xy-edge-stroke: rgb(var(--g-border-medium));
   --xy-controls-button-background-color: rgb(var(--g-primary));
   --xy-controls-button-background-color-hover: rgb(var(--g-secondary));
   --xy-controls-button-color: rgb(var(--g-text-primary));
-  --xy-background-pattern-dots-color: var(--g-border-weak);
+  --xy-background-pattern-dots-color: rgb(var(--g-border-weak));
 }
 
 /* Idle panning and connection hit areas keep a stable cursor. */
@@ -64,3 +60,5 @@
 .react-flow__node .react-flow__handle-top { top: -2px; }
 .react-flow__node .react-flow__handle-bottom { bottom: -2px; }
 .react-flow__edge-textbg { fill-opacity: 1; }
+
+.react-flow__edge-textbg { rx: var(--gofi-radius); ry: var(--gofi-radius); }

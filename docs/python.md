@@ -40,6 +40,25 @@ spec:
         print(json.dumps(fields))
 ```
 
+The editor supports Python syntax highlighting, source formatting, validation
+with line/column diagnostics, and sample function execution. Format and Validate
+work before a library is saved: the supervisor starts a private fixed-source
+tooling worker and invokes its authenticated Ruff/AST tooling RPCs. Submitted
+editor source is parsed/formatted there and is never imported or executed for
+these operations. The private worker is not a public Sandbox or persisted source
+resource and is cleaned up during controller shutdown. Validation checks syntax
+and Ruff diagnostics without importing dependencies or verifying runtime function
+registration. A valid static result therefore does not replace Save and launch
+or a sample run.
+
+Run executes a registered function in the saved, ready library worker. Save and
+launch changed source before running it; draft edits are not silently executed.
+Choose a function kind and provide sample raw bytes, fields, and metadata. The
+result preserves returned fields, optional raw bytes (including an explicitly
+empty byte string), and a drop decision. Worker errors retain their structured
+Connect error codes. A Python sink run is a real function invocation, so it can
+perform the effects allowed inside its isolated worker.
+
 Watch the library's status before selecting a registered function in a flow.
 A saved definition can exist while its worker is starting or failed; persistence
 alone does not mean the function is available. The expanded source example is
@@ -144,3 +163,16 @@ GOFI_DOCKER_INTEGRATION=1 GOWORK=off go test ./sandbox -run '^TestDockerIsolated
 
 A completed local worker test does not establish a UDS or Kubernetes deployment;
 see [verification evidence](verification.md) for completed checks.
+
+
+To exercise the real outer editor RPCs against a running local controller and
+its rebuilt worker image:
+
+```sh
+PYTHONPATH=python python scripts/verify_python_tools.py --api http://127.0.0.1:9090
+```
+
+This creates and removes a uniquely named test library. It checks formatting,
+syntax diagnostics, non-execution during static tooling, sample results, explicit
+rejection, and function-kind errors. The script's completion is separate from
+unit-test evidence and must be recorded only after it has actually run.

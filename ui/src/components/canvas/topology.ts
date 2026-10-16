@@ -67,7 +67,7 @@ export function listenersToTopology(listeners: ListenerDefinition[]): { nodes: T
       id: `${prefix}:edge:${edges.length}`, source, sourceHandle: deadLetter ? 'rejected' : undefined, target, type: 'smoothstep', label,
       data: { listenerName: listener.name, deadLetter, observedIngress: source === ingress && target === decode },
       style: deadLetter ? { strokeDasharray: '5 5' } : undefined,
-      labelStyle: { fill: '#96a8be', fontSize: 10 }, labelBgStyle: { fill: '#0f1a2a', fillOpacity: 1 }, labelBgPadding: [6, 4], labelBgBorderRadius: 4,
+      labelStyle: { fill: 'rgb(var(--g-text-secondary))', fontSize: 10 }, labelBgStyle: { fill: 'rgb(var(--g-primary))', fillOpacity: 1 }, labelBgPadding: [6, 4],
     })
     connect(ingress, decode)
     let terminal = decode

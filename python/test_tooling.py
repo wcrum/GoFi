@@ -38,10 +38,9 @@ class ToolingTest(unittest.TestCase):
             self.assertTrue(result.valid, result.diagnostics)
             self.assertFalse(sentinel.exists())
 
-    def test_requires_registered_function_and_bounds_source(self):
+    def test_accepts_generic_python_and_bounds_source(self):
         result = asyncio.run(self.worker.validate_source(WorkerValidateSourceRequest(source="x = 1\n"), self.ctx))
-        self.assertFalse(result.valid)
-        self.assertEqual(result.diagnostics[0].code, "GOFI001")
+        self.assertTrue(result.valid)
         from connectrpc.errors import ConnectError
         with self.assertRaises(ConnectError):
             asyncio.run(self.worker.format_source(WorkerFormatSourceRequest(source="x" * 65537), self.ctx))

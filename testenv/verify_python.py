@@ -1,5 +1,6 @@
 """Exercise durable library CRUD, function discovery, and a real Python pipeline."""
 import json
+import base64
 import os
 import socket
 import time
@@ -41,6 +42,10 @@ try:
     functions = rpc("SandboxService", "ListFunctions", {"library": LIBRARY})["functions"]
     if {(item["name"], item["kind"]) for item in functions} != {("decode", "parser"), ("tag", "transformer")}:
         raise RuntimeError(f"wrong registry: {functions}")
+    run_input={"app":"run-function-check","status":201}
+    run = rpc("SandboxService","RunFunction",{"library":LIBRARY,"name":"decode","kind":"parser","raw":base64.b64encode(json.dumps(run_input).encode()).decode()})
+    if run.get("fields")!=run_input:
+        raise RuntimeError(f"RunFunction returned wrong parser output: {run}")
     listener = {"name": LISTENER, "source": {"port": 17001, "network": "tcp"}, "framing": {"mode": "line", "maxBytes": 1048576}, "parser": {"format": "python", "python": {"library": LIBRARY, "function": "decode"}, "errorPolicy": "drop"}, "stages": [{"id": "python-tag", "kind": "python", "python": {"library": LIBRARY, "function": "tag"}}], "sinks": [{"type": "http", "url": "http://receiver:8080/events", "bodyMode": "wrapped"}]}
     rpc("GoFiService", "UpsertListener", {"listener": listener})
     listener_created = True
@@ -68,7 +73,7 @@ try:
             if matching[-1]["fields"] != expected:
                 raise RuntimeError(f"wrong Python output: {matching[-1]}")
             verified = True
-            print(json.dumps({"verified": True, "libraryStatus": applied["status"], "registeredFunctions": functions, "sent": event, "received": matching[-1], "persistedRecordCount": records["count"]}, indent=2))
+            print(json.dumps({"verified": True, "libraryStatus": applied["status"], "registeredFunctions": functions, "runFunction": run, "sent": event, "received": matching[-1], "persistedRecordCount": records["count"]}, indent=2))
             break
         time.sleep(0.1)
     else:

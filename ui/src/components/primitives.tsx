@@ -12,8 +12,8 @@ const badgeColors = { gray: 'darkgrey', blue: 'blue', green: 'green', purple: 'p
 export function Badge({ text, color = 'gray', className = '' }: { text: string; color?: BadgeColor; className?: string }) {
   return <GrafanaBadge text={text} color={badgeColors[color]} className={className} />
 }
-export function Card({ padding = 'md', className = '', ...props }: HTMLAttributes<HTMLDivElement> & { padding?: 'sm' | 'md' | 'lg' }) {
-  return <PanelContainer {...props} className={`${padding === 'sm' ? 'p-3' : padding === 'lg' ? 'p-6' : 'p-4'} ${className}`} />
+export function Card({ padding = 'md', className = '', ...props }: HTMLAttributes<HTMLDivElement> & { padding?: 'none' | 'sm' | 'md' | 'lg' }) {
+  return <PanelContainer {...props} className={`${padding === 'none' ? 'p-0' : padding === 'sm' ? 'p-3' : padding === 'lg' ? 'p-6' : 'p-4'} ${className}`} />
 }
 export function Spinner({ size = '24px' }: { size?: string }) { return <span role="status" aria-label="Loading"><GrafanaSpinner size={size === '16px' ? 'md' : 'xl'} /></span> }
 export function Input({ className = '', size: _size, width: _width, ...props }: InputHTMLAttributes<HTMLInputElement>) {

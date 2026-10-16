@@ -99,3 +99,17 @@ its registered parser and transformer, attaches them to a separate Docker
 listener on port `17001`, sends one explicit TCP event, and checks the
 receiver's persisted `python: verified` output. It then removes only that
 temporary flow and library; the main `real-events` flow stays running.
+
+Editor tools can be checked independently before creating any saved library:
+
+```sh
+GOFI_TEST_PYTHON=/path/to/python-venv/bin/python python3 testenv/manage.py verify-tools
+```
+
+The selected virtual environment needs `python/requirements.txt`. This wraps
+the canonical `scripts/verify_python_tools.py` generated-client check. It
+formats and validates before saving a library, reports syntax diagnostics,
+verifies a top-level exception is not executed, then runs a temporary saved
+parser and tests explicit rejection and function-kind errors. Temporary public
+library resources are removed before exit. The separate Python flow check
+also exercises `RunFunction` and actual delivery to the durable receiver.

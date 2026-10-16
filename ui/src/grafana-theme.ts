@@ -1,23 +1,33 @@
 import { createTheme } from '@grafana/data'
 
-// Grafana owns control behavior and styling; GoFi supplies its established
-// palette and the same radius token used by the canvas and workspace surfaces.
-const radius = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gofi-radius')) || 4
+// index.css is the palette source for Grafana, the shell, and React Flow.
+const styles = getComputedStyle(document.documentElement)
+const color = (name: string) => `rgb(${styles.getPropertyValue(name).trim().split(/\s+/).join(',')})`
+const canvas = color('--g-canvas')
+const panel = color('--g-primary')
+const elevated = color('--g-secondary')
+const accent = color('--g-accent-main')
+const text = color('--g-text-primary')
+const weakBorder = color('--g-border-weak')
+const mediumBorder = color('--g-border-medium')
+const strongBorder = color('--g-border-strong')
+const hover = color('--g-hover')
+const radius = Number.parseInt(styles.getPropertyValue('--gofi-radius'))
 export const gofiTheme = createTheme({
   name: 'GoFi',
   colors: {
     mode: 'dark',
-    primary: { main: '#2ec1a6', text: '#2ec1a6', contrastText: '#0a121e' },
-    text: { primary: '#e7eef8', secondary: '#96a8be', disabled: '#64778f', link: '#2ec1a6' },
-    background: { canvas: '#0a121e', page: '#0a121e', primary: '#0f1a2a', secondary: '#142335', elevated: '#142335' },
-    border: { weak: '#24354a', medium: '#3a506a', strong: '#7087a2' },
-    action: { hover: '#1e3045', selected: '#1e3045', selectedBorder: '#2ec1a6' },
+    primary: { main: accent, text: accent, contrastText: canvas },
+    text: { primary: text, secondary: color('--g-text-secondary'), disabled: color('--g-text-disabled'), link: accent },
+    background: { canvas, page: canvas, primary: panel, secondary: elevated, elevated },
+    border: { weak: weakBorder, medium: mediumBorder, strong: strongBorder },
+    action: { hover, selected: hover, selectedBorder: accent },
   },
   shape: { borderRadius: radius, borderRadiusSm: radius, borderRadiusLg: radius },
-  typography: { fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  typography: { fontFamily: styles.fontFamily },
   components: {
-    input: { background: '#0a121e', borderColor: '#3a506a', borderHover: '#7087a2', text: '#e7eef8' },
-    panel: { background: '#0f1a2a', borderColor: '#24354a' },
-    dropdown: { background: '#142335' },
+    input: { background: canvas, borderColor: mediumBorder, borderHover: strongBorder, text },
+    panel: { background: panel, borderColor: weakBorder },
+    dropdown: { background: elevated },
   },
 })

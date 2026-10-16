@@ -8,8 +8,8 @@ complete. The local demo can lag source changes until the next successful build.
 
 - [ ] **UI-13 — One dashboard and live-flow theme.** Review `../cnak` read-only for shared shell/token patterns. Use the same GoFi navy/teal surfaces, typography, borders, spacing, controls, and radius across the overview, listener flow, editor, and inspector. Verify both views in the browser.
 - [ ] **PY-07 — Python formatting, validation, and Run.** Add editor actions backed by typed ConnectRPCs and isolated workers, with source diagnostics and invocation results. Formatting/validation must work before a library has been saved.
-- [ ] **UI-01 — Use a real component library.** Adopt `@grafana/ui` and its theme system for shared application components. Preserve GoFi's navy/teal identity; use Grafana's panel and control conventions. Keep the current left sidebar.
-- [ ] **UI-02 — Edit existing flows.** Add Edit, Save, and Cancel for an existing listener; retain its name and persist changes to its original resource. Polling must not reset an unsaved edit.
+- [x] **UI-01 — Use a real component library.** Adopted actual `@grafana/ui` components and its theme system. Official icon assets are bundled locally. Browser checks passed; navy/teal styling and the left sidebar are retained.
+- [x] **UI-02 — Edit existing flows.** Edit, Save, and Cancel retain the listener name and persist to its original resource. Browser checks verified unchanged save, cancel, and retaining unsaved edits through polling.
 - [ ] **PY-01 — Complete Python library integration.** Generated-RPC tests pass for a complete custom listener/parser/transformer/sink chain. Verify the saved-library portal journey against an actually launched worker.
 - [ ] **OBS-01 — Structured live traffic.** Use Grafana Explore/Loki-style log rows, predictable columns, expandable fields and metadata, and useful filtering.
 - [ ] **DEMO-01 — Replace the seeded demo with a real integration environment.** Run a real sender application → GoFi → persistent receiver, with explicit test requests and receiver-side verification. No continuous fake-data generator. Provide reproducible binary/container launch instructions and restart after checks pass.
@@ -39,6 +39,7 @@ complete. The local demo can lag source changes until the next successful build.
 - [x] **RPC-01 — Application backend uses ConnectRPC.** Typed Protobuf management, discovery, simulation, status, replay, and server-streaming traffic APIs; generated browser client. Legacy REST/SSE application routes retired. Health checks, static assets, and Prometheus scraping remain HTTP infrastructure endpoints.
 - [x] **RPC-02 — Internal traffic relay uses ConnectRPC.** Local/remote stream fan-in and cancellation were tested, including more than six listeners.
 - [x] **PY-02 — GoFi launches isolated workers.** Docker/Kubernetes worker backends with CPU/memory/deadline/output limits and restricted networking. Real Docker-to-generated-Connect parser integration passed. Kubernetes isolation has not been deployed/tested yet.
+- [x] **PY-08 — Preserve fresh flows during worker discovery.** Compare each remote listener's actual private bindings with the referenced ready workers. Library additions no longer restart every Python listener. Controller and Docker/Kubernetes environment-comparison race tests passed; final real-environment regression remains part of QA.
 - [x] **PY-03 — Decorator SDK.** `@gofi.port`, `@gofi.listener`, `@gofi.parser`, `@gofi.transformer`, and `@gofi.sink` register reusable functions. Python tests passed.
 - [ ] **PY-04 — Select library functions in the builder.** Custom listener hooks, parsers, transformer stages, and sinks must appear beside built-in choices and round-trip through saved Protobuf/resources. UI registry selectors are implemented; verify the complete launched-worker workflow.
 - [ ] **PY-05 — Library authoring.** Portal source editor, resource settings, save/launch, status, and delete; persist code in a local file or Sandbox CRD. Component and control RPCs are written; combined runtime verification pending.
@@ -59,9 +60,9 @@ complete. The local demo can lag source changes until the next successful build.
 
 ## Observability and final evidence
 
-- [ ] **OBS-02 — Single-line structured operational logs.** JSON slog and HTTP request logs; structured stdout sink; verify actual output.
-- [ ] **OBS-03 — Native Loki sink.** Push structured logs with labels/timestamps, bounded requests, authentication, and tested error handling.
-- [ ] **OBS-04 — Prometheus integration.** Controller/listener metrics and UDS monitor configuration. Distinguish observed processing/socket writes from downstream consumption.
+- [x] **OBS-02 — Single-line structured operational logs.** JSON slog and HTTP request logs, structured stdout sink, and JSON Python runtime logs implemented and tested. Arbitrary user-authored Python print output remains user controlled.
+- [x] **OBS-03 — Native Loki sink.** Native push payload, labels/timestamps, bounded requests, authentication, and error handling pass protocol tests. A production Loki deployment is not claimed.
+- [x] **OBS-04 — Prometheus integration.** Real controller/listener scrape targets and actual processing counters verified in Compose. UDS monitor resources render and validate locally; in-cluster deployment remains DEP-05.
 - [ ] **QA-01 — Final combined checks.** Go/race tests, Python tests, UI tests/build/audit, chart/CRD schemas, Zarf lint, rebuilt images, live demo, and screenshots.
 - [x] **TRACK-01 — Maintain this checklist.** Requests and corrections are recorded with evidence and remaining gates; keep updating as work proceeds.
 

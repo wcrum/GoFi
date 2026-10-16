@@ -2,6 +2,7 @@
 """Manage the explicit-request GoFi test environment without deleting its data."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -47,7 +48,7 @@ def stop():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "verify", "verify-python", "stop", "status"))
+    parser.add_argument("action", choices=("up", "verify", "verify-python", "verify-tools", "stop", "status"))
     action = parser.parse_args().action
     if action == "up":
         command(*COMPOSE, "up", "-d")
@@ -59,6 +60,9 @@ if __name__ == "__main__":
     elif action == "verify-python":
         ready()
         command("python3", str(ROOT / "testenv/verify_python.py"))
+    elif action == "verify-tools":
+        ready()
+        command(os.getenv("GOFI_TEST_PYTHON", "python3"), str(ROOT / "testenv/verify_tools.py"))
     elif action == "stop":
         stop()
     else:

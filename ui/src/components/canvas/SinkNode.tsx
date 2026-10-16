@@ -14,7 +14,7 @@ export function SinkNode({ data, selected, id }: NodeProps<SinkNodeType>) {
   return (
     <Card
       padding="sm"
-      className={`w-56 !bg-g-secondary ${isDeadLetter ? 'border-dashed border-orange-400/60' : ''} ${ringClass}`}
+      className={`w-56 ${isDeadLetter ? 'border-dashed border-orange-400/60' : ''} ${ringClass}`}
     >
       {/* Dead-letter node is intentionally edge-free — no target handle. */}
       {!isDeadLetter && <Handle type="target" position={Position.Left} />}

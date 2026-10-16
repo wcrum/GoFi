@@ -11,7 +11,7 @@ export function IngressNode({ data, selected }: NodeProps<IngressNodeType>) {
   return (
     <Card
       padding="sm"
-      className={`w-56 !bg-g-secondary ${ringClass}`}
+      className={`w-56 ${ringClass}`}
     >
       <div className="flex items-center gap-2 mb-2">
         <RiWifiLine className="text-g-accent-main shrink-0" />

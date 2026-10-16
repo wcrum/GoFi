@@ -3,6 +3,7 @@
 | Choice | Reason and limit |
 | --- | --- |
 | Preserve the sidebar and GoFi flow language | Tools stay on the left and traffic stays central. Grafana-inspired navigation and dark surfaces refine the theme without replacing the product's existing flow identity. |
+| Share one theme across dashboard and flow | The adjacent CNAK frontend uses semantic theme variables for the application shell, panels, and live-flow nodes. GoFi adopts that shared-token pattern while keeping its own navy/teal colors and actual Grafana components. Its build stays self-contained. |
 | All-listeners overview | Administrators can see ingress listeners and routes together, then focus on one pipeline. A single server stream avoids per-listener browser connection limits. |
 | ConnectRPC application boundary | One typed protobuf contract serves Go, browser, and Python clients, including server-streamed traffic. Static assets, health probes, and metrics retain ordinary HTTP semantics; external sink protocols retain their own APIs. |
 | Durable resources per deployment | Kubernetes uses namespaced Listener/Sandbox CRDs. Binary and Docker use atomic YAML files by default. The same declared application contract can move between deployments without requiring Kubernetes networking in a local binary. |

@@ -1,8 +1,8 @@
+import './index.css'
 import { StrictMode } from 'react'
 import { ThemeContext } from '@grafana/data'
 import { gofiTheme } from './grafana-theme'
 import { createRoot } from 'react-dom/client'
-import './index.css'
 import App from './App'
 import { ToastProvider } from './components/Toast'
 
