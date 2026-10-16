@@ -41,8 +41,20 @@ transformation and both Prometheus scrape targets up. A full Sandbox control-pla
 check created a temporary library and Docker listener, discovered registered
 functions, and persisted event `35d4d14e-d03d-471a-8de7-83a39578ae67` with the
 expected custom parser/transformer output. Temporary test resources were removed.
-The latter run preceded the binding-race fix; its startup delay has now been
-removed from the repeatable verification script.
+The latter run preceded the binding-race fix. After the final image refresh,
+baseline event `af5abe83-f7e3-4f8a-8da4-8f7e3b66e9b3` persisted with the expected
+transformation and both Prometheus targets up. Python event
+`d299dab8-cdc2-4e8f-be5d-401db896e129` persisted through the custom parser and
+transformer without the former startup settling delay. Receiver total reached
+four records; temporary test flow/library resources were removed.
+
+The final generated-client outer tooling check passed FormatSource,
+ValidateSource, source nonexecution, private worker visibility, RunFunction,
+explicit rejection, kind mismatch, and cleanup. Current local arm64 image
+indexes are main
+`sha256:b17e3c1873b5132e00bbb71afe4b8c9e549e005876abec59076a8e7f3453e924`
+and Python worker
+`sha256:afe55d6ad831935ac99e0a0448388e3b6bbf02e8aa614c4459c617ffd91ee838`.
 
 See [the test environment instructions](test-environment.md) for commands that
 send explicit, uniquely identified events and inspect receiver-side evidence.

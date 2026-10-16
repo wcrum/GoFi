@@ -12,7 +12,7 @@ complete. The local demo can lag source changes until the next successful build.
 - [x] **UI-02 — Edit existing flows.** Edit, Save, and Cancel retain the listener name and persist to its original resource. Browser checks verified unchanged save, cancel, and retaining unsaved edits through polling.
 - [ ] **PY-01 — Complete Python library integration.** Generated-RPC tests pass for a complete custom listener/parser/transformer/sink chain. Verify the saved-library portal journey against an actually launched worker.
 - [ ] **OBS-01 — Structured live traffic.** Use Grafana Explore/Loki-style log rows, predictable columns, expandable fields and metadata, and useful filtering.
-- [ ] **DEMO-01 — Replace the seeded demo with a real integration environment.** Run a real sender application → GoFi → persistent receiver, with explicit test requests and receiver-side verification. No continuous fake-data generator. Provide reproducible binary/container launch instructions and restart after checks pass.
+- [x] **DEMO-01 — Replace the seeded demo with a real integration environment.** Real sender application → GoFi → persistent receiver and Prometheus run on ports 19080/19090/19081/19094. Explicit baseline and Python pipeline events passed receiver-side verification after the final image refresh. No continuous fake-data generator is running. Reproducible lifecycle instructions are documented.
 
 ## Product and deployment
 

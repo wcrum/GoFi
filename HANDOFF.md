@@ -3,8 +3,9 @@
 Checkpoint requested by the user on 2026-10-16. Stop ongoing feature work at this
 point and use this document plus [TODO.md](TODO.md) to resume. Preserve the
 user's existing changes and commits. The broad implementation is in commit
-`2f698b4` (`feat: uds package, connectrpc, other things`); the following checkpoint
-captures the additional theme refinements, tests, and handoff documentation.
+`2f698b4` (`feat: uds package, connectrpc, other things`); `2b0f711`
+(`feat: continued work`) captures the additional theme refinements and tests.
+The following checkpoint records final runtime evidence and handoff details.
 
 ## Run and inspect
 
@@ -93,6 +94,25 @@ GoFi functions. Check the image status below before interpreting smoke results.
 See [docs/verification.md](docs/verification.md) for measured evidence and
 [docs/security-scan.md](docs/security-scan.md) for the non-green dependency scans.
 
+Current local arm64 image indexes:
+
+- `ghcr.io/wcrum/gofi:0.2.0`:
+  `sha256:b17e3c1873b5132e00bbb71afe4b8c9e549e005876abec59076a8e7f3453e924`
+- `ghcr.io/wcrum/gofi-python:0.2.0`:
+  `sha256:afe55d6ad831935ac99e0a0448388e3b6bbf02e8aa614c4459c617ffd91ee838`
+
+The controller on 19090 was refreshed with these images. The canonical
+generated-client outer tooling verifier passed formatting, validation,
+nonexecution, private-worker visibility, Run, explicit rejection, kind-error,
+and cleanup checks against this runtime. A private controller-owned tooling
+worker remains running normally; it is not a saved user library.
+
+Final baseline event `af5abe83-f7e3-4f8a-8da4-8f7e3b66e9b3` persisted with the
+expected GoFi transformation and both Prometheus targets up. Immediate Python
+pipeline event `d299dab8-cdc2-4e8f-be5d-401db896e129` persisted with custom
+parser/transformer output, without a settling delay. Receiver total reached
+four records. Temporary flow/library resources were removed.
+
 - Full Go race suite passed with local network access; focused latest API and
   supervisor tooling race tests also passed.
 - UI 16 model/topology tests and production build passed after the shared-theme
@@ -100,8 +120,8 @@ See [docs/verification.md](docs/verification.md) for measured evidence and
   image is incomplete.
 - Python eight tests and generated-Go-to-real-Docker worker checks passed for
   parser invocation, formatting, diagnostics, auth, deadline, and isolation.
-- Initial real sender/receiver and Python library pipeline tests passed. Rerun
-  after the final worker image refresh, including the removed settling delay.
+- Real sender/receiver, outer tooling, and Python library pipeline verifiers
+  passed after the final worker refresh, including without the settling delay.
 - Strict Helm lint and `uds zarf dev lint --flavor upstream` pass; the latter
   warns that local application images use semver tags without digests.
 - `buf build`, actionlint, and whitespace checks pass. `buf lint` has existing
@@ -132,3 +152,17 @@ that workflow, and preserve all mandatory validation gates.
    and then qualify the authenticated admin-gateway deployment.
 
 Do not push or publish a release solely because this checkpoint exists.
+
+## Local browser tools
+
+Vite 5173 proxies the old binary on 9090; Vite 5174 proxies the actual test portal
+on 19090 (`GOFI_API_PROXY` overrides the target). A headless Chrome debugging
+endpoint may be available at 9224. The CUA tool failed because enabled surfaces
+were not configured.
+
+Existing scripts `/private/tmp/gofi-grafana-edit-qa.mjs` and
+`/private/tmp/gofi-topology-qa.mjs` assume the old telemetry demo. The former
+saves an unchanged existing listener. Do not run it blindly against `real-events`.
+Use a temporary flow/library for mutating browser checks and clean up only those
+resources. Prior screenshots are `/private/tmp/gofi-grafana-overview.png`,
+`/private/tmp/gofi-grafana-edit.png`, and `/private/tmp/gofi-grafana-logs.png`.
