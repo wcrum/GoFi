@@ -7,15 +7,30 @@
     <title>GoFi</title>
     <script>
       // Apply the stored or system theme before first paint (no flash).
-      // Keep in sync with src/theme/ThemeProvider.tsx (key gofi.theme).
+      // Keep in sync with src/theme/ThemeProvider.tsx: 'gofi.theme' holds a
+      // theme id (absent = system; legacy 'light'/'dark'), and
+      // 'gofi.theme.css' caches {key, mode, vars, accent, icon} for the last
+      // applied theme; icon is the accent favicon's data URL (fallback: the
+      // static /gofi-logo.svg in the link above).
       (function () {
-        var mode = 'dark'
+        var root = document.documentElement
+        var os = window.matchMedia && !window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'
+        var mode = os
         try {
           var stored = localStorage.getItem('gofi.theme')
-          mode = stored === 'light' || stored === 'dark' ? stored
-            : window.matchMedia && !window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'
+          if (stored === 'light' || stored === 'dark') stored = 'grafana-' + stored
+          if (stored) mode = /light/.test(stored) ? 'light' : 'dark'
+          var cache = JSON.parse(localStorage.getItem('gofi.theme.css') || 'null')
+          if (cache && cache.vars && cache.key === (stored ? stored : 'system:' + os)) {
+            mode = cache.mode === 'light' ? 'light' : 'dark'
+            for (var name in cache.vars) root.style.setProperty(name, cache.vars[name])
+          }
+          if (cache && typeof cache.icon === 'string' && cache.icon.indexOf('data:image/svg+xml,') === 0) {
+            document.querySelector('link[rel~="icon"]').href = cache.icon
+          }
         } catch (e) {}
-        document.documentElement.dataset.theme = mode
+        root.dataset.theme = mode
+        root.style.colorScheme = mode
       })()
     </script>
   </head>

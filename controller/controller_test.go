@@ -170,6 +170,13 @@ func TestControllerSkipsInvalidFlowsAndKeepsTheLastGoodVersion(t *testing.T) {
 	if info, found, _ := c.RuntimeStatus(ctx, "broken"); !found || info.Status != "invalid" || info.Error == "" {
 		t.Fatalf("invalid flow not reported: %+v", info)
 	}
+	// Flow-set work (GoFi's UDS Package) never sees the invalid flow.
+	_ = c.WithFlowSet(func(flows []spec.FlowDefinition) error {
+		if len(flows) != 1 || flows[0].Name != def.Name {
+			t.Fatalf("flow set must hold only valid flows: %+v", flows)
+		}
+		return nil
+	})
 	// An invalid edit of a running flow keeps its last valid version running.
 	invalid := cloneDefinition(def)
 	invalid.Source.Listen.Port = 9100

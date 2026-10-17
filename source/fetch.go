@@ -3,10 +3,12 @@ package source
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,6 +34,7 @@ func runFetch(ctx context.Context, flow string, f *spec.FetchSource, emit Emit) 
 				return nil
 			}
 			observability.SourceEvent(flow, "fetch", "error")
+			observability.SourceFailure(flow, err)
 			slog.Warn("fetch failed; retrying at the next interval", "flow", flow, "url", f.HTTP.URL, "error", err, "every", every)
 		} else {
 			observability.SourceEvent(flow, "fetch", "ok")
@@ -63,6 +66,11 @@ func poll(ctx context.Context, client *http.Client, h *spec.HTTPFetch, keys []st
 	}
 	res, err := client.Do(req)
 	if err != nil {
+		// Without the URL: its query string may carry credentials.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return fmt.Errorf("%s: %w", req.Method, urlErr.Err)
+		}
 		return err
 	}
 	defer res.Body.Close()
@@ -71,7 +79,7 @@ func poll(ctx context.Context, client *http.Client, h *spec.HTTPFetch, keys []st
 		return err
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return fmt.Errorf("HTTP %d", res.StatusCode)
+		return sink.NewStatusError(res.StatusCode, data)
 	}
 	if len(data) > MaxMessageBytes {
 		return fmt.Errorf("response exceeds %d bytes", MaxMessageBytes)

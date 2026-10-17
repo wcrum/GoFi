@@ -4,16 +4,19 @@ import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { Alert, useStyles2 } from '@grafana/ui'
 
-type ToastSeverity = 'error' | 'success'
+type ToastSeverity = 'error' | 'success' | 'warning'
+
+const TITLES: Record<ToastSeverity, string> = { error: 'Error', success: 'Success', warning: 'Warning' }
 
 interface Toast {
   id: string
   message: string
   severity: ToastSeverity
+  title?: string
 }
 
 interface ToastContextValue {
-  addToast: (message: string, severity?: ToastSeverity) => void
+  addToast: (message: string, severity?: ToastSeverity, title?: string) => void
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null)
@@ -36,10 +39,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     if (timer) { clearTimeout(timer); timers.current.delete(id) }
   }, [])
 
-  const addToast = useCallback((message: string, severity: ToastSeverity = 'error') => {
+  const addToast = useCallback((message: string, severity: ToastSeverity = 'error', title?: string) => {
     const id = String(++counter)
-    setToasts((prev) => [...prev, { id, message, severity }])
-    const timer = window.setTimeout(() => dismiss(id), 5000)
+    setToasts((prev) => [...prev, { id, message, severity, title }])
+    // Warnings ask for action, so they stay longer.
+    const timer = window.setTimeout(() => dismiss(id), severity === 'warning' ? 15000 : 5000)
     timers.current.set(id, timer)
   }, [dismiss])
 
@@ -55,7 +59,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {/* Grafana's AppNotificationList: a top-right stack of Alerts. */}
       <div className={styles.list} role="status" aria-live="polite">
         {toasts.map((t) => (
-          <Alert key={t.id} severity={t.severity} title={t.severity === 'error' ? 'Error' : 'Success'} onRemove={() => dismiss(t.id)} elevated bottomSpacing={0}>
+          <Alert key={t.id} severity={t.severity} title={t.title ?? TITLES[t.severity]} onRemove={() => dismiss(t.id)} elevated bottomSpacing={0}>
             {t.message}
           </Alert>
         ))}
@@ -68,6 +72,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   list: css({
     position: 'fixed', top: `calc(var(--gofi-topbar-height) + ${theme.spacing(1)})`, right: theme.spacing(2),
     zIndex: theme.zIndex.portal, display: 'flex', flexDirection: 'column', gap: theme.spacing(1),
-    width: `min(400px, calc(100vw - ${theme.spacing(4)}))`, wordBreak: 'break-word',
+    width: `min(400px, calc(100vw - ${theme.spacing(4)}))`, wordBreak: 'break-word', whiteSpace: 'pre-line',
   }),
 })

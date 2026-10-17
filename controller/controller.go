@@ -143,25 +143,14 @@ func (c *Controller) Add(def spec.FlowDefinition) error {
 	defer inlineChanged()
 	c.syncMu.Lock()
 	defer c.syncMu.Unlock()
-	if err := c.Validate(def); err != nil {
+	if err := c.admit(context.Background(), def); err != nil {
 		return err
-	}
-	if admission, ok := c.drv.(driver.FlowAdmission); ok {
-		others := make([]spec.FlowDefinition, 0, len(c.desired))
-		c.mu.RLock()
-		for name, other := range c.desired {
-			if name != def.Name {
-				others = append(others, cloneDefinition(other))
-			}
-		}
-		c.mu.RUnlock()
-		if err := admission.AdmitFlow(context.Background(), def, others); err != nil {
-			return err
-		}
 	}
 	def = cloneDefinition(def)
 	if c.store != nil {
-		if err := c.store.Save(context.Background(), def); err != nil {
+		stored := cloneDefinition(def)
+		stored.StripDerivedPython() // the managed library is derived on load
+		if err := c.store.Save(context.Background(), stored); err != nil {
 			return err
 		}
 	}
@@ -179,6 +168,68 @@ func (c *Controller) Add(def spec.FlowDefinition) error {
 	}
 
 	c.trigger()
+	return nil
+}
+
+// Check runs every check Add runs, including platform admission (for UDS,
+// a Pepr dry run of GoFi's Package), without saving or starting anything.
+// It reads a snapshot of the flows rather than taking the sync lock, so a
+// slow admission webhook never holds up saves or reconciles.
+func (c *Controller) Check(ctx context.Context, def spec.FlowDefinition) error {
+	def = cloneDefinition(def)
+	if err := prepareInline(&def); err != nil {
+		return err
+	}
+	if err := validateInline(def); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return c.admit(ctx, def)
+}
+
+// Flows returns the valid flows the reconcile loop applies, never stored
+// definitions that failed validation (List includes those, to show them).
+func (c *Controller) Flows() []spec.FlowDefinition {
+	c.mu.RLock()
+	flows := make([]spec.FlowDefinition, 0, len(c.desired))
+	for name, def := range c.desired {
+		if _, bad := c.invalid[name]; !bad {
+			flows = append(flows, cloneDefinition(def))
+		}
+	}
+	c.mu.RUnlock()
+	sort.Slice(flows, func(i, j int) bool { return flows[i].Name < flows[j].Name })
+	return flows
+}
+
+// WithFlowSet runs fn with Flows, holding the sync lock so no save or
+// reconcile interleaves with it.
+func (c *Controller) WithFlowSet(fn func(flows []spec.FlowDefinition) error) error {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+	return fn(c.Flows())
+}
+
+// admit validates def and asks the driver to admit it alongside the other
+// flows.
+func (c *Controller) admit(ctx context.Context, def spec.FlowDefinition) error {
+	if err := c.Validate(def); err != nil {
+		return err
+	}
+	if admission, ok := c.drv.(driver.FlowAdmission); ok {
+		others := make([]spec.FlowDefinition, 0, len(c.desired))
+		c.mu.RLock()
+		for name, other := range c.desired {
+			if name != def.Name {
+				others = append(others, cloneDefinition(other))
+			}
+		}
+		c.mu.RUnlock()
+		if err := admission.AdmitFlow(ctx, def, others); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -30,13 +30,14 @@ export const SINK_COLOR: Record<string, StageColor> = {
 }
 
 // Per-stage-kind color, keyed by StageSpec['kind'], used by the flow-canvas
-// StageNode/StagePalette so each of the 5 stage kinds reads as visually
-// distinct at a glance.
+// StageNode/StagePalette. Traffic controls (rate-limit, dedup) share a color,
+// as they share a palette group. 'brand' is Grafana's gradient, reserved for
+// branding, so stages never use it.
 export const STAGE_KIND_COLOR: Record<string, StageColor> = {
   filter: 'orange',
   transform: 'blue',
   'rate-limit': 'purple',
-  dedup: 'brand',
+  dedup: 'purple',
   schema: 'green',
   python: 'purple',
 }

@@ -1187,7 +1187,8 @@ func (x *Framing) GetPython() *PythonRef {
 }
 
 // CodecStep is one decoding or encoding step: a built-in byte transformation
-// ("base64", "base64url", "hex", "gzip", "zlib", "url") or a Python function
+// ("base64", "base64url", "base32", "hex", "url", "gzip", "zlib", "deflate",
+// "zstd", "snappy", "lz4", "brotli", and "bzip2" for decoding only) or a Python function
 // (type "python": @gofi.decoder for decoding, @gofi.encoder for encoding).
 type CodecStep struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3011,8 +3012,11 @@ func (x *GetFlowResponse) GetFlow() *Flow {
 }
 
 type UpsertFlowRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Flow          *Flow                  `protobuf:"bytes,1,opt,name=flow,proto3" json:"flow,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Flow  *Flow                  `protobuf:"bytes,1,opt,name=flow,proto3" json:"flow,omitempty"`
+	// Run every check a save runs (validation, inline Python, platform
+	// admission such as Pepr) and report warnings, without saving.
+	ValidateOnly  bool `protobuf:"varint,2,opt,name=validate_only,json=validateOnly,proto3" json:"validate_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3054,9 +3058,19 @@ func (x *UpsertFlowRequest) GetFlow() *Flow {
 	return nil
 }
 
+func (x *UpsertFlowRequest) GetValidateOnly() bool {
+	if x != nil {
+		return x.ValidateOnly
+	}
+	return false
+}
+
 type UpsertFlowResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Flow          *Flow                  `protobuf:"bytes,1,opt,name=flow,proto3" json:"flow,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Flow  *Flow                  `protobuf:"bytes,1,opt,name=flow,proto3" json:"flow,omitempty"`
+	// The flow was saved, but some of its paths are not allowed (in
+	// Kubernetes, by another application's UDS Package). See AnalyzeConnectivity.
+	Warnings      []string `protobuf:"bytes,2,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3094,6 +3108,13 @@ func (*UpsertFlowResponse) Descriptor() ([]byte, []int) {
 func (x *UpsertFlowResponse) GetFlow() *Flow {
 	if x != nil {
 		return x.Flow
+	}
+	return nil
+}
+
+func (x *UpsertFlowResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
 	}
 	return nil
 }
@@ -3178,6 +3199,201 @@ func (*DeleteFlowResponse) Descriptor() ([]byte, []int) {
 	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{41}
 }
 
+type GetRouteHealthRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRouteHealthRequest) Reset() {
+	*x = GetRouteHealthRequest{}
+	mi := &file_gofi_v1_gofi_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRouteHealthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRouteHealthRequest) ProtoMessage() {}
+
+func (x *GetRouteHealthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_gofi_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRouteHealthRequest.ProtoReflect.Descriptor instead.
+func (*GetRouteHealthRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *GetRouteHealthRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetRouteHealthResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Routes        []*RouteHealth         `protobuf:"bytes,1,rep,name=routes,proto3" json:"routes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRouteHealthResponse) Reset() {
+	*x = GetRouteHealthResponse{}
+	mi := &file_gofi_v1_gofi_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRouteHealthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRouteHealthResponse) ProtoMessage() {}
+
+func (x *GetRouteHealthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_gofi_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRouteHealthResponse.ProtoReflect.Descriptor instead.
+func (*GetRouteHealthResponse) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *GetRouteHealthResponse) GetRoutes() []*RouteHealth {
+	if x != nil {
+		return x.Routes
+	}
+	return nil
+}
+
+// RouteHealth is one outbound route as the runtime observed it.
+type RouteHealth struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// "egress-sink-<i>" (0-based destination), "egress-deadletter", or
+	// "egress-source"; the same IDs as Kubernetes connectivity paths.
+	Route         string                 `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+	Successes     int64                  `protobuf:"varint,2,opt,name=successes,proto3" json:"successes,omitempty"`
+	Failures      int64                  `protobuf:"varint,3,opt,name=failures,proto3" json:"failures,omitempty"`
+	LastSuccessAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_success_at,json=lastSuccessAt,proto3" json:"last_success_at,omitempty"`
+	LastFailureAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_failure_at,json=lastFailureAt,proto3" json:"last_failure_at,omitempty"`
+	LastError     string                 `protobuf:"bytes,6,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	// How the last failure looked on the socket: "denied" (Istio RBAC),
+	// "forbidden", "http", "dns", "refused", "reset", "timeout",
+	// "unreachable", "tls", or "other".
+	ErrorClass string `protobuf:"bytes,7,opt,name=error_class,json=errorClass,proto3" json:"error_class,omitempty"`
+	// The most recent attempt failed.
+	Failing       bool `protobuf:"varint,8,opt,name=failing,proto3" json:"failing,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RouteHealth) Reset() {
+	*x = RouteHealth{}
+	mi := &file_gofi_v1_gofi_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouteHealth) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouteHealth) ProtoMessage() {}
+
+func (x *RouteHealth) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_gofi_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouteHealth.ProtoReflect.Descriptor instead.
+func (*RouteHealth) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *RouteHealth) GetRoute() string {
+	if x != nil {
+		return x.Route
+	}
+	return ""
+}
+
+func (x *RouteHealth) GetSuccesses() int64 {
+	if x != nil {
+		return x.Successes
+	}
+	return 0
+}
+
+func (x *RouteHealth) GetFailures() int64 {
+	if x != nil {
+		return x.Failures
+	}
+	return 0
+}
+
+func (x *RouteHealth) GetLastSuccessAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastSuccessAt
+	}
+	return nil
+}
+
+func (x *RouteHealth) GetLastFailureAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastFailureAt
+	}
+	return nil
+}
+
+func (x *RouteHealth) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+func (x *RouteHealth) GetErrorClass() string {
+	if x != nil {
+		return x.ErrorClass
+	}
+	return ""
+}
+
+func (x *RouteHealth) GetFailing() bool {
+	if x != nil {
+		return x.Failing
+	}
+	return false
+}
+
 type GetRuntimeStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -3187,7 +3403,7 @@ type GetRuntimeStatusRequest struct {
 
 func (x *GetRuntimeStatusRequest) Reset() {
 	*x = GetRuntimeStatusRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[42]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3199,7 +3415,7 @@ func (x *GetRuntimeStatusRequest) String() string {
 func (*GetRuntimeStatusRequest) ProtoMessage() {}
 
 func (x *GetRuntimeStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[42]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3212,7 +3428,7 @@ func (x *GetRuntimeStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetRuntimeStatusRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{42}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GetRuntimeStatusRequest) GetName() string {
@@ -3231,7 +3447,7 @@ type GetRuntimeStatusResponse struct {
 
 func (x *GetRuntimeStatusResponse) Reset() {
 	*x = GetRuntimeStatusResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[43]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3243,7 +3459,7 @@ func (x *GetRuntimeStatusResponse) String() string {
 func (*GetRuntimeStatusResponse) ProtoMessage() {}
 
 func (x *GetRuntimeStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[43]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3256,7 +3472,7 @@ func (x *GetRuntimeStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRuntimeStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetRuntimeStatusResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{43}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GetRuntimeStatusResponse) GetRuntime() *RuntimeInfo {
@@ -3274,7 +3490,7 @@ type ListEndpointsRequest struct {
 
 func (x *ListEndpointsRequest) Reset() {
 	*x = ListEndpointsRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[44]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3286,7 +3502,7 @@ func (x *ListEndpointsRequest) String() string {
 func (*ListEndpointsRequest) ProtoMessage() {}
 
 func (x *ListEndpointsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[44]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3299,7 +3515,7 @@ func (x *ListEndpointsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEndpointsRequest.ProtoReflect.Descriptor instead.
 func (*ListEndpointsRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{44}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{47}
 }
 
 type ListEndpointsResponse struct {
@@ -3311,7 +3527,7 @@ type ListEndpointsResponse struct {
 
 func (x *ListEndpointsResponse) Reset() {
 	*x = ListEndpointsResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[45]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3323,7 +3539,7 @@ func (x *ListEndpointsResponse) String() string {
 func (*ListEndpointsResponse) ProtoMessage() {}
 
 func (x *ListEndpointsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[45]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3336,7 +3552,7 @@ func (x *ListEndpointsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEndpointsResponse.ProtoReflect.Descriptor instead.
 func (*ListEndpointsResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{45}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListEndpointsResponse) GetEndpoints() []*Endpoint {
@@ -3354,7 +3570,7 @@ type GetConfigurationRequest struct {
 
 func (x *GetConfigurationRequest) Reset() {
 	*x = GetConfigurationRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[46]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3366,7 +3582,7 @@ func (x *GetConfigurationRequest) String() string {
 func (*GetConfigurationRequest) ProtoMessage() {}
 
 func (x *GetConfigurationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[46]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3379,7 +3595,7 @@ func (x *GetConfigurationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigurationRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigurationRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{46}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{49}
 }
 
 type GetConfigurationResponse struct {
@@ -3391,7 +3607,7 @@ type GetConfigurationResponse struct {
 
 func (x *GetConfigurationResponse) Reset() {
 	*x = GetConfigurationResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[47]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3403,7 +3619,7 @@ func (x *GetConfigurationResponse) String() string {
 func (*GetConfigurationResponse) ProtoMessage() {}
 
 func (x *GetConfigurationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[47]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3416,7 +3632,7 @@ func (x *GetConfigurationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigurationResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigurationResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{47}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GetConfigurationResponse) GetConfiguration() *Configuration {
@@ -3434,7 +3650,7 @@ type GetModeRequest struct {
 
 func (x *GetModeRequest) Reset() {
 	*x = GetModeRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[48]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3446,7 +3662,7 @@ func (x *GetModeRequest) String() string {
 func (*GetModeRequest) ProtoMessage() {}
 
 func (x *GetModeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[48]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3459,7 +3675,7 @@ func (x *GetModeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModeRequest.ProtoReflect.Descriptor instead.
 func (*GetModeRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{48}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{51}
 }
 
 type GetModeResponse struct {
@@ -3476,7 +3692,7 @@ type GetModeResponse struct {
 
 func (x *GetModeResponse) Reset() {
 	*x = GetModeResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[49]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3488,7 +3704,7 @@ func (x *GetModeResponse) String() string {
 func (*GetModeResponse) ProtoMessage() {}
 
 func (x *GetModeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[49]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3501,7 +3717,7 @@ func (x *GetModeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModeResponse.ProtoReflect.Descriptor instead.
 func (*GetModeResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{49}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *GetModeResponse) GetMode() string {
@@ -3549,7 +3765,7 @@ type SimulateRequest struct {
 
 func (x *SimulateRequest) Reset() {
 	*x = SimulateRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[50]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3561,7 +3777,7 @@ func (x *SimulateRequest) String() string {
 func (*SimulateRequest) ProtoMessage() {}
 
 func (x *SimulateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[50]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3574,7 +3790,7 @@ func (x *SimulateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulateRequest.ProtoReflect.Descriptor instead.
 func (*SimulateRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{50}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *SimulateRequest) GetFlow() *Flow {
@@ -3600,7 +3816,7 @@ type SimulateResponse struct {
 
 func (x *SimulateResponse) Reset() {
 	*x = SimulateResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[51]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3612,7 +3828,7 @@ func (x *SimulateResponse) String() string {
 func (*SimulateResponse) ProtoMessage() {}
 
 func (x *SimulateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[51]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3625,7 +3841,7 @@ func (x *SimulateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulateResponse.ProtoReflect.Descriptor instead.
 func (*SimulateResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{51}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *SimulateResponse) GetResult() *SimulateResult {
@@ -3644,7 +3860,7 @@ type WatchTrafficRequest struct {
 
 func (x *WatchTrafficRequest) Reset() {
 	*x = WatchTrafficRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[52]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3656,7 +3872,7 @@ func (x *WatchTrafficRequest) String() string {
 func (*WatchTrafficRequest) ProtoMessage() {}
 
 func (x *WatchTrafficRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[52]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3669,7 +3885,7 @@ func (x *WatchTrafficRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchTrafficRequest.ProtoReflect.Descriptor instead.
 func (*WatchTrafficRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{52}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *WatchTrafficRequest) GetName() string {
@@ -3690,7 +3906,7 @@ type WatchTrafficResponse struct {
 
 func (x *WatchTrafficResponse) Reset() {
 	*x = WatchTrafficResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[53]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3702,7 +3918,7 @@ func (x *WatchTrafficResponse) String() string {
 func (*WatchTrafficResponse) ProtoMessage() {}
 
 func (x *WatchTrafficResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[53]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3715,7 +3931,7 @@ func (x *WatchTrafficResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchTrafficResponse.ProtoReflect.Descriptor instead.
 func (*WatchTrafficResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{53}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *WatchTrafficResponse) GetFlow() string {
@@ -3749,7 +3965,7 @@ type ResolveTargetsRequest struct {
 
 func (x *ResolveTargetsRequest) Reset() {
 	*x = ResolveTargetsRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[54]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3761,7 +3977,7 @@ func (x *ResolveTargetsRequest) String() string {
 func (*ResolveTargetsRequest) ProtoMessage() {}
 
 func (x *ResolveTargetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[54]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3774,7 +3990,7 @@ func (x *ResolveTargetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveTargetsRequest.ProtoReflect.Descriptor instead.
 func (*ResolveTargetsRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{54}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ResolveTargetsRequest) GetTarget() *KubernetesTarget {
@@ -3800,7 +4016,7 @@ type ResolveTargetsResponse struct {
 
 func (x *ResolveTargetsResponse) Reset() {
 	*x = ResolveTargetsResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[55]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3812,7 +4028,7 @@ func (x *ResolveTargetsResponse) String() string {
 func (*ResolveTargetsResponse) ProtoMessage() {}
 
 func (x *ResolveTargetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[55]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3825,7 +4041,7 @@ func (x *ResolveTargetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveTargetsResponse.ProtoReflect.Descriptor instead.
 func (*ResolveTargetsResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{55}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ResolveTargetsResponse) GetEndpoints() []*Endpoint {
@@ -3849,7 +4065,7 @@ type ReplayRequest struct {
 
 func (x *ReplayRequest) Reset() {
 	*x = ReplayRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[56]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3861,7 +4077,7 @@ func (x *ReplayRequest) String() string {
 func (*ReplayRequest) ProtoMessage() {}
 
 func (x *ReplayRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[56]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3874,7 +4090,7 @@ func (x *ReplayRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayRequest.ProtoReflect.Descriptor instead.
 func (*ReplayRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{56}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ReplayRequest) GetTarget() *KubernetesTarget {
@@ -3916,7 +4132,7 @@ type ReplayDelivery struct {
 
 func (x *ReplayDelivery) Reset() {
 	*x = ReplayDelivery{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[57]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3928,7 +4144,7 @@ func (x *ReplayDelivery) String() string {
 func (*ReplayDelivery) ProtoMessage() {}
 
 func (x *ReplayDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[57]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3941,7 +4157,7 @@ func (x *ReplayDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayDelivery.ProtoReflect.Descriptor instead.
 func (*ReplayDelivery) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{57}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ReplayDelivery) GetEndpoint() *Endpoint {
@@ -3974,7 +4190,7 @@ type ReplayResponse struct {
 
 func (x *ReplayResponse) Reset() {
 	*x = ReplayResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[58]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3986,7 +4202,7 @@ func (x *ReplayResponse) String() string {
 func (*ReplayResponse) ProtoMessage() {}
 
 func (x *ReplayResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[58]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3999,7 +4215,7 @@ func (x *ReplayResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayResponse.ProtoReflect.Descriptor instead.
 func (*ReplayResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{58}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ReplayResponse) GetDeliveries() []*ReplayDelivery {
@@ -4026,7 +4242,7 @@ type DebugFrameRequest struct {
 
 func (x *DebugFrameRequest) Reset() {
 	*x = DebugFrameRequest{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[59]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4038,7 +4254,7 @@ func (x *DebugFrameRequest) String() string {
 func (*DebugFrameRequest) ProtoMessage() {}
 
 func (x *DebugFrameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[59]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4051,7 +4267,7 @@ func (x *DebugFrameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DebugFrameRequest.ProtoReflect.Descriptor instead.
 func (*DebugFrameRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{59}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *DebugFrameRequest) GetFlowName() string {
@@ -4115,7 +4331,7 @@ type DebugFrameResponse struct {
 
 func (x *DebugFrameResponse) Reset() {
 	*x = DebugFrameResponse{}
-	mi := &file_gofi_v1_gofi_proto_msgTypes[60]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4127,7 +4343,7 @@ func (x *DebugFrameResponse) String() string {
 func (*DebugFrameResponse) ProtoMessage() {}
 
 func (x *DebugFrameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_gofi_proto_msgTypes[60]
+	mi := &file_gofi_v1_gofi_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4140,7 +4356,7 @@ func (x *DebugFrameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DebugFrameResponse.ProtoReflect.Descriptor instead.
 func (*DebugFrameResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{60}
+	return file_gofi_v1_gofi_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *DebugFrameResponse) GetSimulation() *SimulateResult {
@@ -4492,14 +4708,31 @@ const file_gofi_v1_gofi_proto_rawDesc = "" +
 	"\x0eGetFlowRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"4\n" +
 	"\x0fGetFlowResponse\x12!\n" +
-	"\x04flow\x18\x01 \x01(\v2\r.gofi.v1.FlowR\x04flow\"6\n" +
+	"\x04flow\x18\x01 \x01(\v2\r.gofi.v1.FlowR\x04flow\"[\n" +
 	"\x11UpsertFlowRequest\x12!\n" +
-	"\x04flow\x18\x01 \x01(\v2\r.gofi.v1.FlowR\x04flow\"7\n" +
+	"\x04flow\x18\x01 \x01(\v2\r.gofi.v1.FlowR\x04flow\x12#\n" +
+	"\rvalidate_only\x18\x02 \x01(\bR\fvalidateOnly\"S\n" +
 	"\x12UpsertFlowResponse\x12!\n" +
-	"\x04flow\x18\x01 \x01(\v2\r.gofi.v1.FlowR\x04flow\"'\n" +
+	"\x04flow\x18\x01 \x01(\v2\r.gofi.v1.FlowR\x04flow\x12\x1a\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"'\n" +
 	"\x11DeleteFlowRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x14\n" +
-	"\x12DeleteFlowResponse\"-\n" +
+	"\x12DeleteFlowResponse\"+\n" +
+	"\x15GetRouteHealthRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"F\n" +
+	"\x16GetRouteHealthResponse\x12,\n" +
+	"\x06routes\x18\x01 \x03(\v2\x14.gofi.v1.RouteHealthR\x06routes\"\xbf\x02\n" +
+	"\vRouteHealth\x12\x14\n" +
+	"\x05route\x18\x01 \x01(\tR\x05route\x12\x1c\n" +
+	"\tsuccesses\x18\x02 \x01(\x03R\tsuccesses\x12\x1a\n" +
+	"\bfailures\x18\x03 \x01(\x03R\bfailures\x12B\n" +
+	"\x0flast_success_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\rlastSuccessAt\x12B\n" +
+	"\x0flast_failure_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\rlastFailureAt\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\x06 \x01(\tR\tlastError\x12\x1f\n" +
+	"\verror_class\x18\a \x01(\tR\n" +
+	"errorClass\x12\x18\n" +
+	"\afailing\x18\b \x01(\bR\afailing\"-\n" +
 	"\x17GetRuntimeStatusRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"J\n" +
 	"\x18GetRuntimeStatusResponse\x12.\n" +
@@ -4569,7 +4802,7 @@ const file_gofi_v1_gofi_proto_rawDesc = "" +
 	"notReached\x1a<\n" +
 	"\x0eInputMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xc2\a\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\x95\b\n" +
 	"\vGoFiService\x12B\n" +
 	"\tListFlows\x12\x19.gofi.v1.ListFlowsRequest\x1a\x1a.gofi.v1.ListFlowsResponse\x12<\n" +
 	"\aGetFlow\x12\x17.gofi.v1.GetFlowRequest\x1a\x18.gofi.v1.GetFlowResponse\x12E\n" +
@@ -4586,7 +4819,8 @@ const file_gofi_v1_gofi_proto_rawDesc = "" +
 	"\bSimulate\x12\x18.gofi.v1.SimulateRequest\x1a\x19.gofi.v1.SimulateResponse\x12E\n" +
 	"\n" +
 	"DebugFrame\x12\x1a.gofi.v1.DebugFrameRequest\x1a\x1b.gofi.v1.DebugFrameResponse\x12M\n" +
-	"\fWatchTraffic\x12\x1c.gofi.v1.WatchTrafficRequest\x1a\x1d.gofi.v1.WatchTrafficResponse0\x01B*Z(github.com/wcrum/gofi/gen/gofi/v1;gofiv1b\x06proto3"
+	"\fWatchTraffic\x12\x1c.gofi.v1.WatchTrafficRequest\x1a\x1d.gofi.v1.WatchTrafficResponse0\x01\x12Q\n" +
+	"\x0eGetRouteHealth\x12\x1e.gofi.v1.GetRouteHealthRequest\x1a\x1f.gofi.v1.GetRouteHealthResponseB*Z(github.com/wcrum/gofi/gen/gofi/v1;gofiv1b\x06proto3"
 
 var (
 	file_gofi_v1_gofi_proto_rawDescOnce sync.Once
@@ -4600,7 +4834,7 @@ func file_gofi_v1_gofi_proto_rawDescGZIP() []byte {
 	return file_gofi_v1_gofi_proto_rawDescData
 }
 
-var file_gofi_v1_gofi_proto_msgTypes = make([]protoimpl.MessageInfo, 71)
+var file_gofi_v1_gofi_proto_msgTypes = make([]protoimpl.MessageInfo, 74)
 var file_gofi_v1_gofi_proto_goTypes = []any{
 	(*Flow)(nil),                     // 0: gofi.v1.Flow
 	(*FlowSource)(nil),               // 1: gofi.v1.FlowSource
@@ -4644,38 +4878,41 @@ var file_gofi_v1_gofi_proto_goTypes = []any{
 	(*UpsertFlowResponse)(nil),       // 39: gofi.v1.UpsertFlowResponse
 	(*DeleteFlowRequest)(nil),        // 40: gofi.v1.DeleteFlowRequest
 	(*DeleteFlowResponse)(nil),       // 41: gofi.v1.DeleteFlowResponse
-	(*GetRuntimeStatusRequest)(nil),  // 42: gofi.v1.GetRuntimeStatusRequest
-	(*GetRuntimeStatusResponse)(nil), // 43: gofi.v1.GetRuntimeStatusResponse
-	(*ListEndpointsRequest)(nil),     // 44: gofi.v1.ListEndpointsRequest
-	(*ListEndpointsResponse)(nil),    // 45: gofi.v1.ListEndpointsResponse
-	(*GetConfigurationRequest)(nil),  // 46: gofi.v1.GetConfigurationRequest
-	(*GetConfigurationResponse)(nil), // 47: gofi.v1.GetConfigurationResponse
-	(*GetModeRequest)(nil),           // 48: gofi.v1.GetModeRequest
-	(*GetModeResponse)(nil),          // 49: gofi.v1.GetModeResponse
-	(*SimulateRequest)(nil),          // 50: gofi.v1.SimulateRequest
-	(*SimulateResponse)(nil),         // 51: gofi.v1.SimulateResponse
-	(*WatchTrafficRequest)(nil),      // 52: gofi.v1.WatchTrafficRequest
-	(*WatchTrafficResponse)(nil),     // 53: gofi.v1.WatchTrafficResponse
-	(*ResolveTargetsRequest)(nil),    // 54: gofi.v1.ResolveTargetsRequest
-	(*ResolveTargetsResponse)(nil),   // 55: gofi.v1.ResolveTargetsResponse
-	(*ReplayRequest)(nil),            // 56: gofi.v1.ReplayRequest
-	(*ReplayDelivery)(nil),           // 57: gofi.v1.ReplayDelivery
-	(*ReplayResponse)(nil),           // 58: gofi.v1.ReplayResponse
-	(*DebugFrameRequest)(nil),        // 59: gofi.v1.DebugFrameRequest
-	(*DebugFrameResponse)(nil),       // 60: gofi.v1.DebugFrameResponse
-	nil,                              // 61: gofi.v1.HTTPFetch.HeadersEntry
-	nil,                              // 62: gofi.v1.StreamSubscribe.HeadersEntry
-	nil,                              // 63: gofi.v1.ServiceExposure.AnnotationsEntry
-	nil,                              // 64: gofi.v1.PeerRef.SelectorEntry
-	nil,                              // 65: gofi.v1.KubernetesTarget.SelectorEntry
-	nil,                              // 66: gofi.v1.Sink.HeadersEntry
-	nil,                              // 67: gofi.v1.Sink.LabelsEntry
-	nil,                              // 68: gofi.v1.Endpoint.LabelsEntry
-	nil,                              // 69: gofi.v1.TrafficEvent.MetaEntry
-	nil,                              // 70: gofi.v1.DebugFrameResponse.InputMetaEntry
-	(*structpb.Struct)(nil),          // 71: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),    // 72: google.protobuf.Timestamp
-	(*DebugRecording)(nil),           // 73: gofi.v1.DebugRecording
+	(*GetRouteHealthRequest)(nil),    // 42: gofi.v1.GetRouteHealthRequest
+	(*GetRouteHealthResponse)(nil),   // 43: gofi.v1.GetRouteHealthResponse
+	(*RouteHealth)(nil),              // 44: gofi.v1.RouteHealth
+	(*GetRuntimeStatusRequest)(nil),  // 45: gofi.v1.GetRuntimeStatusRequest
+	(*GetRuntimeStatusResponse)(nil), // 46: gofi.v1.GetRuntimeStatusResponse
+	(*ListEndpointsRequest)(nil),     // 47: gofi.v1.ListEndpointsRequest
+	(*ListEndpointsResponse)(nil),    // 48: gofi.v1.ListEndpointsResponse
+	(*GetConfigurationRequest)(nil),  // 49: gofi.v1.GetConfigurationRequest
+	(*GetConfigurationResponse)(nil), // 50: gofi.v1.GetConfigurationResponse
+	(*GetModeRequest)(nil),           // 51: gofi.v1.GetModeRequest
+	(*GetModeResponse)(nil),          // 52: gofi.v1.GetModeResponse
+	(*SimulateRequest)(nil),          // 53: gofi.v1.SimulateRequest
+	(*SimulateResponse)(nil),         // 54: gofi.v1.SimulateResponse
+	(*WatchTrafficRequest)(nil),      // 55: gofi.v1.WatchTrafficRequest
+	(*WatchTrafficResponse)(nil),     // 56: gofi.v1.WatchTrafficResponse
+	(*ResolveTargetsRequest)(nil),    // 57: gofi.v1.ResolveTargetsRequest
+	(*ResolveTargetsResponse)(nil),   // 58: gofi.v1.ResolveTargetsResponse
+	(*ReplayRequest)(nil),            // 59: gofi.v1.ReplayRequest
+	(*ReplayDelivery)(nil),           // 60: gofi.v1.ReplayDelivery
+	(*ReplayResponse)(nil),           // 61: gofi.v1.ReplayResponse
+	(*DebugFrameRequest)(nil),        // 62: gofi.v1.DebugFrameRequest
+	(*DebugFrameResponse)(nil),       // 63: gofi.v1.DebugFrameResponse
+	nil,                              // 64: gofi.v1.HTTPFetch.HeadersEntry
+	nil,                              // 65: gofi.v1.StreamSubscribe.HeadersEntry
+	nil,                              // 66: gofi.v1.ServiceExposure.AnnotationsEntry
+	nil,                              // 67: gofi.v1.PeerRef.SelectorEntry
+	nil,                              // 68: gofi.v1.KubernetesTarget.SelectorEntry
+	nil,                              // 69: gofi.v1.Sink.HeadersEntry
+	nil,                              // 70: gofi.v1.Sink.LabelsEntry
+	nil,                              // 71: gofi.v1.Endpoint.LabelsEntry
+	nil,                              // 72: gofi.v1.TrafficEvent.MetaEntry
+	nil,                              // 73: gofi.v1.DebugFrameResponse.InputMetaEntry
+	(*structpb.Struct)(nil),          // 74: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),    // 75: google.protobuf.Timestamp
+	(*DebugRecording)(nil),           // 76: gofi.v1.DebugRecording
 }
 var file_gofi_v1_gofi_proto_depIdxs = []int32{
 	1,  // 0: gofi.v1.Flow.source:type_name -> gofi.v1.FlowSource
@@ -4689,22 +4926,22 @@ var file_gofi_v1_gofi_proto_depIdxs = []int32{
 	2,  // 8: gofi.v1.FlowSource.fetch:type_name -> gofi.v1.FetchSource
 	4,  // 9: gofi.v1.FlowSource.subscribe:type_name -> gofi.v1.SubscribeSource
 	3,  // 10: gofi.v1.FetchSource.http:type_name -> gofi.v1.HTTPFetch
-	61, // 11: gofi.v1.HTTPFetch.headers:type_name -> gofi.v1.HTTPFetch.HeadersEntry
+	64, // 11: gofi.v1.HTTPFetch.headers:type_name -> gofi.v1.HTTPFetch.HeadersEntry
 	22, // 12: gofi.v1.HTTPFetch.auth:type_name -> gofi.v1.HTTPAuth
 	5,  // 13: gofi.v1.SubscribeSource.nats:type_name -> gofi.v1.NATSSubscribe
 	6,  // 14: gofi.v1.SubscribeSource.mqtt:type_name -> gofi.v1.MQTTSubscribe
 	7,  // 15: gofi.v1.SubscribeSource.websocket:type_name -> gofi.v1.StreamSubscribe
 	7,  // 16: gofi.v1.SubscribeSource.sse:type_name -> gofi.v1.StreamSubscribe
 	23, // 17: gofi.v1.NATSSubscribe.auth:type_name -> gofi.v1.NATSAuth
-	62, // 18: gofi.v1.StreamSubscribe.headers:type_name -> gofi.v1.StreamSubscribe.HeadersEntry
+	65, // 18: gofi.v1.StreamSubscribe.headers:type_name -> gofi.v1.StreamSubscribe.HeadersEntry
 	22, // 19: gofi.v1.StreamSubscribe.auth:type_name -> gofi.v1.HTTPAuth
 	11, // 20: gofi.v1.ListenSource.service:type_name -> gofi.v1.ServiceExposure
-	71, // 21: gofi.v1.PythonRef.config:type_name -> google.protobuf.Struct
-	63, // 22: gofi.v1.ServiceExposure.annotations:type_name -> gofi.v1.ServiceExposure.AnnotationsEntry
+	74, // 21: gofi.v1.PythonRef.config:type_name -> google.protobuf.Struct
+	66, // 22: gofi.v1.ServiceExposure.annotations:type_name -> gofi.v1.ServiceExposure.AnnotationsEntry
 	13, // 23: gofi.v1.ServiceExposure.load_balancer:type_name -> gofi.v1.LoadBalancerOptions
 	14, // 24: gofi.v1.ServiceExposure.gateway:type_name -> gofi.v1.GatewayExposure
 	12, // 25: gofi.v1.ServiceExposure.allow_from:type_name -> gofi.v1.PeerRef
-	64, // 26: gofi.v1.PeerRef.selector:type_name -> gofi.v1.PeerRef.SelectorEntry
+	67, // 26: gofi.v1.PeerRef.selector:type_name -> gofi.v1.PeerRef.SelectorEntry
 	9,  // 27: gofi.v1.Framing.python:type_name -> gofi.v1.PythonRef
 	9,  // 28: gofi.v1.CodecStep.python:type_name -> gofi.v1.PythonRef
 	16, // 29: gofi.v1.Encoding.encoders:type_name -> gofi.v1.CodecStep
@@ -4712,77 +4949,82 @@ var file_gofi_v1_gofi_proto_depIdxs = []int32{
 	9,  // 31: gofi.v1.ParserConfig.python:type_name -> gofi.v1.PythonRef
 	9,  // 32: gofi.v1.Stage.python:type_name -> gofi.v1.PythonRef
 	10, // 33: gofi.v1.Stage.expression_ref:type_name -> gofi.v1.ExpressionRef
-	65, // 34: gofi.v1.KubernetesTarget.selector:type_name -> gofi.v1.KubernetesTarget.SelectorEntry
-	66, // 35: gofi.v1.Sink.headers:type_name -> gofi.v1.Sink.HeadersEntry
+	68, // 34: gofi.v1.KubernetesTarget.selector:type_name -> gofi.v1.KubernetesTarget.SelectorEntry
+	69, // 35: gofi.v1.Sink.headers:type_name -> gofi.v1.Sink.HeadersEntry
 	22, // 36: gofi.v1.Sink.auth:type_name -> gofi.v1.HTTPAuth
 	23, // 37: gofi.v1.Sink.nats_auth:type_name -> gofi.v1.NATSAuth
 	24, // 38: gofi.v1.Sink.aster:type_name -> gofi.v1.AsterConfig
 	20, // 39: gofi.v1.Sink.kubernetes:type_name -> gofi.v1.KubernetesTarget
 	9,  // 40: gofi.v1.Sink.python:type_name -> gofi.v1.PythonRef
-	67, // 41: gofi.v1.Sink.labels:type_name -> gofi.v1.Sink.LabelsEntry
+	70, // 41: gofi.v1.Sink.labels:type_name -> gofi.v1.Sink.LabelsEntry
 	10, // 42: gofi.v1.Sink.when_ref:type_name -> gofi.v1.ExpressionRef
 	17, // 43: gofi.v1.Sink.encoding:type_name -> gofi.v1.Encoding
-	72, // 44: gofi.v1.RuntimeInfo.started_at:type_name -> google.protobuf.Timestamp
+	75, // 44: gofi.v1.RuntimeInfo.started_at:type_name -> google.protobuf.Timestamp
 	28, // 45: gofi.v1.Endpoint.ports:type_name -> gofi.v1.EndpointPort
-	68, // 46: gofi.v1.Endpoint.labels:type_name -> gofi.v1.Endpoint.LabelsEntry
-	71, // 47: gofi.v1.TrafficEvent.fields:type_name -> google.protobuf.Struct
-	69, // 48: gofi.v1.TrafficEvent.meta:type_name -> gofi.v1.TrafficEvent.MetaEntry
-	71, // 49: gofi.v1.StageTrace.fields:type_name -> google.protobuf.Struct
-	71, // 50: gofi.v1.SimulateResult.parsed_fields:type_name -> google.protobuf.Struct
+	71, // 46: gofi.v1.Endpoint.labels:type_name -> gofi.v1.Endpoint.LabelsEntry
+	74, // 47: gofi.v1.TrafficEvent.fields:type_name -> google.protobuf.Struct
+	72, // 48: gofi.v1.TrafficEvent.meta:type_name -> gofi.v1.TrafficEvent.MetaEntry
+	74, // 49: gofi.v1.StageTrace.fields:type_name -> google.protobuf.Struct
+	74, // 50: gofi.v1.SimulateResult.parsed_fields:type_name -> google.protobuf.Struct
 	31, // 51: gofi.v1.SimulateResult.stages:type_name -> gofi.v1.StageTrace
 	32, // 52: gofi.v1.SimulateResult.sinks:type_name -> gofi.v1.SinkOutcome
 	0,  // 53: gofi.v1.ListFlowsResponse.flows:type_name -> gofi.v1.Flow
 	0,  // 54: gofi.v1.GetFlowResponse.flow:type_name -> gofi.v1.Flow
 	0,  // 55: gofi.v1.UpsertFlowRequest.flow:type_name -> gofi.v1.Flow
 	0,  // 56: gofi.v1.UpsertFlowResponse.flow:type_name -> gofi.v1.Flow
-	26, // 57: gofi.v1.GetRuntimeStatusResponse.runtime:type_name -> gofi.v1.RuntimeInfo
-	27, // 58: gofi.v1.ListEndpointsResponse.endpoints:type_name -> gofi.v1.Endpoint
-	29, // 59: gofi.v1.GetConfigurationResponse.configuration:type_name -> gofi.v1.Configuration
-	0,  // 60: gofi.v1.SimulateRequest.flow:type_name -> gofi.v1.Flow
-	33, // 61: gofi.v1.SimulateResponse.result:type_name -> gofi.v1.SimulateResult
-	30, // 62: gofi.v1.WatchTrafficResponse.event:type_name -> gofi.v1.TrafficEvent
-	20, // 63: gofi.v1.ResolveTargetsRequest.target:type_name -> gofi.v1.KubernetesTarget
-	27, // 64: gofi.v1.ResolveTargetsResponse.endpoints:type_name -> gofi.v1.Endpoint
-	20, // 65: gofi.v1.ReplayRequest.target:type_name -> gofi.v1.KubernetesTarget
-	27, // 66: gofi.v1.ReplayDelivery.endpoint:type_name -> gofi.v1.Endpoint
-	57, // 67: gofi.v1.ReplayResponse.deliveries:type_name -> gofi.v1.ReplayDelivery
-	0,  // 68: gofi.v1.DebugFrameRequest.flow:type_name -> gofi.v1.Flow
-	33, // 69: gofi.v1.DebugFrameResponse.simulation:type_name -> gofi.v1.SimulateResult
-	9,  // 70: gofi.v1.DebugFrameResponse.function:type_name -> gofi.v1.PythonRef
-	71, // 71: gofi.v1.DebugFrameResponse.input_fields:type_name -> google.protobuf.Struct
-	70, // 72: gofi.v1.DebugFrameResponse.input_meta:type_name -> gofi.v1.DebugFrameResponse.InputMetaEntry
-	73, // 73: gofi.v1.DebugFrameResponse.recording:type_name -> gofi.v1.DebugRecording
-	34, // 74: gofi.v1.GoFiService.ListFlows:input_type -> gofi.v1.ListFlowsRequest
-	36, // 75: gofi.v1.GoFiService.GetFlow:input_type -> gofi.v1.GetFlowRequest
-	38, // 76: gofi.v1.GoFiService.UpsertFlow:input_type -> gofi.v1.UpsertFlowRequest
-	40, // 77: gofi.v1.GoFiService.DeleteFlow:input_type -> gofi.v1.DeleteFlowRequest
-	42, // 78: gofi.v1.GoFiService.GetRuntimeStatus:input_type -> gofi.v1.GetRuntimeStatusRequest
-	44, // 79: gofi.v1.GoFiService.ListEndpoints:input_type -> gofi.v1.ListEndpointsRequest
-	54, // 80: gofi.v1.GoFiService.ResolveTargets:input_type -> gofi.v1.ResolveTargetsRequest
-	56, // 81: gofi.v1.GoFiService.Replay:input_type -> gofi.v1.ReplayRequest
-	46, // 82: gofi.v1.GoFiService.GetConfiguration:input_type -> gofi.v1.GetConfigurationRequest
-	48, // 83: gofi.v1.GoFiService.GetMode:input_type -> gofi.v1.GetModeRequest
-	50, // 84: gofi.v1.GoFiService.Simulate:input_type -> gofi.v1.SimulateRequest
-	59, // 85: gofi.v1.GoFiService.DebugFrame:input_type -> gofi.v1.DebugFrameRequest
-	52, // 86: gofi.v1.GoFiService.WatchTraffic:input_type -> gofi.v1.WatchTrafficRequest
-	35, // 87: gofi.v1.GoFiService.ListFlows:output_type -> gofi.v1.ListFlowsResponse
-	37, // 88: gofi.v1.GoFiService.GetFlow:output_type -> gofi.v1.GetFlowResponse
-	39, // 89: gofi.v1.GoFiService.UpsertFlow:output_type -> gofi.v1.UpsertFlowResponse
-	41, // 90: gofi.v1.GoFiService.DeleteFlow:output_type -> gofi.v1.DeleteFlowResponse
-	43, // 91: gofi.v1.GoFiService.GetRuntimeStatus:output_type -> gofi.v1.GetRuntimeStatusResponse
-	45, // 92: gofi.v1.GoFiService.ListEndpoints:output_type -> gofi.v1.ListEndpointsResponse
-	55, // 93: gofi.v1.GoFiService.ResolveTargets:output_type -> gofi.v1.ResolveTargetsResponse
-	58, // 94: gofi.v1.GoFiService.Replay:output_type -> gofi.v1.ReplayResponse
-	47, // 95: gofi.v1.GoFiService.GetConfiguration:output_type -> gofi.v1.GetConfigurationResponse
-	49, // 96: gofi.v1.GoFiService.GetMode:output_type -> gofi.v1.GetModeResponse
-	51, // 97: gofi.v1.GoFiService.Simulate:output_type -> gofi.v1.SimulateResponse
-	60, // 98: gofi.v1.GoFiService.DebugFrame:output_type -> gofi.v1.DebugFrameResponse
-	53, // 99: gofi.v1.GoFiService.WatchTraffic:output_type -> gofi.v1.WatchTrafficResponse
-	87, // [87:100] is the sub-list for method output_type
-	74, // [74:87] is the sub-list for method input_type
-	74, // [74:74] is the sub-list for extension type_name
-	74, // [74:74] is the sub-list for extension extendee
-	0,  // [0:74] is the sub-list for field type_name
+	44, // 57: gofi.v1.GetRouteHealthResponse.routes:type_name -> gofi.v1.RouteHealth
+	75, // 58: gofi.v1.RouteHealth.last_success_at:type_name -> google.protobuf.Timestamp
+	75, // 59: gofi.v1.RouteHealth.last_failure_at:type_name -> google.protobuf.Timestamp
+	26, // 60: gofi.v1.GetRuntimeStatusResponse.runtime:type_name -> gofi.v1.RuntimeInfo
+	27, // 61: gofi.v1.ListEndpointsResponse.endpoints:type_name -> gofi.v1.Endpoint
+	29, // 62: gofi.v1.GetConfigurationResponse.configuration:type_name -> gofi.v1.Configuration
+	0,  // 63: gofi.v1.SimulateRequest.flow:type_name -> gofi.v1.Flow
+	33, // 64: gofi.v1.SimulateResponse.result:type_name -> gofi.v1.SimulateResult
+	30, // 65: gofi.v1.WatchTrafficResponse.event:type_name -> gofi.v1.TrafficEvent
+	20, // 66: gofi.v1.ResolveTargetsRequest.target:type_name -> gofi.v1.KubernetesTarget
+	27, // 67: gofi.v1.ResolveTargetsResponse.endpoints:type_name -> gofi.v1.Endpoint
+	20, // 68: gofi.v1.ReplayRequest.target:type_name -> gofi.v1.KubernetesTarget
+	27, // 69: gofi.v1.ReplayDelivery.endpoint:type_name -> gofi.v1.Endpoint
+	60, // 70: gofi.v1.ReplayResponse.deliveries:type_name -> gofi.v1.ReplayDelivery
+	0,  // 71: gofi.v1.DebugFrameRequest.flow:type_name -> gofi.v1.Flow
+	33, // 72: gofi.v1.DebugFrameResponse.simulation:type_name -> gofi.v1.SimulateResult
+	9,  // 73: gofi.v1.DebugFrameResponse.function:type_name -> gofi.v1.PythonRef
+	74, // 74: gofi.v1.DebugFrameResponse.input_fields:type_name -> google.protobuf.Struct
+	73, // 75: gofi.v1.DebugFrameResponse.input_meta:type_name -> gofi.v1.DebugFrameResponse.InputMetaEntry
+	76, // 76: gofi.v1.DebugFrameResponse.recording:type_name -> gofi.v1.DebugRecording
+	34, // 77: gofi.v1.GoFiService.ListFlows:input_type -> gofi.v1.ListFlowsRequest
+	36, // 78: gofi.v1.GoFiService.GetFlow:input_type -> gofi.v1.GetFlowRequest
+	38, // 79: gofi.v1.GoFiService.UpsertFlow:input_type -> gofi.v1.UpsertFlowRequest
+	40, // 80: gofi.v1.GoFiService.DeleteFlow:input_type -> gofi.v1.DeleteFlowRequest
+	45, // 81: gofi.v1.GoFiService.GetRuntimeStatus:input_type -> gofi.v1.GetRuntimeStatusRequest
+	47, // 82: gofi.v1.GoFiService.ListEndpoints:input_type -> gofi.v1.ListEndpointsRequest
+	57, // 83: gofi.v1.GoFiService.ResolveTargets:input_type -> gofi.v1.ResolveTargetsRequest
+	59, // 84: gofi.v1.GoFiService.Replay:input_type -> gofi.v1.ReplayRequest
+	49, // 85: gofi.v1.GoFiService.GetConfiguration:input_type -> gofi.v1.GetConfigurationRequest
+	51, // 86: gofi.v1.GoFiService.GetMode:input_type -> gofi.v1.GetModeRequest
+	53, // 87: gofi.v1.GoFiService.Simulate:input_type -> gofi.v1.SimulateRequest
+	62, // 88: gofi.v1.GoFiService.DebugFrame:input_type -> gofi.v1.DebugFrameRequest
+	55, // 89: gofi.v1.GoFiService.WatchTraffic:input_type -> gofi.v1.WatchTrafficRequest
+	42, // 90: gofi.v1.GoFiService.GetRouteHealth:input_type -> gofi.v1.GetRouteHealthRequest
+	35, // 91: gofi.v1.GoFiService.ListFlows:output_type -> gofi.v1.ListFlowsResponse
+	37, // 92: gofi.v1.GoFiService.GetFlow:output_type -> gofi.v1.GetFlowResponse
+	39, // 93: gofi.v1.GoFiService.UpsertFlow:output_type -> gofi.v1.UpsertFlowResponse
+	41, // 94: gofi.v1.GoFiService.DeleteFlow:output_type -> gofi.v1.DeleteFlowResponse
+	46, // 95: gofi.v1.GoFiService.GetRuntimeStatus:output_type -> gofi.v1.GetRuntimeStatusResponse
+	48, // 96: gofi.v1.GoFiService.ListEndpoints:output_type -> gofi.v1.ListEndpointsResponse
+	58, // 97: gofi.v1.GoFiService.ResolveTargets:output_type -> gofi.v1.ResolveTargetsResponse
+	61, // 98: gofi.v1.GoFiService.Replay:output_type -> gofi.v1.ReplayResponse
+	50, // 99: gofi.v1.GoFiService.GetConfiguration:output_type -> gofi.v1.GetConfigurationResponse
+	52, // 100: gofi.v1.GoFiService.GetMode:output_type -> gofi.v1.GetModeResponse
+	54, // 101: gofi.v1.GoFiService.Simulate:output_type -> gofi.v1.SimulateResponse
+	63, // 102: gofi.v1.GoFiService.DebugFrame:output_type -> gofi.v1.DebugFrameResponse
+	56, // 103: gofi.v1.GoFiService.WatchTraffic:output_type -> gofi.v1.WatchTrafficResponse
+	43, // 104: gofi.v1.GoFiService.GetRouteHealth:output_type -> gofi.v1.GetRouteHealthResponse
+	91, // [91:105] is the sub-list for method output_type
+	77, // [77:91] is the sub-list for method input_type
+	77, // [77:77] is the sub-list for extension type_name
+	77, // [77:77] is the sub-list for extension extendee
+	0,  // [0:77] is the sub-list for field type_name
 }
 
 func init() { file_gofi_v1_gofi_proto_init() }
@@ -4797,7 +5039,7 @@ func file_gofi_v1_gofi_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gofi_v1_gofi_proto_rawDesc), len(file_gofi_v1_gofi_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   71,
+			NumMessages:   74,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

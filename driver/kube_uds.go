@@ -2,7 +2,10 @@ package driver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -11,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
 	"github.com/wcrum/gofi/spec"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,6 +76,11 @@ func (k *Kube) reconcileUDSAllows(ctx context.Context, defs []spec.FlowDefinitio
 	if err != nil {
 		return wrapUDS(err)
 	}
+	return k.applyUDSPackage(ctx, desired)
+}
+
+// applyUDSPackage makes desired GoFi's live Package.
+func (k *Kube) applyUDSPackage(ctx context.Context, desired *unstructured.Unstructured) error {
 	packages := k.dyn.Resource(udsPackages).Namespace(k.namespace)
 	// Earlier GoFi versions created a separate gofi-flows Package when none
 	// existed; UDS allows one per namespace, so remove it.
@@ -89,15 +98,15 @@ func (k *Kube) reconcileUDSAllows(ctx context.Context, defs []spec.FlowDefinitio
 		for _, entry := range current.GetManagedFields() {
 			owned = owned || entry.Manager == udsFieldManager && entry.Operation == metav1.ManagedFieldsOperationApply
 		}
-		currentSpec, _, _ := unstructured.NestedMap(current.Object, "spec")
-		desiredSpec, _, _ := unstructured.NestedMap(desired.Object, "spec")
-		if owned && normalizeJSON([]any{currentSpec}) == normalizeJSON([]any{desiredSpec}) {
-			return nil
+		if owned {
+			if applied, err := k.dryRunUDSPackage(ctx, desired); err == nil && sameSpec(current, applied) {
+				return nil
+			}
 		}
 	}
 	// Force takes the fields over once from whoever applied the Package before
 	// (an earlier chart version rendered it directly).
-	_, err = packages.Apply(ctx, desired.GetName(), desired, metav1.ApplyOptions{FieldManager: udsFieldManager, Force: true})
+	_, err := packages.Apply(ctx, desired.GetName(), desired, metav1.ApplyOptions{FieldManager: udsFieldManager, Force: true})
 	return wrapUDS(err)
 }
 
@@ -147,6 +156,21 @@ func udsPackageFromBase(base, namespace string, generated []any) (*unstructured.
 		return nil, err
 	}
 	return pkg, nil
+}
+
+// dryRunUDSPackage is desired as the API server would store it: with the
+// CRD's defaults filled in (an SSO client gains enabled, publicClient, ...),
+// so it compares equal to an unchanged live Package. The error is Pepr's (or
+// the API server's) admission verdict.
+func (k *Kube) dryRunUDSPackage(ctx context.Context, desired *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	return k.dyn.Resource(udsPackages).Namespace(k.namespace).Apply(ctx, desired.GetName(), desired, metav1.ApplyOptions{FieldManager: udsFieldManager, Force: true, DryRun: []string{metav1.DryRunAll}})
+}
+
+// sameSpec compares two Packages' specs, ignoring int64/float differences.
+func sameSpec(a, b *unstructured.Unstructured) bool {
+	aSpec, _, _ := unstructured.NestedMap(a.Object, "spec")
+	bSpec, _, _ := unstructured.NestedMap(b.Object, "spec")
+	return normalizeJSON([]any{aSpec}) == normalizeJSON([]any{bSpec})
 }
 
 // udsEntryPrefix marks the allow entries GoFi generates (by description).
@@ -336,4 +360,90 @@ func sourceEgress(flow string, source spec.FlowSource) map[string]any {
 		return urlEgress(prefix, source.Subscribe.SSE.URL, "TCP")
 	}
 	return nil
+}
+
+// PackageRefusal is an ApplyUDSPackage GoFi will not perform: it does not
+// manage its Package, or the reviewed plan is stale.
+type PackageRefusal struct{ Reason string }
+
+func (e *PackageRefusal) Error() string { return e.Reason }
+
+// PlanUDSPackage compares GoFi's Package as it is live with the Package GoFi
+// would apply for flows, and dry-runs the latter through Pepr admission.
+func (k *Kube) PlanUDSPackage(ctx context.Context, flows []spec.FlowDefinition) *gofiv1.PlanUDSPackageResponse {
+	plan, _ := k.planUDSPackage(ctx, flows)
+	return plan
+}
+
+// planUDSPackage is PlanUDSPackage plus the desired object it describes (nil
+// when there is no plan).
+func (k *Kube) planUDSPackage(ctx context.Context, flows []spec.FlowDefinition) (*gofiv1.PlanUDSPackageResponse, *unstructured.Unstructured) {
+	plan := &gofiv1.PlanUDSPackageResponse{Namespace: k.namespace, Managed: k.cluster != nil && k.cluster.Opts.ManageUDSAllows}
+	if k.dyn == nil {
+		plan.Error = "UDS Packages need the Kubernetes dynamic client"
+		return plan, nil
+	}
+	desired, err := k.desiredUDSPackage(ctx, flows)
+	if err != nil {
+		plan.Error = err.Error()
+		return plan, nil
+	}
+	plan.Name = desired.GetName()
+	desiredSpec, _, _ := unstructured.NestedMap(desired.Object, "spec")
+	plan.DesiredYaml = specYAML(desiredSpec)
+	sum := sha256.Sum256([]byte(normalizeJSON([]any{desiredSpec})))
+	plan.Digest = hex.EncodeToString(sum[:8])
+	live, err := k.dyn.Resource(udsPackages).Namespace(k.namespace).Get(ctx, desired.GetName(), metav1.GetOptions{})
+	switch {
+	case err == nil:
+		liveSpec, _, _ := unstructured.NestedMap(live.Object, "spec")
+		plan.LiveYaml = specYAML(liveSpec)
+	case apierrors.IsNotFound(err):
+		live = nil
+	default:
+		plan.Error = fmt.Sprintf("read Package %s/%s: %v", k.namespace, desired.GetName(), err)
+		return plan, nil
+	}
+	// Compare and show the Package as the server would store it, defaults
+	// included, so the diff holds only real changes.
+	plan.Admission = &gofiv1.DryRunResult{Accepted: true}
+	if applied, err := k.dryRunUDSPackage(ctx, desired); err != nil {
+		plan.Admission = &gofiv1.DryRunResult{Error: err.Error()}
+	} else {
+		appliedSpec, _, _ := unstructured.NestedMap(applied.Object, "spec")
+		plan.DesiredYaml = specYAML(appliedSpec)
+		plan.InSync = live != nil && sameSpec(live, applied)
+	}
+	return plan, desired
+}
+
+// ApplyUDSPackage applies exactly the Package a plan with digest described.
+// It writes only GoFi's own Package, only when GoFi manages its allows, and
+// only while that plan is still current. flows must be the reconcile loop's
+// valid flow set, held stable by the caller (Controller.WithFlowSet).
+func (k *Kube) ApplyUDSPackage(ctx context.Context, flows []spec.FlowDefinition, digest string) (*gofiv1.PlanUDSPackageResponse, error) {
+	if k.cluster == nil || !k.cluster.Opts.ManageUDSAllows {
+		return nil, &PackageRefusal{Reason: "GoFi does not manage its UDS Package (uds.manageAllows is off)"}
+	}
+	plan, desired := k.planUDSPackage(ctx, flows)
+	switch {
+	case plan.Error != "":
+		return nil, errors.New(plan.Error)
+	case digest == "" || digest != plan.Digest:
+		return nil, &PackageRefusal{Reason: "GoFi's Package changed since it was reviewed; review the change again"}
+	case plan.Admission != nil && !plan.Admission.Accepted:
+		return nil, &PackageRefusal{Reason: "Pepr admission rejects GoFi's Package: " + plan.Admission.Error}
+	}
+	if err := k.applyUDSPackage(ctx, desired); err != nil {
+		return nil, wrapUDS(err)
+	}
+	return k.PlanUDSPackage(ctx, flows), nil
+}
+
+func specYAML(value map[string]any) string {
+	out, err := yaml.Marshal(map[string]any{"spec": value})
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }

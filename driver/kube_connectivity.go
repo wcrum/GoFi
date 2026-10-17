@@ -11,6 +11,7 @@ import (
 
 	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
 	"github.com/wcrum/gofi/kubeexplain"
+	"github.com/wcrum/gofi/observability"
 	"github.com/wcrum/gofi/spec"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -27,11 +28,21 @@ type connectivityPath struct {
 	remoteNamespace        string
 }
 
+// ConnectivityRuntime is what the running flow contributes to the analysis.
+type ConnectivityRuntime struct {
+	// Observed is the runtime's route health; joined by path ID.
+	Observed []*gofiv1.RouteHealth
+	// Saved is true when the analyzed definition routes like the saved one,
+	// so GoFi's Package for the saved flows already includes it.
+	Saved bool
+}
+
 // AnalyzeConnectivity verifies every path a flow needs against UDS Packages:
 // GoFi's own Package as GoFi would apply it (checked by Pepr admission with a
-// server-side dry run), and the Package of each in-cluster peer, which must
-// admit the mirror direction. def may be unsaved; all are the stored flows.
-func (k *Kube) AnalyzeConnectivity(ctx context.Context, def spec.FlowDefinition, all []spec.FlowDefinition) (*gofiv1.AnalyzeConnectivityResponse, error) {
+// server-side dry run) and as it is live, and the Package of each in-cluster
+// peer, which must admit the mirror direction. def may be unsaved; all are
+// the stored flows. Observed failures are joined to the verdict per path.
+func (k *Kube) AnalyzeConnectivity(ctx context.Context, def spec.FlowDefinition, all []spec.FlowDefinition, runtime ConnectivityRuntime) (*gofiv1.AnalyzeConnectivityResponse, error) {
 	out := &gofiv1.AnalyzeConnectivityResponse{Namespace: k.namespace, Limits: []string{
 		"This checks UDS Package intent. The UDS operator turns Packages into NetworkPolicies and Istio AuthorizationPolicies; Istio ambient enforces L4 policy for TCP only, and UDP is governed by NetworkPolicies.",
 		"Firewalls, cloud security groups, and CNI-specific policies outside Kubernetes are not visible here.",
@@ -48,10 +59,15 @@ func (k *Kube) AnalyzeConnectivity(ctx context.Context, def spec.FlowDefinition,
 	flows = append(flows, def)
 
 	// GoFi's own Package: the one GoFi would apply (verified by Pepr), or the
-	// live one when GoFi does not manage allows.
+	// live one when GoFi does not manage allows. A managed Package is also
+	// checked live, since a path GoFi would allow is still blocked until the
+	// Package is applied.
 	manage := k.cluster != nil && k.cluster.Opts.ManageUDSAllows
-	var local []unstructured.Unstructured
+	var local, live []unstructured.Unstructured
 	packages := k.dyn.Resource(udsPackages)
+	if list, err := packages.Namespace(k.namespace).List(ctx, metav1.ListOptions{}); err == nil {
+		live = list.Items
+	}
 	if manage {
 		desired, err := k.desiredUDSPackage(ctx, flows)
 		if err != nil {
@@ -65,8 +81,8 @@ func (k *Kube) AnalyzeConnectivity(ctx context.Context, def spec.FlowDefinition,
 			}
 			out.Engines = append(out.Engines, &gofiv1.PolicyEngine{Name: "pepr", Present: true, Note: note})
 		}
-	} else if list, err := packages.Namespace(k.namespace).List(ctx, metav1.ListOptions{}); err == nil {
-		local = list.Items
+	} else {
+		local = live
 	}
 
 	// Every Package GoFi may read, by namespace, for the peer side.
@@ -94,45 +110,85 @@ func (k *Kube) AnalyzeConnectivity(ctx context.Context, def spec.FlowDefinition,
 		}
 	}
 
+	observed := map[string]*gofiv1.RouteHealth{}
+	for _, route := range runtime.Observed {
+		observed[route.Route] = route
+	}
+	sides := packageSides{local: local, live: live, remote: remote, canReadRemote: canReadRemote, manage: manage, saved: runtime.Saved}
 	for _, path := range k.connectivityPaths(ctx, def) {
-		out.Paths = append(out.Paths, k.verifyPath(path, local, remote, canReadRemote, manage))
+		out.Paths = append(out.Paths, k.verifyPath(path, sides, observed[path.id]))
 	}
 	return out, nil
 }
 
-func (k *Kube) verifyPath(path connectivityPath, local []unstructured.Unstructured, remote map[string][]unstructured.Unstructured, canReadRemote, manage bool) *gofiv1.ConnectivityPath {
-	result := &gofiv1.ConnectivityPath{Id: path.id, Direction: strings.ToLower(string(path.local.Direction)), From: path.from, To: path.to, Port: path.port, Protocol: path.protocol, Verdict: "allowed"}
+// packageSides are the Packages one analysis checks paths against.
+type packageSides struct {
+	// local is GoFi's Package as it would be applied; live as it is.
+	local, live   []unstructured.Unstructured
+	remote        map[string][]unstructured.Unstructured
+	canReadRemote bool
+	manage, saved bool
+}
+
+// Notes on who makes a Package change.
+const (
+	noteManagedLag = "GoFi generates this allow from the saved flows, but the live Package does not have it yet (the last reconcile failed or has not run). Review the change and apply GoFi's Package."
+	noteUnsaved    = "GoFi adds this allow to its Package when the flow is saved."
+	noteUnmanaged  = "GoFi does not manage its Package (uds.manageAllows is off). Add this entry to additionalNetworkAllow in the uds-gofi-config chart values and redeploy, or enable uds.manageAllows with gofiManagesPackage so GoFi keeps it in step."
+	notePeer       = "This Package belongs to another application and is deployed with it, so GoFi only reads it. Append this entry to network.allow in that application's Package source (its chart or bundle values); a merge patch on the live object would replace the whole allow list and be reverted on its next deploy."
+)
+
+func (k *Kube) verifyPath(path connectivityPath, sides packageSides, observed *gofiv1.RouteHealth) *gofiv1.ConnectivityPath {
+	result := &gofiv1.ConnectivityPath{Id: path.id, Direction: strings.ToLower(string(path.local.Direction)), From: path.from, To: path.to, Port: path.port, Protocol: path.protocol, Verdict: "allowed", Observed: observed}
 	addFindings := func(findings []kubeexplain.Finding) {
 		for _, f := range findings {
 			result.Findings = append(result.Findings, &gofiv1.PolicyFinding{Engine: f.Engine, Kind: f.Kind, Name: f.Name, Namespace: f.Namespace, Effect: f.Effect, Detail: f.Detail})
 		}
 	}
-	mine := kubeexplain.EvaluateUDS(local, k.namespace, path.local)
+	mine := kubeexplain.EvaluateUDS(sides.local, k.namespace, path.local)
 	addFindings(mine.Findings)
 	var problems []string
-	if mine.Governed && !mine.Covered {
+	switch {
+	case mine.Governed && !mine.Covered:
 		result.Verdict = "blocked"
 		problems = append(problems, "GoFi's Package does not allow it")
-		title := "Add to GoFi's Package " + k.namespace + "/" + mine.Package
-		if manage {
-			title = "GoFi should generate this allow; report this as a bug: " + title
+		fix := &gofiv1.SuggestedFix{Engine: "uds", Title: "Add to GoFi's Package " + k.namespace + "/" + mine.Package, Yaml: kubeexplain.UDSAllowFix(path.local), Note: noteUnmanaged}
+		if sides.manage {
+			fix.Title, fix.Note = "GoFi should generate this allow; report this as a bug: "+fix.Title, ""
 		}
-		result.Fixes = append(result.Fixes, &gofiv1.SuggestedFix{Engine: "uds", Title: title, Yaml: kubeexplain.UDSAllowFix(path.local)})
+		result.Fixes = append(result.Fixes, fix)
+	case mine.Covered && sides.manage:
+		current := kubeexplain.EvaluateUDS(sides.live, k.namespace, path.local)
+		if current.Governed && !current.Covered {
+			result.Verdict = "blocked"
+			fix := &gofiv1.SuggestedFix{Engine: "uds", Title: "Apply GoFi's Package " + k.namespace + "/" + current.Package, Yaml: kubeexplain.UDSAllowFix(path.local), Note: noteUnsaved}
+			if sides.saved {
+				problems = append(problems, "GoFi's live Package does not allow it yet")
+				fix.Action, fix.Note = "apply-gofi-package", noteManagedLag
+				for _, f := range current.Findings {
+					f.Detail = "Live: " + f.Detail
+					addFindings([]kubeexplain.Finding{f})
+				}
+			} else {
+				problems = append(problems, "GoFi's Package allows it once the flow is saved")
+			}
+			result.Fixes = append(result.Fixes, fix)
+		}
 	}
 	if path.remote != nil {
 		switch {
-		case !canReadRemote:
+		case !sides.canReadRemote:
 			if result.Verdict == "allowed" {
 				result.Verdict = "unknown"
 			}
 			problems = append(problems, fmt.Sprintf("namespace %s's Package could not be read (cluster discovery is off)", path.remoteNamespace))
 		default:
-			theirs := kubeexplain.EvaluateUDS(remote[path.remoteNamespace], path.remoteNamespace, *path.remote)
+			theirs := kubeexplain.EvaluateUDS(sides.remote[path.remoteNamespace], path.remoteNamespace, *path.remote)
 			addFindings(theirs.Findings)
 			if theirs.Governed && !theirs.Covered {
 				result.Verdict = "blocked"
 				problems = append(problems, fmt.Sprintf("Package %s/%s does not allow it", path.remoteNamespace, theirs.Package))
-				result.Fixes = append(result.Fixes, &gofiv1.SuggestedFix{Engine: "uds", Title: fmt.Sprintf("Add to Package %s/%s (owned by that application)", path.remoteNamespace, theirs.Package), Yaml: kubeexplain.UDSAllowFix(*path.remote)})
+				result.Fixes = append(result.Fixes, &gofiv1.SuggestedFix{Engine: "uds", Title: fmt.Sprintf("Add to Package %s/%s (owned by that application)", path.remoteNamespace, theirs.Package), Yaml: kubeexplain.UDSAllowFix(*path.remote), Note: notePeer})
 			}
 		}
 	}
@@ -148,7 +204,48 @@ func (k *Kube) verifyPath(path connectivityPath, local []unstructured.Unstructur
 			result.Summary = strings.ToUpper(problems[0][:1]) + problems[0][1:] + ", and " + strings.Join(problems[1:], ", ") + "."
 		}
 	}
+	diagnose(result)
 	return result
+}
+
+// failureText describes an observed error class for a summary.
+var failureText = map[string]string{
+	"denied":      "Istio denied the request (RBAC: access denied)",
+	"forbidden":   "the server answered 403 Forbidden",
+	"reset":       "connections are closed or reset, which is how Istio ambient denies TCP",
+	"timeout":     "connections time out, which is how a NetworkPolicy drop looks",
+	"refused":     "connections are refused (nothing listening, or the port is closed)",
+	"dns":         "the name does not resolve",
+	"unreachable": "the network is unreachable",
+	"tls":         "the TLS handshake fails",
+	"http":        "the server answers with an HTTP error",
+}
+
+// diagnose joins the static verdict with what the running flow observed, so
+// a path that is failing says whether a Package is the reason.
+func diagnose(result *gofiv1.ConnectivityPath) {
+	observed := result.Observed
+	if observed == nil {
+		return
+	}
+	how := failureText[observed.ErrorClass]
+	if how == "" {
+		how = "sends fail"
+	}
+	switch {
+	case observed.Failing && result.Verdict == "blocked":
+		result.Diagnosis = "not-allowed"
+		result.Summary = "Not allowed: " + strings.ToLower(result.Summary[:1]) + result.Summary[1:] + " Sends fail: " + how + "."
+	case observed.Failing && result.Verdict == "unknown":
+		result.Diagnosis = "unverified"
+		result.Summary += " Sends fail (" + how + "), and the unread Package may be why."
+	case observed.Failing:
+		result.Diagnosis = "unreachable"
+		result.Summary = "Unreachable, but not because of UDS Packages: " + how + "."
+	case result.Verdict == "blocked" && observed.Successes > 0:
+		result.Diagnosis = "mismatch"
+		result.Summary += " Yet sends succeed, so enforcement differs from the Package (or the Package is not Ready)."
+	}
 }
 
 // connectivityPaths lists the traffic a flow needs outside its namespace.
@@ -246,18 +343,18 @@ func (k *Kube) connectivityPaths(ctx context.Context, def spec.FlowDefinition) [
 		if sink.Type == "udp" {
 			protocol = "UDP"
 		}
-		add(fmt.Sprintf("egress-sink-%d", i), fmt.Sprintf("destination %d (%s)", i+1, sink.Type), sink.URL, protocol, sink.Kubernetes)
+		add(observability.RouteSink(i), fmt.Sprintf("destination %d (%s)", i+1, sink.Type), sink.URL, protocol, sink.Kubernetes)
 	}
 	if dl := def.DeadLetterSink; dl != nil {
 		protocol := "TCP"
 		if dl.Type == "udp" {
 			protocol = "UDP"
 		}
-		add("egress-deadletter", "dead letter ("+dl.Type+")", dl.URL, protocol, dl.Kubernetes)
+		add(observability.RouteDeadLetter, "dead letter ("+dl.Type+")", dl.URL, protocol, dl.Kubernetes)
 	}
 	if source := sourceURL(def.Source); source != "" {
 		// A pulled source connects out; the data then flows in on that connection.
-		add("egress-source", "source", source, "TCP", nil)
+		add(observability.RouteSource, "source", source, "TCP", nil)
 	}
 	sort.SliceStable(paths, func(i, j int) bool { return paths[i].id < paths[j].id })
 	return paths

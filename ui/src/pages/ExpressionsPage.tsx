@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import {
-  Alert, Badge, Button, Combobox, ConfirmModal, Drawer, EmptyState, Field, FilterInput, IconButton, Input, InteractiveTable,
+  Alert, Badge, Button, Combobox, ConfirmModal, Drawer, Field, FilterInput, IconButton, Input, InteractiveTable,
   RadioButtonGroup, Stack, Tab, TabsBar, TagList, TagsInput, Text, TextArea, TextLink, useStyles2, type Column,
 } from '@grafana/ui'
+import { EmptyState } from '../components/EmptyState'
 import { CelEditor } from '../components/cel/CelEditor'
 import { useExpressions } from '../components/cel/useExpressions'
 import { useToast } from '../components/Toast'

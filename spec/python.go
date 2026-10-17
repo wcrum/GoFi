@@ -100,6 +100,17 @@ func (d *FlowDefinition) ResolveInlinePython() {
 	}
 }
 
+// StripDerivedPython clears the library and function GoFi derives for
+// inline stages, leaving the inline source: what people see and store is the
+// code, while the managed library behind it is recomputed on load.
+func (d *FlowDefinition) StripDerivedPython() {
+	for i := range d.Stages {
+		if ref := d.Stages[i].Python; ref != nil && ref.InlineSource != "" {
+			ref.Library, ref.Function = "", ""
+		}
+	}
+}
+
 // UnresolveInlinePython clears derived library names so each inline stage
 // runs its own current source (used by simulations of unsaved edits).
 func (d *FlowDefinition) UnresolveInlinePython() {

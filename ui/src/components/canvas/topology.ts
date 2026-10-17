@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react'
+import { codecLabel } from '../../lib/codec.ts'
 import { listenOf, sourceSummary, type FlowDefinition, type SinkCfg } from '../../types.ts'
 
 export interface FlowObservation {
@@ -62,10 +63,10 @@ export function flowsToTopology(flows: FlowDefinition[]): { nodes: TopologyNode[
     } })
     nodes.push({ id: decode, type: 'topology', position: { x: 280, y }, data: {
       role: 'decode', flowName: flow.name, title: 'Decode & parse',
-      detail: [...(flow.parser.decoders ?? []), flow.parser.python ? `${flow.parser.python.library}.${flow.parser.python.function}` : flow.parser.format || 'raw'].join(' → ') + `\n${flow.framing.mode} framing`,
+      detail: [...(flow.parser.decoders ?? []).map(codecLabel), flow.parser.python ? `${flow.parser.python.library}.${flow.parser.python.function}` : flow.parser.format || 'raw'].join(' → ') + `\n${flow.framing.mode} framing`,
     } })
     const connect = (source: string, target: string, label?: string, deadLetter = false) => edges.push({
-      id: `${prefix}:edge:${edges.length}`, source, sourceHandle: deadLetter ? 'rejected' : undefined, target, type: 'smoothstep', label,
+      id: `${prefix}:edge:${edges.length}`, source, sourceHandle: deadLetter ? 'rejected' : undefined, target, type: 'default', label,
       data: { flowName: flow.name, deadLetter, observedIngress: source === ingress && target === decode },
       style: deadLetter ? { strokeDasharray: '5 5' } : undefined,
       labelStyle: { fill: 'rgb(var(--g-text-secondary))', fontSize: 10 }, labelBgStyle: { fill: 'rgb(var(--g-primary))', fillOpacity: 1 }, labelBgPadding: [6, 4],
@@ -77,7 +78,7 @@ export function flowsToTopology(flows: FlowDefinition[]): { nodes: TopologyNode[
       nodes.push({ id, type: 'topology', position: { x: 560, y }, data: {
         role: 'stage', flowName: flow.name,
         title: `${flow.stages.length} processing stage${flow.stages.length === 1 ? '' : 's'}`,
-        detail: flow.stages.map((stage) => `${stage.id} · ${stage.python ? `${stage.python.library}.${stage.python.function}` : stage.type || stage.kind}`).join('\n'),
+        detail: flow.stages.map((stage) => `${stage.id} · ${stage.python?.inlineSource ? 'inline Python' : stage.python ? `${stage.python.library}.${stage.python.function}` : stage.type || stage.kind}`).join('\n'),
       } })
       connect(terminal, id)
       terminal = id

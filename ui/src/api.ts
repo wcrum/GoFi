@@ -1,7 +1,7 @@
 import { createClient, ConnectError, Code } from '@connectrpc/connect'
 import { createConnectTransport } from '@connectrpc/connect-web'
 import { fromJson, toJson, type JsonValue } from '@bufbuild/protobuf'
-import { GoFiService, ConfigurationSchema, EndpointSchema, GetModeResponseSchema, RuntimeInfoSchema, KubernetesTargetSchema } from './gen/gofi/v1/gofi_pb'
+import { GoFiService, ConfigurationSchema, EndpointSchema, GetModeResponseSchema, RuntimeInfoSchema, KubernetesTargetSchema, RouteHealthSchema } from './gen/gofi/v1/gofi_pb'
 import { flowFromProto, flowToProto, jsonValue, simulationFromProto, trafficFromProto } from './rpc-model'
 import type { FlowDefinition, SimulateResult, TapEvent, KubernetesTarget } from './types'
 
@@ -34,10 +34,17 @@ export async function getFlow(name: string): Promise<FlowDefinition> {
   if (!flow) throw new Error('Flow not found')
   return flowFromProto(flow)
 }
-export async function saveFlow(definition: FlowDefinition): Promise<FlowDefinition> {
-  const { flow } = await client.upsertFlow({ flow: flowToProto(definition) })
+/** Saves a flow. warnings name paths the flow needs that a UDS Package GoFi
+ * does not own blocks; the flow is saved regardless. */
+export async function saveFlow(definition: FlowDefinition): Promise<{ flow: FlowDefinition; warnings: string[] }> {
+  const { flow, warnings } = await client.upsertFlow({ flow: flowToProto(definition) })
   if (!flow) throw new Error('GoFi returned no flow')
-  return flowFromProto(flow)
+  return { flow: flowFromProto(flow), warnings }
+}
+/** Runs every check a save runs (including platform admission) without
+ * saving; resolves to the warnings a save would return. */
+export async function validateFlow(definition: FlowDefinition): Promise<string[]> {
+  return (await client.upsertFlow({ flow: flowToProto(definition), validateOnly: true })).warnings
 }
 export async function deleteFlow(name: string): Promise<void> {
   try { await client.deleteFlow({ name }) }
@@ -47,6 +54,25 @@ export async function getRuntimeStatus(name: string): Promise<RuntimeInfo> {
   const { runtime } = await client.getRuntimeStatus({ name })
   if (!runtime) throw new Error('Runtime status unavailable')
   return toJson(RuntimeInfoSchema, runtime) as unknown as RuntimeInfo
+}
+/** One outbound route as the flow's runtime observed it. route is
+ * "egress-sink-<i>", "egress-deadletter", or "egress-source". */
+export interface RouteHealth { route: string; successes: number; failures: number; lastSuccessAt?: string; lastFailureAt?: string; lastError?: string; errorClass?: string; failing: boolean }
+/** Protobuf JSON carries int64 counts as strings. */
+export const routeHealthFromJson = (json: RouteHealth): RouteHealth => ({ ...json, successes: Number(json.successes ?? 0), failures: Number(json.failures ?? 0), failing: !!json.failing })
+export async function getRouteHealth(name: string): Promise<RouteHealth[]> {
+  const { routes } = await client.getRouteHealth({ name })
+  return routes.map(route => routeHealthFromJson(toJson(RouteHealthSchema, route, { alwaysEmitImplicit: true }) as unknown as RouteHealth))
+}
+/** A route's name for people: "Destination 2", "Dead letter", "Source". */
+export function routeLabel(route: string): string {
+  const sink = /^egress-sink-(\d+)$/.exec(route)
+  return sink ? `Destination ${Number(sink[1]) + 1}` : route === 'egress-deadletter' ? 'Dead letter' : route === 'egress-source' ? 'Source' : route
+}
+/** How a failure looked on the socket, in a few words. */
+export const ERROR_CLASS_TEXT: Record<string, string> = {
+  denied: 'denied by Istio (RBAC)', forbidden: '403 Forbidden', http: 'HTTP error', dns: 'name does not resolve', refused: 'connection refused',
+  reset: 'connection reset', timeout: 'timed out', unreachable: 'network unreachable', tls: 'TLS handshake failed', other: 'failed',
 }
 export async function simulateFlow(flow: FlowDefinition, raw: string): Promise<SimulateResult> {
   const { result } = await client.simulate({ flow: flowToProto(flow), raw })

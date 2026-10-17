@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { StatusIndicator } from './StatusIndicator'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2, IconName } from '@grafana/data'
-import { Alert, Badge, Button, Card, ConfirmModal, Dropdown, Field, IconButton, Input, Menu, PanelChrome, Stack, Tab, TabsBar, Text, TextLink, useStyles2 } from '@grafana/ui'
+import { Alert, Badge, Button, Card, ConfirmModal, Dropdown, Field, Icon, IconButton, Input, Menu, PanelChrome, Stack, Tab, TabsBar, Text, TextLink, useStyles2 } from '@grafana/ui'
 import { applySandbox, deleteSandbox, formatPythonSource, listLibraryFunctions, listSandboxes, validatePythonSource, type FunctionTest, type LibraryFunction, type SandboxDefinition, type SandboxStatus, type SourceDiagnostic } from '../sandbox-api'
 import { DEFAULT_LIBRARY, FUNCTION_TEMPLATES, insertTemplate } from './canvas/python-templates'
 import { paths, to } from '../router'
@@ -34,6 +34,8 @@ export default function SandboxManager() {
   const [message, setMessage] = useState<{ tone: 'success' | 'warning'; text: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([])
+  // The last validation's verdict; any edit clears it.
+  const [validity, setValidity] = useState<'valid' | 'invalid' | undefined>()
   const [reveal, setReveal] = useState<RevealRequest | null>(null)
   const [runSelection, setRunSelection] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -57,8 +59,8 @@ export default function SandboxManager() {
   const userLibraries = libraries.filter(library => !managedFlow(library))
   const flowLibraries = libraries.filter(library => managedFlow(library))
 
-  const select = (library: SandboxDefinition) => { setDraft(structuredClone({ ...library, tests: library.tests ?? [], egress: library.egress ?? [] })); setDiagnostics([]); setError(''); setMessage(null); setRunSelection(''); setTestHighlights(null) }
-  const updateSource = (sourceCode: string) => { setDraft(previous => ({ ...previous, sourceCode })); setDiagnostics([]); setMessage(null); setTestHighlights(null) }
+  const select = (library: SandboxDefinition) => { setDraft(structuredClone({ ...library, tests: library.tests ?? [], egress: library.egress ?? [] })); setDiagnostics([]); setValidity(undefined); setError(''); setMessage(null); setRunSelection(''); setTestHighlights(null) }
+  const updateSource = (sourceCode: string) => { setDraft(previous => ({ ...previous, sourceCode })); setDiagnostics([]); setValidity(undefined); setMessage(null); setTestHighlights(null) }
   const onRunHighlight = useCallback((highlights: SourceHighlights, reason: 'static' | 'result') => { setRunHighlights(highlights); if (reason === 'result') setTestHighlights(null) }, [])
   const jumpTo = (line: number, column?: number) => { setTab('source'); setReveal({ line, column, nonce: Date.now() }) }
   async function action(kind: string, work: () => Promise<void>) { setBusy(kind); setError(''); setMessage(null); try { await work() } catch (reason) { setError(String(reason)) } finally { setBusy(null) } }
@@ -66,7 +68,7 @@ export default function SandboxManager() {
   const validate = () => action('validate', async () => {
     const validation = await validatePythonSource(draft.sourceCode)
     setDiagnostics(validation.diagnostics)
-    setMessage(validation.valid ? { tone: 'success', text: 'Validation passed.' } : { tone: 'warning', text: `Validation found ${validation.diagnostics.length} issue(s).` })
+    setValidity(validation.valid ? 'valid' : 'invalid')
   })
   const addTest = (test: FunctionTest) => { setDraft(previous => ({ ...previous, tests: [...(previous.tests ?? []), test] })); setMessage({ tone: 'success', text: `Saved "${test.name}" to Tests. Save and launch to keep it.` }) }
 
@@ -86,7 +88,6 @@ export default function SandboxManager() {
       <Card.Heading>{library.name}</Card.Heading>
       <Card.Meta>{[<StatusIndicator key="phase" text={libraryStatus?.phase ?? 'Pending'} tone={libraryStatus?.error ? 'error' : libraryStatus?.phase === 'Running' || libraryStatus?.phase === 'Ready' ? 'success' : 'neutral'} tooltip={libraryStatus?.error || undefined} />, ...(library.egress?.length ? [<Badge key="egress" icon="external-link-alt" color="orange" text="egress" />] : [])]}</Card.Meta>
       {libraryStatus?.error && <Card.Description>{libraryStatus.error}</Card.Description>}
-      {flow && <Card.Description>Inline stages of <TextLink href={to(paths.flow(flow))} inline>{flow}</TextLink></Card.Description>}
       {!flow && <Card.SecondaryActions><IconButton name="trash-alt" tooltip="Delete library" disabled={!!busy} onClick={() => setConfirmDelete(library.name)} /></Card.SecondaryActions>}
     </Card>
   }
@@ -98,9 +99,11 @@ export default function SandboxManager() {
         <Stack direction="column" gap={1}>
           {userLibraries.map(libraryCard)}
           {!userLibraries.length && <Text color="secondary" variant="bodySmall">No saved libraries.</Text>}
+          {/* Inline Python belongs to its flow: link to the code, not the
+              library GoFi generates to run it. */}
           {flowLibraries.length > 0 && <>
-            <div className={styles.groupTitle}><Text variant="bodySmall" weight="medium" color="secondary">Managed by flows</Text></div>
-            {flowLibraries.map(libraryCard)}
+            <div className={styles.groupTitle}><Text variant="bodySmall" weight="medium" color="secondary">Inline Python in flows</Text></div>
+            {flowLibraries.map(library => { const flow = managedFlow(library)!; return <TextLink key={library.name} href={to(paths.flow(flow))} icon="arrow-right" inline={false}>{flow}</TextLink> })}
           </>}
         </Stack>
       </PanelChrome>
@@ -130,7 +133,8 @@ export default function SandboxManager() {
               <Text color="secondary" variant="bodySmall">Formatting and validation run in an isolated tooling worker and never execute the source.</Text>
               {!readOnly && <Dropdown overlay={templates} placement="bottom-end"><Button variant="secondary" icon="plus" size="sm">New function</Button></Dropdown>}
             </Stack>
-            <Suspense fallback={<PageLoading text="Loading editor..." />}><PythonSourceEditor source={draft.sourceCode} onChange={updateSource} diagnostics={diagnostics} disabled={!!busy || readOnly} reveal={reveal} highlights={testHighlights ?? runHighlights} /></Suspense>
+            <Suspense fallback={<PageLoading text="Loading editor..." />}><PythonSourceEditor source={draft.sourceCode} onChange={updateSource} diagnostics={diagnostics} disabled={!!busy || readOnly} reveal={reveal} highlights={testHighlights ?? runHighlights} validity={validity} /></Suspense>
+            {validity === 'valid' && <div className={styles.valid}><Icon name="check-circle" />Validation passed</div>}
             {!!diagnostics.length && <Alert severity="error" title={`${diagnostics.length} diagnostic(s)`} bottomSpacing={0}>
               <Stack direction="column" gap={0.5}>{diagnostics.map((diagnostic, index) => <div key={index}><Button size="sm" fill="text" variant="secondary" onClick={() => jumpTo(diagnostic.line, diagnostic.column)}>{diagnostic.line}:{diagnostic.column}</Button> <Text variant="bodySmall"><Text variant="code">{diagnostic.code}</Text> {diagnostic.message}</Text></div>)}</Stack>
             </Alert>}
@@ -158,6 +162,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
   layout: css({ display: 'grid', gap: theme.spacing(2), gridTemplateColumns: 'minmax(0,1fr)', alignItems: 'start', [theme.breakpoints.up('xl')]: { gridTemplateColumns: '280px minmax(0,1fr)' } }),
   groupTitle: css({ marginTop: theme.spacing(1), paddingTop: theme.spacing(1), borderTop: `1px solid ${theme.colors.border.weak}` }),
   main: css({ minWidth: 0, display: 'flex', flexDirection: 'column', gap: theme.spacing(2) }),
+  // Grafana's field validation line, tucked under the editor frame.
+  valid: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(0.5), marginTop: theme.spacing(-1.5), color: theme.colors.success.text, fontSize: theme.typography.bodySmall.fontSize }),
   toolbar: css({ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: theme.spacing(2) }),
   settings: css({ display: 'grid', gap: theme.spacing(2), gridTemplateColumns: 'minmax(180px, 2fr) repeat(2, minmax(120px, 1fr))', flex: '1 1 480px', [theme.breakpoints.down('md')]: { gridTemplateColumns: '1fr' } }),
   tabBody: css({ minWidth: 0 }),

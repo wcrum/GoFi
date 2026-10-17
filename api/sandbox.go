@@ -110,7 +110,7 @@ func (h *sandboxHandler) ListFunctions(ctx context.Context, req *connect.Request
 			continue
 		}
 		for _, f := range res.Msg.Functions {
-			out.Functions = append(out.Functions, &gofiv1.LibraryFunction{Library: d.Name, Name: f.Name, Kind: f.Kind, Description: f.Description, Params: f.Params})
+			out.Functions = append(out.Functions, &gofiv1.LibraryFunction{Library: d.Name, Name: f.Name, Kind: f.Kind, Description: f.Description, Params: f.Params, ManagedBy: d.ManagedBy})
 		}
 	}
 	return connect.NewResponse(out), nil

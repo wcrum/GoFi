@@ -14,7 +14,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file gofi/v1/gofi.proto.
  */
 export const file_gofi_v1_gofi: GenFile = /*@__PURE__*/
-  fileDesc("ChJnb2ZpL3YxL2dvZmkucHJvdG8SB2dvZmkudjEinwIKBEZsb3cSDAoEbmFtZRgBIAEoCRIjCgZzb3VyY2UYAiABKAsyEy5nb2ZpLnYxLkZsb3dTb3VyY2USIQoHZnJhbWluZxgDIAEoCzIQLmdvZmkudjEuRnJhbWluZxIlCgZwYXJzZXIYBCABKAsyFS5nb2ZpLnYxLlBhcnNlckNvbmZpZxIeCgZzdGFnZXMYBSADKAsyDi5nb2ZpLnYxLlN0YWdlEhwKBXNpbmtzGAYgAygLMg0uZ29maS52MS5TaW5rEicKEGRlYWRfbGV0dGVyX3NpbmsYByABKAsyDS5nb2ZpLnYxLlNpbmsSJQoKdGVzdF9jYXNlcxgIIAMoCzIRLmdvZmkudjEuVGVzdENhc2VKBAgJEApSBmxlZ2FjeSKTAQoKRmxvd1NvdXJjZRIlCgZsaXN0ZW4YASABKAsyFS5nb2ZpLnYxLkxpc3RlblNvdXJjZRIjCgVmZXRjaBgCIAEoCzIULmdvZmkudjEuRmV0Y2hTb3VyY2USKwoJc3Vic2NyaWJlGAMgASgLMhguZ29maS52MS5TdWJzY3JpYmVTb3VyY2VKBAgEEAVSBnB5dGhvbiI+CgtGZXRjaFNvdXJjZRIgCgRodHRwGAEgASgLMhIuZ29maS52MS5IVFRQRmV0Y2gSDQoFc3BsaXQYAiABKAki2QEKCUhUVFBGZXRjaBILCgN1cmwYASABKAkSDgoGbWV0aG9kGAIgASgJEjAKB2hlYWRlcnMYAyADKAsyHy5nb2ZpLnYxLkhUVFBGZXRjaC5IZWFkZXJzRW50cnkSHwoEYXV0aBgEIAEoCzIRLmdvZmkudjEuSFRUUEF1dGgSDQoFZXZlcnkYBSABKAkSDwoHdGltZW91dBgGIAEoCRIMCgRib2R5GAcgASgJGi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIrEBCg9TdWJzY3JpYmVTb3VyY2USJAoEbmF0cxgBIAEoCzIWLmdvZmkudjEuTkFUU1N1YnNjcmliZRIkCgRtcXR0GAIgASgLMhYuZ29maS52MS5NUVRUU3Vic2NyaWJlEisKCXdlYnNvY2tldBgDIAEoCzIYLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlEiUKA3NzZRgEIAEoCzIYLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlIl0KDU5BVFNTdWJzY3JpYmUSCwoDdXJsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSDQoFcXVldWUYAyABKAkSHwoEYXV0aBgEIAEoCzIRLmdvZmkudjEuTkFUU0F1dGgibwoNTVFUVFN1YnNjcmliZRILCgN1cmwYASABKAkSDQoFdG9waWMYAiABKAkSCwoDcW9zGAMgASgFEhEKCWNsaWVudF9pZBgEIAEoCRIQCgh1c2VybmFtZRgFIAEoCRIQCghwYXNzd29yZBgGIAEoCSK1AQoPU3RyZWFtU3Vic2NyaWJlEgsKA3VybBgBIAEoCRI2CgdoZWFkZXJzGAIgAygLMiUuZ29maS52MS5TdHJlYW1TdWJzY3JpYmUuSGVhZGVyc0VudHJ5Eh8KBGF1dGgYAyABKAsyES5nb2ZpLnYxLkhUVFBBdXRoEgwKBHNlbmQYBCABKAkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiZAoMTGlzdGVuU291cmNlEg8KB25ldHdvcmsYASABKAkSDAoEcG9ydBgCIAEoBRIpCgdzZXJ2aWNlGAMgASgLMhguZ29maS52MS5TZXJ2aWNlRXhwb3N1cmVKBAgEEAVSBGhvb2sibgoJUHl0aG9uUmVmEg8KB2xpYnJhcnkYASABKAkSEAoIZnVuY3Rpb24YAiABKAkSFQoNaW5saW5lX3NvdXJjZRgDIAEoCRInCgZjb25maWcYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IjEKDUV4cHJlc3Npb25SZWYSDAoEbmFtZRgBIAEoCRISCgpnZW5lcmF0aW9uGAIgASgDItsCCg9TZXJ2aWNlRXhwb3N1cmUSDAoEdHlwZRgBIAEoCRIMCgRwb3J0GAIgASgFEhEKCW5vZGVfcG9ydBgDIAEoBRIfChdleHRlcm5hbF90cmFmZmljX3BvbGljeRgEIAEoCRI+Cgthbm5vdGF0aW9ucxgFIAMoCzIpLmdvZmkudjEuU2VydmljZUV4cG9zdXJlLkFubm90YXRpb25zRW50cnkSMwoNbG9hZF9iYWxhbmNlchgGIAEoCzIcLmdvZmkudjEuTG9hZEJhbGFuY2VyT3B0aW9ucxIpCgdnYXRld2F5GAcgASgLMhguZ29maS52MS5HYXRld2F5RXhwb3N1cmUSJAoKYWxsb3dfZnJvbRgIIAMoCzIQLmdvZmkudjEuUGVlclJlZhoyChBBbm5vdGF0aW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEikAEKB1BlZXJSZWYSEQoJbmFtZXNwYWNlGAEgASgJEg8KB3BhY2thZ2UYAiABKAkSMAoIc2VsZWN0b3IYAyADKAsyHi5nb2ZpLnYxLlBlZXJSZWYuU2VsZWN0b3JFbnRyeRovCg1TZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiRgoTTG9hZEJhbGFuY2VyT3B0aW9ucxINCgVjbGFzcxgBIAEoCRIUCgxhZGRyZXNzX3Bvb2wYAiABKAkSCgoCaXAYAyABKAkiUgoPR2F0ZXdheUV4cG9zdXJlEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJEhAKCGxpc3RlbmVyGAMgASgJEgwKBHBvcnQYBCABKAUidQoHRnJhbWluZxIMCgRtb2RlGAEgASgJEhEKCWRlbGltaXRlchgCIAEoCRISCgpwcmVmaXhfbGVuGAMgASgFEhEKCW1heF9ieXRlcxgEIAEoBRIiCgZweXRob24YBSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZiI9CglDb2RlY1N0ZXASDAoEdHlwZRgBIAEoCRIiCgZweXRob24YAiABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZiJACghFbmNvZGluZxIOCgZmb3JtYXQYASABKAkSJAoIZW5jb2RlcnMYAiADKAsyEi5nb2ZpLnYxLkNvZGVjU3RlcCKfAQoMUGFyc2VyQ29uZmlnEg4KBmZvcm1hdBgBIAEoCRIkCghkZWNvZGVycxgGIAMoCzISLmdvZmkudjEuQ29kZWNTdGVwEhkKEW1heF9kZWNvZGVkX2J5dGVzGAMgASgFEhQKDGVycm9yX3BvbGljeRgEIAEoCRIiCgZweXRob24YBSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZkoECAIQAyLIAgoFU3RhZ2USCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIMCgR0eXBlGAMgASgJEhIKCmV4cHJlc3Npb24YBCABKAkSFAoMdHJhbnNmb3JtX29wGAUgASgJEg0KBWZpZWxkGAYgASgJEhEKCW5ld19maWVsZBgHIAEoCRISCgp2YWx1ZV9leHByGAggASgJEhYKDm1heF9wZXJfc2Vjb25kGAkgASgBEhAKCGtleV9leHByGAogASgJEg4KBndpbmRvdxgLIAEoCRIXCg9yZXF1aXJlZF9maWVsZHMYDCADKAkSIgoGcHl0aG9uGA0gASgLMhIuZ29maS52MS5QeXRob25SZWYSLgoOZXhwcmVzc2lvbl9yZWYYDiABKAsyFi5nb2ZpLnYxLkV4cHJlc3Npb25SZWYSEAoIb25fZXJyb3IYDyABKAkisQEKEEt1YmVybmV0ZXNUYXJnZXQSEQoJbmFtZXNwYWNlGAEgASgJEjkKCHNlbGVjdG9yGAIgAygLMicuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0LlNlbGVjdG9yRW50cnkSDAoEcG9ydBgDIAEoBRIQCghkZWxpdmVyeRgEIAEoCRovCg1TZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEi0QQKBFNpbmsSDAoEdHlwZRgBIAEoCRILCgN1cmwYAiABKAkSDwoHc3ViamVjdBgDIAEoCRIRCglkZWxpbWl0ZXIYBCABKAkSDgoGbWV0aG9kGAUgASgJEisKB2hlYWRlcnMYBiADKAsyGi5nb2ZpLnYxLlNpbmsuSGVhZGVyc0VudHJ5EhQKDGNvbnRlbnRfdHlwZRgHIAEoCRIRCglib2R5X21vZGUYCCABKAkSHwoEYXV0aBgJIAEoCzIRLmdvZmkudjEuSFRUUEF1dGgSJAoJbmF0c19hdXRoGAogASgLMhEuZ29maS52MS5OQVRTQXV0aBIjCgVhc3RlchgLIAEoCzIULmdvZmkudjEuQXN0ZXJDb25maWcSDAoEd2hlbhgMIAEoCRItCgprdWJlcm5ldGVzGA4gASgLMhkuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0EiIKBnB5dGhvbhgNIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEikKBmxhYmVscxgPIAMoCzIZLmdvZmkudjEuU2luay5MYWJlbHNFbnRyeRIoCgh3aGVuX3JlZhgQ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cnNlX2Vycm9yGAEgASgJEi4KDXBhcnNlZF9maWVsZHMYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiMKBnN0YWdlcxgDIAMoCzITLmdvZmkudjEuU3RhZ2VUcmFjZRIPCgdkcm9wcGVkGAQgASgIEhIKCmRyb3BwZWRfYnkYBSABKAkSEwoLZGVhZF9sZXR0ZXIYBiABKAgSIwoFc2lua3MYByADKAsyFC5nb2ZpLnYxLlNpbmtPdXRjb21lIhIKEExpc3RGbG93c1JlcXVlc3QiMQoRTGlzdEZsb3dzUmVzcG9uc2USHAoFZmxvd3MYASADKAsyDS5nb2ZpLnYxLkZsb3ciHgoOR2V0Rmxvd1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIuCg9HZXRGbG93UmVzcG9uc2USGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdyIwChFVcHNlcnRGbG93UmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93IjEKElVwc2VydEZsb3dSZXNwb25zZRIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93IiEKEURlbGV0ZUZsb3dSZXF1ZXN0EgwKBG5hbWUYASABKAkiFAoSRGVsZXRlRmxvd1Jlc3BvbnNlIicKF0dldFJ1bnRpbWVTdGF0dXNSZXF1ZXN0EgwKBG5hbWUYASABKAkiQQoYR2V0UnVudGltZVN0YXR1c1Jlc3BvbnNlEiUKB3J1bnRpbWUYASABKAsyFC5nb2ZpLnYxLlJ1bnRpbWVJbmZvIhYKFExpc3RFbmRwb2ludHNSZXF1ZXN0Ij0KFUxpc3RFbmRwb2ludHNSZXNwb25zZRIkCgllbmRwb2ludHMYASADKAsyES5nb2ZpLnYxLkVuZHBvaW50IhkKF0dldENvbmZpZ3VyYXRpb25SZXF1ZXN0IkkKGEdldENvbmZpZ3VyYXRpb25SZXNwb25zZRItCg1jb25maWd1cmF0aW9uGAEgASgLMhYuZ29maS52MS5Db25maWd1cmF0aW9uIhAKDkdldE1vZGVSZXF1ZXN0IngKD0dldE1vZGVSZXNwb25zZRIMCgRtb2RlGAEgASgJEhQKDHByb2Nlc3Nfcm9sZRgCIAEoCRITCgtkcml2ZXJfa2luZBgDIAEoCRIVCg1ub2RlX3BvcnRfbWluGAQgASgFEhUKDW5vZGVfcG9ydF9tYXgYBSABKAUiOwoPU2ltdWxhdGVSZXF1ZXN0EhsKBGZsb3cYASABKAsyDS5nb2ZpLnYxLkZsb3cSCwoDcmF3GAIgASgJIjsKEFNpbXVsYXRlUmVzcG9uc2USJwoGcmVzdWx0GAEgASgLMhcuZ29maS52MS5TaW11bGF0ZVJlc3VsdCIjChNXYXRjaFRyYWZmaWNSZXF1ZXN0EgwKBG5hbWUYASABKAkiXQoUV2F0Y2hUcmFmZmljUmVzcG9uc2USDAoEZmxvdxgBIAEoCRIkCgVldmVudBgCIAEoCzIVLmdvZmkudjEuVHJhZmZpY0V2ZW50EhEKCWhlYXJ0YmVhdBgDIAEoCCJTChVSZXNvbHZlVGFyZ2V0c1JlcXVlc3QSKQoGdGFyZ2V0GAEgASgLMhkuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0Eg8KB25ldHdvcmsYAiABKAkiPgoWUmVzb2x2ZVRhcmdldHNSZXNwb25zZRIkCgllbmRwb2ludHMYASADKAsyES5nb2ZpLnYxLkVuZHBvaW50ImUKDVJlcGxheVJlcXVlc3QSKQoGdGFyZ2V0GAEgASgLMhkuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0Eg8KB25ldHdvcmsYAiABKAkSCwoDdXJsGAMgASgJEgsKA3JhdxgEIAEoDCJSCg5SZXBsYXlEZWxpdmVyeRIjCghlbmRwb2ludBgBIAEoCzIRLmdvZmkudjEuRW5kcG9pbnQSDAoEc2VudBgCIAEoCBINCgVlcnJvchgDIAEoCSI9Cg5SZXBsYXlSZXNwb25zZRIrCgpkZWxpdmVyaWVzGAEgAygLMhcuZ29maS52MS5SZXBsYXlEZWxpdmVyeSKCAQoRRGVidWdGcmFtZVJlcXVlc3QSEQoJZmxvd19uYW1lGAEgASgJEhsKBGZsb3cYAiABKAsyDS5nb2ZpLnYxLkZsb3cSCwoDcmF3GAMgASgMEgwKBHN0ZXAYBCABKAkSDwoHd2F0Y2hlcxgFIAMoCRIRCgltYXhfc3RlcHMYBiABKAUi6gIKEkRlYnVnRnJhbWVSZXNwb25zZRIrCgpzaW11bGF0aW9uGAEgASgLMhcuZ29maS52MS5TaW11bGF0ZVJlc3VsdBIMCgRzdGVwGAIgASgJEiQKCGZ1bmN0aW9uGAMgASgLMhIuZ29maS52MS5QeXRob25SZWYSLQoMaW5wdXRfZmllbGRzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBI+CgppbnB1dF9tZXRhGAUgAygLMiouZ29maS52MS5EZWJ1Z0ZyYW1lUmVzcG9uc2UuSW5wdXRNZXRhRW50cnkSEQoJaW5wdXRfcmF3GAYgASgMEioKCXJlY29yZGluZxgHIAEoCzIXLmdvZmkudjEuRGVidWdSZWNvcmRpbmcSEwoLbm90X3JlYWNoZWQYCCABKAkaMAoOSW5wdXRNZXRhRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ATLCBwoLR29GaVNlcnZpY2USQgoJTGlzdEZsb3dzEhkuZ29maS52MS5MaXN0Rmxvd3NSZXF1ZXN0GhouZ29maS52MS5MaXN0Rmxvd3NSZXNwb25zZRI8CgdHZXRGbG93EhcuZ29maS52MS5HZXRGbG93UmVxdWVzdBoYLmdvZmkudjEuR2V0Rmxvd1Jlc3BvbnNlEkUKClVwc2VydEZsb3cSGi5nb2ZpLnYxLlVwc2VydEZsb3dSZXF1ZXN0GhsuZ29maS52MS5VcHNlcnRGbG93UmVzcG9uc2USRQoKRGVsZXRlRmxvdxIaLmdvZmkudjEuRGVsZXRlRmxvd1JlcXVlc3QaGy5nb2ZpLnYxLkRlbGV0ZUZsb3dSZXNwb25zZRJXChBHZXRSdW50aW1lU3RhdHVzEiAuZ29maS52MS5HZXRSdW50aW1lU3RhdHVzUmVxdWVzdBohLmdvZmkudjEuR2V0UnVudGltZVN0YXR1c1Jlc3BvbnNlEk4KDUxpc3RFbmRwb2ludHMSHS5nb2ZpLnYxLkxpc3RFbmRwb2ludHNSZXF1ZXN0Gh4uZ29maS52MS5MaXN0RW5kcG9pbnRzUmVzcG9uc2USUQoOUmVzb2x2ZVRhcmdldHMSHi5nb2ZpLnYxLlJlc29sdmVUYXJnZXRzUmVxdWVzdBofLmdvZmkudjEuUmVzb2x2ZVRhcmdldHNSZXNwb25zZRI5CgZSZXBsYXkSFi5nb2ZpLnYxLlJlcGxheVJlcXVlc3QaFy5nb2ZpLnYxLlJlcGxheVJlc3BvbnNlElcKEEdldENvbmZpZ3VyYXRpb24SIC5nb2ZpLnYxLkdldENvbmZpZ3VyYXRpb25SZXF1ZXN0GiEuZ29maS52MS5HZXRDb25maWd1cmF0aW9uUmVzcG9uc2USPAoHR2V0TW9kZRIXLmdvZmkudjEuR2V0TW9kZVJlcXVlc3QaGC5nb2ZpLnYxLkdldE1vZGVSZXNwb25zZRI/CghTaW11bGF0ZRIYLmdvZmkudjEuU2ltdWxhdGVSZXF1ZXN0GhkuZ29maS52MS5TaW11bGF0ZVJlc3BvbnNlEkUKCkRlYnVnRnJhbWUSGi5nb2ZpLnYxLkRlYnVnRnJhbWVSZXF1ZXN0GhsuZ29maS52MS5EZWJ1Z0ZyYW1lUmVzcG9uc2USTQoMV2F0Y2hUcmFmZmljEhwuZ29maS52MS5XYXRjaFRyYWZmaWNSZXF1ZXN0Gh0uZ29maS52MS5XYXRjaFRyYWZmaWNSZXNwb25zZTABQipaKGdpdGh1Yi5jb20vd2NydW0vZ29maS9nZW4vZ29maS92MTtnb2ZpdjFiBnByb3RvMw", [file_google_protobuf_struct, file_google_protobuf_timestamp, file_gofi_v1_sandbox]);
+  fileDesc("ChJnb2ZpL3YxL2dvZmkucHJvdG8SB2dvZmkudjEinwIKBEZsb3cSDAoEbmFtZRgBIAEoCRIjCgZzb3VyY2UYAiABKAsyEy5nb2ZpLnYxLkZsb3dTb3VyY2USIQoHZnJhbWluZxgDIAEoCzIQLmdvZmkudjEuRnJhbWluZxIlCgZwYXJzZXIYBCABKAsyFS5nb2ZpLnYxLlBhcnNlckNvbmZpZxIeCgZzdGFnZXMYBSADKAsyDi5nb2ZpLnYxLlN0YWdlEhwKBXNpbmtzGAYgAygLMg0uZ29maS52MS5TaW5rEicKEGRlYWRfbGV0dGVyX3NpbmsYByABKAsyDS5nb2ZpLnYxLlNpbmsSJQoKdGVzdF9jYXNlcxgIIAMoCzIRLmdvZmkudjEuVGVzdENhc2VKBAgJEApSBmxlZ2FjeSKTAQoKRmxvd1NvdXJjZRIlCgZsaXN0ZW4YASABKAsyFS5nb2ZpLnYxLkxpc3RlblNvdXJjZRIjCgVmZXRjaBgCIAEoCzIULmdvZmkudjEuRmV0Y2hTb3VyY2USKwoJc3Vic2NyaWJlGAMgASgLMhguZ29maS52MS5TdWJzY3JpYmVTb3VyY2VKBAgEEAVSBnB5dGhvbiI+CgtGZXRjaFNvdXJjZRIgCgRodHRwGAEgASgLMhIuZ29maS52MS5IVFRQRmV0Y2gSDQoFc3BsaXQYAiABKAki2QEKCUhUVFBGZXRjaBILCgN1cmwYASABKAkSDgoGbWV0aG9kGAIgASgJEjAKB2hlYWRlcnMYAyADKAsyHy5nb2ZpLnYxLkhUVFBGZXRjaC5IZWFkZXJzRW50cnkSHwoEYXV0aBgEIAEoCzIRLmdvZmkudjEuSFRUUEF1dGgSDQoFZXZlcnkYBSABKAkSDwoHdGltZW91dBgGIAEoCRIMCgRib2R5GAcgASgJGi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIrEBCg9TdWJzY3JpYmVTb3VyY2USJAoEbmF0cxgBIAEoCzIWLmdvZmkudjEuTkFUU1N1YnNjcmliZRIkCgRtcXR0GAIgASgLMhYuZ29maS52MS5NUVRUU3Vic2NyaWJlEisKCXdlYnNvY2tldBgDIAEoCzIYLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlEiUKA3NzZRgEIAEoCzIYLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlIl0KDU5BVFNTdWJzY3JpYmUSCwoDdXJsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSDQoFcXVldWUYAyABKAkSHwoEYXV0aBgEIAEoCzIRLmdvZmkudjEuTkFUU0F1dGgibwoNTVFUVFN1YnNjcmliZRILCgN1cmwYASABKAkSDQoFdG9waWMYAiABKAkSCwoDcW9zGAMgASgFEhEKCWNsaWVudF9pZBgEIAEoCRIQCgh1c2VybmFtZRgFIAEoCRIQCghwYXNzd29yZBgGIAEoCSK1AQoPU3RyZWFtU3Vic2NyaWJlEgsKA3VybBgBIAEoCRI2CgdoZWFkZXJzGAIgAygLMiUuZ29maS52MS5TdHJlYW1TdWJzY3JpYmUuSGVhZGVyc0VudHJ5Eh8KBGF1dGgYAyABKAsyES5nb2ZpLnYxLkhUVFBBdXRoEgwKBHNlbmQYBCABKAkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiZAoMTGlzdGVuU291cmNlEg8KB25ldHdvcmsYASABKAkSDAoEcG9ydBgCIAEoBRIpCgdzZXJ2aWNlGAMgASgLMhguZ29maS52MS5TZXJ2aWNlRXhwb3N1cmVKBAgEEAVSBGhvb2sibgoJUHl0aG9uUmVmEg8KB2xpYnJhcnkYASABKAkSEAoIZnVuY3Rpb24YAiABKAkSFQoNaW5saW5lX3NvdXJjZRgDIAEoCRInCgZjb25maWcYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IjEKDUV4cHJlc3Npb25SZWYSDAoEbmFtZRgBIAEoCRISCgpnZW5lcmF0aW9uGAIgASgDItsCCg9TZXJ2aWNlRXhwb3N1cmUSDAoEdHlwZRgBIAEoCRIMCgRwb3J0GAIgASgFEhEKCW5vZGVfcG9ydBgDIAEoBRIfChdleHRlcm5hbF90cmFmZmljX3BvbGljeRgEIAEoCRI+Cgthbm5vdGF0aW9ucxgFIAMoCzIpLmdvZmkudjEuU2VydmljZUV4cG9zdXJlLkFubm90YXRpb25zRW50cnkSMwoNbG9hZF9iYWxhbmNlchgGIAEoCzIcLmdvZmkudjEuTG9hZEJhbGFuY2VyT3B0aW9ucxIpCgdnYXRld2F5GAcgASgLMhguZ29maS52MS5HYXRld2F5RXhwb3N1cmUSJAoKYWxsb3dfZnJvbRgIIAMoCzIQLmdvZmkudjEuUGVlclJlZhoyChBBbm5vdGF0aW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEikAEKB1BlZXJSZWYSEQoJbmFtZXNwYWNlGAEgASgJEg8KB3BhY2thZ2UYAiABKAkSMAoIc2VsZWN0b3IYAyADKAsyHi5nb2ZpLnYxLlBlZXJSZWYuU2VsZWN0b3JFbnRyeRovCg1TZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiRgoTTG9hZEJhbGFuY2VyT3B0aW9ucxINCgVjbGFzcxgBIAEoCRIUCgxhZGRyZXNzX3Bvb2wYAiABKAkSCgoCaXAYAyABKAkiUgoPR2F0ZXdheUV4cG9zdXJlEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJEhAKCGxpc3RlbmVyGAMgASgJEgwKBHBvcnQYBCABKAUidQoHRnJhbWluZxIMCgRtb2RlGAEgASgJEhEKCWRlbGltaXRlchgCIAEoCRISCgpwcmVmaXhfbGVuGAMgASgFEhEKCW1heF9ieXRlcxgEIAEoBRIiCgZweXRob24YBSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZiI9CglDb2RlY1N0ZXASDAoEdHlwZRgBIAEoCRIiCgZweXRob24YAiABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZiJACghFbmNvZGluZxIOCgZmb3JtYXQYASABKAkSJAoIZW5jb2RlcnMYAiADKAsyEi5nb2ZpLnYxLkNvZGVjU3RlcCKfAQoMUGFyc2VyQ29uZmlnEg4KBmZvcm1hdBgBIAEoCRIkCghkZWNvZGVycxgGIAMoCzISLmdvZmkudjEuQ29kZWNTdGVwEhkKEW1heF9kZWNvZGVkX2J5dGVzGAMgASgFEhQKDGVycm9yX3BvbGljeRgEIAEoCRIiCgZweXRob24YBSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZkoECAIQAyLIAgoFU3RhZ2USCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIMCgR0eXBlGAMgASgJEhIKCmV4cHJlc3Npb24YBCABKAkSFAoMdHJhbnNmb3JtX29wGAUgASgJEg0KBWZpZWxkGAYgASgJEhEKCW5ld19maWVsZBgHIAEoCRISCgp2YWx1ZV9leHByGAggASgJEhYKDm1heF9wZXJfc2Vjb25kGAkgASgBEhAKCGtleV9leHByGAogASgJEg4KBndpbmRvdxgLIAEoCRIXCg9yZXF1aXJlZF9maWVsZHMYDCADKAkSIgoGcHl0aG9uGA0gASgLMhIuZ29maS52MS5QeXRob25SZWYSLgoOZXhwcmVzc2lvbl9yZWYYDiABKAsyFi5nb2ZpLnYxLkV4cHJlc3Npb25SZWYSEAoIb25fZXJyb3IYDyABKAkisQEKEEt1YmVybmV0ZXNUYXJnZXQSEQoJbmFtZXNwYWNlGAEgASgJEjkKCHNlbGVjdG9yGAIgAygLMicuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0LlNlbGVjdG9yRW50cnkSDAoEcG9ydBgDIAEoBRIQCghkZWxpdmVyeRgEIAEoCRovCg1TZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEi0QQKBFNpbmsSDAoEdHlwZRgBIAEoCRILCgN1cmwYAiABKAkSDwoHc3ViamVjdBgDIAEoCRIRCglkZWxpbWl0ZXIYBCABKAkSDgoGbWV0aG9kGAUgASgJEisKB2hlYWRlcnMYBiADKAsyGi5nb2ZpLnYxLlNpbmsuSGVhZGVyc0VudHJ5EhQKDGNvbnRlbnRfdHlwZRgHIAEoCRIRCglib2R5X21vZGUYCCABKAkSHwoEYXV0aBgJIAEoCzIRLmdvZmkudjEuSFRUUEF1dGgSJAoJbmF0c19hdXRoGAogASgLMhEuZ29maS52MS5OQVRTQXV0aBIjCgVhc3RlchgLIAEoCzIULmdvZmkudjEuQXN0ZXJDb25maWcSDAoEd2hlbhgMIAEoCRItCgprdWJlcm5ldGVzGA4gASgLMhkuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0EiIKBnB5dGhvbhgNIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEikKBmxhYmVscxgPIAMoCzIZLmdvZmkudjEuU2luay5MYWJlbHNFbnRyeRIoCgh3aGVuX3JlZhgQ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cnNlX2Vycm9yGAEgASgJEi4KDXBhcnNlZF9maWVsZHMYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiMKBnN0YWdlcxgDIAMoCzITLmdvZmkudjEuU3RhZ2VUcmFjZRIPCgdkcm9wcGVkGAQgASgIEhIKCmRyb3BwZWRfYnkYBSABKAkSEwoLZGVhZF9sZXR0ZXIYBiABKAgSIwoFc2lua3MYByADKAsyFC5nb2ZpLnYxLlNpbmtPdXRjb21lIhIKEExpc3RGbG93c1JlcXVlc3QiMQoRTGlzdEZsb3dzUmVzcG9uc2USHAoFZmxvd3MYASADKAsyDS5nb2ZpLnYxLkZsb3ciHgoOR2V0Rmxvd1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIuCg9HZXRGbG93UmVzcG9uc2USGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdyJHChFVcHNlcnRGbG93UmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93EhUKDXZhbGlkYXRlX29ubHkYAiABKAgiQwoSVXBzZXJ0Rmxvd1Jlc3BvbnNlEhsKBGZsb3cYASABKAsyDS5nb2ZpLnYxLkZsb3cSEAoId2FybmluZ3MYAiADKAkiIQoRRGVsZXRlRmxvd1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIUChJEZWxldGVGbG93UmVzcG9uc2UiJQoVR2V0Um91dGVIZWFsdGhSZXF1ZXN0EgwKBG5hbWUYASABKAkiPgoWR2V0Um91dGVIZWFsdGhSZXNwb25zZRIkCgZyb3V0ZXMYASADKAsyFC5nb2ZpLnYxLlJvdXRlSGVhbHRoIuUBCgtSb3V0ZUhlYWx0aBINCgVyb3V0ZRgBIAEoCRIRCglzdWNjZXNzZXMYAiABKAMSEAoIZmFpbHVyZXMYAyABKAMSMwoPbGFzdF9zdWNjZXNzX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIzCg9sYXN0X2ZhaWx1cmVfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhIKCmxhc3RfZXJyb3IYBiABKAkSEwoLZXJyb3JfY2xhc3MYByABKAkSDwoHZmFpbGluZxgIIAEoCCInChdHZXRSdW50aW1lU3RhdHVzUmVxdWVzdBIMCgRuYW1lGAEgASgJIkEKGEdldFJ1bnRpbWVTdGF0dXNSZXNwb25zZRIlCgdydW50aW1lGAEgASgLMhQuZ29maS52MS5SdW50aW1lSW5mbyIWChRMaXN0RW5kcG9pbnRzUmVxdWVzdCI9ChVMaXN0RW5kcG9pbnRzUmVzcG9uc2USJAoJZW5kcG9pbnRzGAEgAygLMhEuZ29maS52MS5FbmRwb2ludCIZChdHZXRDb25maWd1cmF0aW9uUmVxdWVzdCJJChhHZXRDb25maWd1cmF0aW9uUmVzcG9uc2USLQoNY29uZmlndXJhdGlvbhgBIAEoCzIWLmdvZmkudjEuQ29uZmlndXJhdGlvbiIQCg5HZXRNb2RlUmVxdWVzdCJ4Cg9HZXRNb2RlUmVzcG9uc2USDAoEbW9kZRgBIAEoCRIUCgxwcm9jZXNzX3JvbGUYAiABKAkSEwoLZHJpdmVyX2tpbmQYAyABKAkSFQoNbm9kZV9wb3J0X21pbhgEIAEoBRIVCg1ub2RlX3BvcnRfbWF4GAUgASgFIjsKD1NpbXVsYXRlUmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93EgsKA3JhdxgCIAEoCSI7ChBTaW11bGF0ZVJlc3BvbnNlEicKBnJlc3VsdBgBIAEoCzIXLmdvZmkudjEuU2ltdWxhdGVSZXN1bHQiIwoTV2F0Y2hUcmFmZmljUmVxdWVzdBIMCgRuYW1lGAEgASgJIl0KFFdhdGNoVHJhZmZpY1Jlc3BvbnNlEgwKBGZsb3cYASABKAkSJAoFZXZlbnQYAiABKAsyFS5nb2ZpLnYxLlRyYWZmaWNFdmVudBIRCgloZWFydGJlYXQYAyABKAgiUwoVUmVzb2x2ZVRhcmdldHNSZXF1ZXN0EikKBnRhcmdldBgBIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIPCgduZXR3b3JrGAIgASgJIj4KFlJlc29sdmVUYXJnZXRzUmVzcG9uc2USJAoJZW5kcG9pbnRzGAEgAygLMhEuZ29maS52MS5FbmRwb2ludCJlCg1SZXBsYXlSZXF1ZXN0EikKBnRhcmdldBgBIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIPCgduZXR3b3JrGAIgASgJEgsKA3VybBgDIAEoCRILCgNyYXcYBCABKAwiUgoOUmVwbGF5RGVsaXZlcnkSIwoIZW5kcG9pbnQYASABKAsyES5nb2ZpLnYxLkVuZHBvaW50EgwKBHNlbnQYAiABKAgSDQoFZXJyb3IYAyABKAkiPQoOUmVwbGF5UmVzcG9uc2USKwoKZGVsaXZlcmllcxgBIAMoCzIXLmdvZmkudjEuUmVwbGF5RGVsaXZlcnkiggEKEURlYnVnRnJhbWVSZXF1ZXN0EhEKCWZsb3dfbmFtZRgBIAEoCRIbCgRmbG93GAIgASgLMg0uZ29maS52MS5GbG93EgsKA3JhdxgDIAEoDBIMCgRzdGVwGAQgASgJEg8KB3dhdGNoZXMYBSADKAkSEQoJbWF4X3N0ZXBzGAYgASgFIuoCChJEZWJ1Z0ZyYW1lUmVzcG9uc2USKwoKc2ltdWxhdGlvbhgBIAEoCzIXLmdvZmkudjEuU2ltdWxhdGVSZXN1bHQSDAoEc3RlcBgCIAEoCRIkCghmdW5jdGlvbhgDIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEi0KDGlucHV0X2ZpZWxkcxgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSPgoKaW5wdXRfbWV0YRgFIAMoCzIqLmdvZmkudjEuRGVidWdGcmFtZVJlc3BvbnNlLklucHV0TWV0YUVudHJ5EhEKCWlucHV0X3JhdxgGIAEoDBIqCglyZWNvcmRpbmcYByABKAsyFy5nb2ZpLnYxLkRlYnVnUmVjb3JkaW5nEhMKC25vdF9yZWFjaGVkGAggASgJGjAKDklucHV0TWV0YUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEylQgKC0dvRmlTZXJ2aWNlEkIKCUxpc3RGbG93cxIZLmdvZmkudjEuTGlzdEZsb3dzUmVxdWVzdBoaLmdvZmkudjEuTGlzdEZsb3dzUmVzcG9uc2USPAoHR2V0RmxvdxIXLmdvZmkudjEuR2V0Rmxvd1JlcXVlc3QaGC5nb2ZpLnYxLkdldEZsb3dSZXNwb25zZRJFCgpVcHNlcnRGbG93EhouZ29maS52MS5VcHNlcnRGbG93UmVxdWVzdBobLmdvZmkudjEuVXBzZXJ0Rmxvd1Jlc3BvbnNlEkUKCkRlbGV0ZUZsb3cSGi5nb2ZpLnYxLkRlbGV0ZUZsb3dSZXF1ZXN0GhsuZ29maS52MS5EZWxldGVGbG93UmVzcG9uc2USVwoQR2V0UnVudGltZVN0YXR1cxIgLmdvZmkudjEuR2V0UnVudGltZVN0YXR1c1JlcXVlc3QaIS5nb2ZpLnYxLkdldFJ1bnRpbWVTdGF0dXNSZXNwb25zZRJOCg1MaXN0RW5kcG9pbnRzEh0uZ29maS52MS5MaXN0RW5kcG9pbnRzUmVxdWVzdBoeLmdvZmkudjEuTGlzdEVuZHBvaW50c1Jlc3BvbnNlElEKDlJlc29sdmVUYXJnZXRzEh4uZ29maS52MS5SZXNvbHZlVGFyZ2V0c1JlcXVlc3QaHy5nb2ZpLnYxLlJlc29sdmVUYXJnZXRzUmVzcG9uc2USOQoGUmVwbGF5EhYuZ29maS52MS5SZXBsYXlSZXF1ZXN0GhcuZ29maS52MS5SZXBsYXlSZXNwb25zZRJXChBHZXRDb25maWd1cmF0aW9uEiAuZ29maS52MS5HZXRDb25maWd1cmF0aW9uUmVxdWVzdBohLmdvZmkudjEuR2V0Q29uZmlndXJhdGlvblJlc3BvbnNlEjwKB0dldE1vZGUSFy5nb2ZpLnYxLkdldE1vZGVSZXF1ZXN0GhguZ29maS52MS5HZXRNb2RlUmVzcG9uc2USPwoIU2ltdWxhdGUSGC5nb2ZpLnYxLlNpbXVsYXRlUmVxdWVzdBoZLmdvZmkudjEuU2ltdWxhdGVSZXNwb25zZRJFCgpEZWJ1Z0ZyYW1lEhouZ29maS52MS5EZWJ1Z0ZyYW1lUmVxdWVzdBobLmdvZmkudjEuRGVidWdGcmFtZVJlc3BvbnNlEk0KDFdhdGNoVHJhZmZpYxIcLmdvZmkudjEuV2F0Y2hUcmFmZmljUmVxdWVzdBodLmdvZmkudjEuV2F0Y2hUcmFmZmljUmVzcG9uc2UwARJRCg5HZXRSb3V0ZUhlYWx0aBIeLmdvZmkudjEuR2V0Um91dGVIZWFsdGhSZXF1ZXN0Gh8uZ29maS52MS5HZXRSb3V0ZUhlYWx0aFJlc3BvbnNlQipaKGdpdGh1Yi5jb20vd2NydW0vZ29maS9nZW4vZ29maS92MTtnb2ZpdjFiBnByb3RvMw", [file_google_protobuf_struct, file_google_protobuf_timestamp, file_gofi_v1_sandbox]);
 
 /**
  * Flow is GoFi's top-level object: where data comes from (source), how
@@ -606,7 +606,8 @@ export const FramingSchema: GenMessage<Framing> = /*@__PURE__*/
 
 /**
  * CodecStep is one decoding or encoding step: a built-in byte transformation
- * ("base64", "base64url", "hex", "gzip", "zlib", "url") or a Python function
+ * ("base64", "base64url", "base32", "hex", "url", "gzip", "zlib", "deflate",
+ * "zstd", "snappy", "lz4", "brotli", and "bzip2" for decoding only) or a Python function
  * (type "python": @gofi.decoder for decoding, @gofi.encoder for encoding).
  *
  * @generated from message gofi.v1.CodecStep
@@ -1539,6 +1540,14 @@ export type UpsertFlowRequest = Message<"gofi.v1.UpsertFlowRequest"> & {
    * @generated from field: gofi.v1.Flow flow = 1;
    */
   flow?: Flow | undefined;
+
+  /**
+   * Run every check a save runs (validation, inline Python, platform
+   * admission such as Pepr) and report warnings, without saving.
+   *
+   * @generated from field: bool validate_only = 2;
+   */
+  validateOnly: boolean;
 };
 
 /**
@@ -1556,6 +1565,14 @@ export type UpsertFlowResponse = Message<"gofi.v1.UpsertFlowResponse"> & {
    * @generated from field: gofi.v1.Flow flow = 1;
    */
   flow?: Flow | undefined;
+
+  /**
+   * The flow was saved, but some of its paths are not allowed (in
+   * Kubernetes, by another application's UDS Package). See AnalyzeConnectivity.
+   *
+   * @generated from field: repeated string warnings = 2;
+   */
+  warnings: string[];
 };
 
 /**
@@ -1596,6 +1613,103 @@ export const DeleteFlowResponseSchema: GenMessage<DeleteFlowResponse> = /*@__PUR
   messageDesc(file_gofi_v1_gofi, 41);
 
 /**
+ * @generated from message gofi.v1.GetRouteHealthRequest
+ */
+export type GetRouteHealthRequest = Message<"gofi.v1.GetRouteHealthRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message gofi.v1.GetRouteHealthRequest.
+ * Use `create(GetRouteHealthRequestSchema)` to create a new message.
+ */
+export const GetRouteHealthRequestSchema: GenMessage<GetRouteHealthRequest> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 42);
+
+/**
+ * @generated from message gofi.v1.GetRouteHealthResponse
+ */
+export type GetRouteHealthResponse = Message<"gofi.v1.GetRouteHealthResponse"> & {
+  /**
+   * @generated from field: repeated gofi.v1.RouteHealth routes = 1;
+   */
+  routes: RouteHealth[];
+};
+
+/**
+ * Describes the message gofi.v1.GetRouteHealthResponse.
+ * Use `create(GetRouteHealthResponseSchema)` to create a new message.
+ */
+export const GetRouteHealthResponseSchema: GenMessage<GetRouteHealthResponse> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 43);
+
+/**
+ * RouteHealth is one outbound route as the runtime observed it.
+ *
+ * @generated from message gofi.v1.RouteHealth
+ */
+export type RouteHealth = Message<"gofi.v1.RouteHealth"> & {
+  /**
+   * "egress-sink-<i>" (0-based destination), "egress-deadletter", or
+   * "egress-source"; the same IDs as Kubernetes connectivity paths.
+   *
+   * @generated from field: string route = 1;
+   */
+  route: string;
+
+  /**
+   * @generated from field: int64 successes = 2;
+   */
+  successes: bigint;
+
+  /**
+   * @generated from field: int64 failures = 3;
+   */
+  failures: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_success_at = 4;
+   */
+  lastSuccessAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_failure_at = 5;
+   */
+  lastFailureAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string last_error = 6;
+   */
+  lastError: string;
+
+  /**
+   * How the last failure looked on the socket: "denied" (Istio RBAC),
+   * "forbidden", "http", "dns", "refused", "reset", "timeout",
+   * "unreachable", "tls", or "other".
+   *
+   * @generated from field: string error_class = 7;
+   */
+  errorClass: string;
+
+  /**
+   * The most recent attempt failed.
+   *
+   * @generated from field: bool failing = 8;
+   */
+  failing: boolean;
+};
+
+/**
+ * Describes the message gofi.v1.RouteHealth.
+ * Use `create(RouteHealthSchema)` to create a new message.
+ */
+export const RouteHealthSchema: GenMessage<RouteHealth> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 44);
+
+/**
  * @generated from message gofi.v1.GetRuntimeStatusRequest
  */
 export type GetRuntimeStatusRequest = Message<"gofi.v1.GetRuntimeStatusRequest"> & {
@@ -1610,7 +1724,7 @@ export type GetRuntimeStatusRequest = Message<"gofi.v1.GetRuntimeStatusRequest">
  * Use `create(GetRuntimeStatusRequestSchema)` to create a new message.
  */
 export const GetRuntimeStatusRequestSchema: GenMessage<GetRuntimeStatusRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 42);
+  messageDesc(file_gofi_v1_gofi, 45);
 
 /**
  * @generated from message gofi.v1.GetRuntimeStatusResponse
@@ -1627,7 +1741,7 @@ export type GetRuntimeStatusResponse = Message<"gofi.v1.GetRuntimeStatusResponse
  * Use `create(GetRuntimeStatusResponseSchema)` to create a new message.
  */
 export const GetRuntimeStatusResponseSchema: GenMessage<GetRuntimeStatusResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 43);
+  messageDesc(file_gofi_v1_gofi, 46);
 
 /**
  * @generated from message gofi.v1.ListEndpointsRequest
@@ -1640,7 +1754,7 @@ export type ListEndpointsRequest = Message<"gofi.v1.ListEndpointsRequest"> & {
  * Use `create(ListEndpointsRequestSchema)` to create a new message.
  */
 export const ListEndpointsRequestSchema: GenMessage<ListEndpointsRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 44);
+  messageDesc(file_gofi_v1_gofi, 47);
 
 /**
  * @generated from message gofi.v1.ListEndpointsResponse
@@ -1657,7 +1771,7 @@ export type ListEndpointsResponse = Message<"gofi.v1.ListEndpointsResponse"> & {
  * Use `create(ListEndpointsResponseSchema)` to create a new message.
  */
 export const ListEndpointsResponseSchema: GenMessage<ListEndpointsResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 45);
+  messageDesc(file_gofi_v1_gofi, 48);
 
 /**
  * @generated from message gofi.v1.GetConfigurationRequest
@@ -1670,7 +1784,7 @@ export type GetConfigurationRequest = Message<"gofi.v1.GetConfigurationRequest">
  * Use `create(GetConfigurationRequestSchema)` to create a new message.
  */
 export const GetConfigurationRequestSchema: GenMessage<GetConfigurationRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 46);
+  messageDesc(file_gofi_v1_gofi, 49);
 
 /**
  * @generated from message gofi.v1.GetConfigurationResponse
@@ -1687,7 +1801,7 @@ export type GetConfigurationResponse = Message<"gofi.v1.GetConfigurationResponse
  * Use `create(GetConfigurationResponseSchema)` to create a new message.
  */
 export const GetConfigurationResponseSchema: GenMessage<GetConfigurationResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 47);
+  messageDesc(file_gofi_v1_gofi, 50);
 
 /**
  * @generated from message gofi.v1.GetModeRequest
@@ -1700,7 +1814,7 @@ export type GetModeRequest = Message<"gofi.v1.GetModeRequest"> & {
  * Use `create(GetModeRequestSchema)` to create a new message.
  */
 export const GetModeRequestSchema: GenMessage<GetModeRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 48);
+  messageDesc(file_gofi_v1_gofi, 51);
 
 /**
  * @generated from message gofi.v1.GetModeResponse
@@ -1739,7 +1853,7 @@ export type GetModeResponse = Message<"gofi.v1.GetModeResponse"> & {
  * Use `create(GetModeResponseSchema)` to create a new message.
  */
 export const GetModeResponseSchema: GenMessage<GetModeResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 49);
+  messageDesc(file_gofi_v1_gofi, 52);
 
 /**
  * @generated from message gofi.v1.SimulateRequest
@@ -1761,7 +1875,7 @@ export type SimulateRequest = Message<"gofi.v1.SimulateRequest"> & {
  * Use `create(SimulateRequestSchema)` to create a new message.
  */
 export const SimulateRequestSchema: GenMessage<SimulateRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 50);
+  messageDesc(file_gofi_v1_gofi, 53);
 
 /**
  * @generated from message gofi.v1.SimulateResponse
@@ -1778,7 +1892,7 @@ export type SimulateResponse = Message<"gofi.v1.SimulateResponse"> & {
  * Use `create(SimulateResponseSchema)` to create a new message.
  */
 export const SimulateResponseSchema: GenMessage<SimulateResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 51);
+  messageDesc(file_gofi_v1_gofi, 54);
 
 /**
  * @generated from message gofi.v1.WatchTrafficRequest
@@ -1795,7 +1909,7 @@ export type WatchTrafficRequest = Message<"gofi.v1.WatchTrafficRequest"> & {
  * Use `create(WatchTrafficRequestSchema)` to create a new message.
  */
 export const WatchTrafficRequestSchema: GenMessage<WatchTrafficRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 52);
+  messageDesc(file_gofi_v1_gofi, 55);
 
 /**
  * @generated from message gofi.v1.WatchTrafficResponse
@@ -1822,7 +1936,7 @@ export type WatchTrafficResponse = Message<"gofi.v1.WatchTrafficResponse"> & {
  * Use `create(WatchTrafficResponseSchema)` to create a new message.
  */
 export const WatchTrafficResponseSchema: GenMessage<WatchTrafficResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 53);
+  messageDesc(file_gofi_v1_gofi, 56);
 
 /**
  * @generated from message gofi.v1.ResolveTargetsRequest
@@ -1844,7 +1958,7 @@ export type ResolveTargetsRequest = Message<"gofi.v1.ResolveTargetsRequest"> & {
  * Use `create(ResolveTargetsRequestSchema)` to create a new message.
  */
 export const ResolveTargetsRequestSchema: GenMessage<ResolveTargetsRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 54);
+  messageDesc(file_gofi_v1_gofi, 57);
 
 /**
  * @generated from message gofi.v1.ResolveTargetsResponse
@@ -1861,7 +1975,7 @@ export type ResolveTargetsResponse = Message<"gofi.v1.ResolveTargetsResponse"> &
  * Use `create(ResolveTargetsResponseSchema)` to create a new message.
  */
 export const ResolveTargetsResponseSchema: GenMessage<ResolveTargetsResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 55);
+  messageDesc(file_gofi_v1_gofi, 58);
 
 /**
  * Replay transmits exactly raw, including any framing bytes, to a direct URL
@@ -1896,7 +2010,7 @@ export type ReplayRequest = Message<"gofi.v1.ReplayRequest"> & {
  * Use `create(ReplayRequestSchema)` to create a new message.
  */
 export const ReplayRequestSchema: GenMessage<ReplayRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 56);
+  messageDesc(file_gofi_v1_gofi, 59);
 
 /**
  * @generated from message gofi.v1.ReplayDelivery
@@ -1923,7 +2037,7 @@ export type ReplayDelivery = Message<"gofi.v1.ReplayDelivery"> & {
  * Use `create(ReplayDeliverySchema)` to create a new message.
  */
 export const ReplayDeliverySchema: GenMessage<ReplayDelivery> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 57);
+  messageDesc(file_gofi_v1_gofi, 60);
 
 /**
  * @generated from message gofi.v1.ReplayResponse
@@ -1940,7 +2054,7 @@ export type ReplayResponse = Message<"gofi.v1.ReplayResponse"> & {
  * Use `create(ReplayResponseSchema)` to create a new message.
  */
 export const ReplayResponseSchema: GenMessage<ReplayResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 58);
+  messageDesc(file_gofi_v1_gofi, 61);
 
 /**
  * @generated from message gofi.v1.DebugFrameRequest
@@ -1987,7 +2101,7 @@ export type DebugFrameRequest = Message<"gofi.v1.DebugFrameRequest"> & {
  * Use `create(DebugFrameRequestSchema)` to create a new message.
  */
 export const DebugFrameRequestSchema: GenMessage<DebugFrameRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 59);
+  messageDesc(file_gofi_v1_gofi, 62);
 
 /**
  * @generated from message gofi.v1.DebugFrameResponse
@@ -2045,7 +2159,7 @@ export type DebugFrameResponse = Message<"gofi.v1.DebugFrameResponse"> & {
  * Use `create(DebugFrameResponseSchema)` to create a new message.
  */
 export const DebugFrameResponseSchema: GenMessage<DebugFrameResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 60);
+  messageDesc(file_gofi_v1_gofi, 63);
 
 /**
  * All GoFi management and live traffic operations use ConnectRPC. Kubernetes
@@ -2164,6 +2278,18 @@ export const GoFiService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchTrafficRequestSchema;
     output: typeof WatchTrafficResponseSchema;
+  },
+  /**
+   * What the flow's runtime has seen on each outbound route (destinations,
+   * dead letter, pulled source) since it started: whether the last attempt
+   * failed, and how. Empty while the runtime is not running.
+   *
+   * @generated from rpc gofi.v1.GoFiService.GetRouteHealth
+   */
+  getRouteHealth: {
+    methodKind: "unary";
+    input: typeof GetRouteHealthRequestSchema;
+    output: typeof GetRouteHealthResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gofi_v1_gofi, 0);

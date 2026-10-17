@@ -276,18 +276,20 @@ class ListLibraryFunctionsRequest(_message.Message):
     def __init__(self, library: _Optional[str] = ...) -> None: ...
 
 class LibraryFunction(_message.Message):
-    __slots__ = ("library", "name", "kind", "description", "params")
+    __slots__ = ("library", "name", "kind", "description", "params", "managed_by")
     LIBRARY_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     PARAMS_FIELD_NUMBER: _ClassVar[int]
+    MANAGED_BY_FIELD_NUMBER: _ClassVar[int]
     library: str
     name: str
     kind: str
     description: str
     params: _containers.RepeatedCompositeFieldContainer[FunctionParam]
-    def __init__(self, library: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., description: _Optional[str] = ..., params: _Optional[_Iterable[_Union[FunctionParam, _Mapping]]] = ...) -> None: ...
+    managed_by: str
+    def __init__(self, library: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., description: _Optional[str] = ..., params: _Optional[_Iterable[_Union[FunctionParam, _Mapping]]] = ..., managed_by: _Optional[str] = ...) -> None: ...
 
 class FunctionParam(_message.Message):
     __slots__ = ("name", "type", "default", "required", "description")

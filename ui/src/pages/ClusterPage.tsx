@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
-import { Alert, Badge, CodeEditor, type Column, Combobox, EmptyState, FilterInput, InteractiveTable, RadioButtonGroup, Stack, Text, TextLink, useStyles2 } from '@grafana/ui'
+import { Alert, Badge, CodeEditor, type Column, Combobox, FilterInput, InteractiveTable, RadioButtonGroup, Stack, Text, TextLink, useStyles2 } from '@grafana/ui'
+import { EmptyState } from '../components/EmptyState'
 import '../lib/monaco'
 import { describeCluster, listClusterNetworking, notKubernetes, type ClusterInfo, type ClusterNetworking, type GatewayInfo, type NetworkingObject } from '../kubernetes-api'
 import { Page, type PageTab } from '../shell/Page'
@@ -9,6 +10,7 @@ import { PageLoading } from '../components/PageLoading'
 import { StatusIndicator } from '../components/StatusIndicator'
 import { manifestHeight } from '../lib/resource'
 import { paths, to, type ClusterTab } from '../router'
+import { useGoFi } from '../state'
 
 const ENGINE_COLORS: Record<string, 'blue' | 'purple' | 'green' | 'orange' | 'darkgrey'> = { kubernetes: 'blue', istio: 'purple', 'gateway-api': 'green', uds: 'orange', metallb: 'darkgrey' }
 const ENGINE_LABELS: Record<string, string> = { kubernetes: 'Kubernetes', istio: 'Istio', 'gateway-api': 'Gateway API', uds: 'UDS', metallb: 'MetalLB' }
@@ -18,8 +20,15 @@ const ENGINE_LABELS: Record<string, string> = { kubernetes: 'Kubernetes', istio:
 export default function ClusterPage({ tab }: { tab: ClusterTab }) {
   const [info, setInfo] = useState<ClusterInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [unavailable, setUnavailable] = useState(false)
-  useEffect(() => { describeCluster().then(setInfo).catch(reason => notKubernetes(reason) ? setUnavailable(true) : setError(String(reason))) }, [])
+  const [notCluster, setNotCluster] = useState(false)
+  // Other drivers have no cluster: do not ask (the menu hides this page too).
+  const { mode } = useGoFi()
+  const kubernetes = mode?.driverKind === 'kubernetes'
+  const unavailable = notCluster || (!!mode && !kubernetes)
+  useEffect(() => {
+    if (!kubernetes) return
+    describeCluster().then(setInfo).catch(reason => notKubernetes(reason) ? setNotCluster(true) : setError(String(reason)))
+  }, [kubernetes])
   const tabs: PageTab[] = [
     { label: 'Overview', href: paths.cluster(), active: tab === 'overview', icon: 'cloud' },
     { label: 'Networking', href: paths.cluster('networking'), active: tab === 'networking', icon: 'sitemap' },

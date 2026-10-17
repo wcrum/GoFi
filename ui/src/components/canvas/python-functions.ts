@@ -6,7 +6,8 @@ export function useLibraryFunctions(): { functions: LibraryFunction[]; error: st
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let active = true
-    const refresh = () => listLibraryFunctions().then(value => { if (active) { setFunctions(value); setError(null) } }).catch(reason => { if (active) setError(String(reason)) })
+    // Inline Python belongs to its own flow: never offer it to other nodes.
+    const refresh = () => listLibraryFunctions().then(value => { if (active) { setFunctions(value.filter(fn => !fn.managedBy)); setError(null) } }).catch(reason => { if (active) setError(String(reason)) })
     void refresh()
     const timer = window.setInterval(refresh, 5000)
     return () => { active = false; window.clearInterval(timer) }

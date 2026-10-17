@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { useStyles2 } from '@grafana/ui'
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type Edge, type EdgeProps } from '@xyflow/react'
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from '@xyflow/react'
 import { formatRate, particlesFor } from './traffic'
 
 export type TrafficEdgeData = {
@@ -26,12 +26,13 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
-/** A directional edge: always arrowed, and while traffic flows it highlights
- * and carries dots from source to target at a pace that follows the rate. */
+/** A directional edge: a bezier curve, always arrowed, and while traffic
+ * flows it highlights and carries dots along the same curve from source to
+ * target at a pace that follows the rate. */
 export function TrafficEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, style, label, selected }: EdgeProps<TrafficEdgeType>) {
   const styles = useStyles2(getStyles)
   const reduced = useReducedMotion()
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
   const rate = data?.rate ?? 0
   const active = rate > 0
   const rejected = !!data?.rejected

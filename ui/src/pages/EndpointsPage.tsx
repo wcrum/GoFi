@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, ClipboardButton, Column, EmptyState, FilterInput, InteractiveTable, Stack, Text } from '@grafana/ui'
+import { Alert, Badge, ClipboardButton, Column, FilterInput, InteractiveTable, Stack, Text } from '@grafana/ui'
+import { EmptyState } from '../components/EmptyState'
 import { getEndpoints, type DiscoveredEndpoint } from '../api'
 import { Page } from '../shell/Page'
 import { PageLoading } from '../components/PageLoading'

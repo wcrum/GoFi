@@ -1,4 +1,5 @@
-import { Alert, Badge, Button, type Column, EmptyState, InteractiveTable, Stack, Text } from '@grafana/ui'
+import { Alert, Badge, Button, type Column, InteractiveTable, Stack, Text } from '@grafana/ui'
+import { EmptyState } from '../EmptyState'
 import type { LibraryFunction } from '../../sandbox-api'
 import { discoverFunctions } from '../canvas/python-templates'
 

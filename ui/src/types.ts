@@ -80,7 +80,7 @@ export interface Framing {
 
 /** One decoding or encoding step: a built-in codec or a Python function. */
 export interface CodecStep { type: string; python?: PythonFunctionRef }
-export const BUILTIN_CODECS = ['base64', 'base64url', 'hex', 'gzip', 'zlib', 'url'] as const
+export const BUILTIN_CODECS = ['base64', 'base64url', 'base32', 'hex', 'url', 'gzip', 'zlib', 'deflate', 'zstd', 'snappy', 'lz4', 'brotli', 'bzip2'] as const
 
 /** How a message becomes the bytes a sink sends: a format, then encoders in order. */
 export interface Encoding { format?: 'wrapped' | 'fields' | 'raw'; encoders?: CodecStep[] }

@@ -152,7 +152,8 @@ def records(buffer: bytes, final: bool):
 ```
 
 **Decoders and encoders** form ordered chains. Each step is either a built-in
-codec (`base64`, `base64url`, `hex`, `gzip`, `zlib`, `url`) or a Python
+codec (`base64`, `base64url`, `base32`, `hex`, `url`, `gzip`, `zlib`,
+`deflate`, `zstd`, `snappy`, `lz4`, `brotli`, `bzip2` (decode only)) or a Python
 function, so a chain like `strip-prefix → base64` decodes a prefixed Base64
 frame before parsing. On the way out, a sink's `encoding` chooses the payload
 format and then applies encoders in order:

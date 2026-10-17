@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { css } from '@emotion/css'
+import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { CodeEditor, useStyles2, type Monaco, type MonacoEditor } from '@grafana/ui'
 import '../lib/monaco'
@@ -21,9 +21,12 @@ interface Props {
   highlights?: SourceHighlights
   /** Debugger: the line about to execute, breakpoints, and glyph-margin toggling. */
   debug?: { currentLine?: number; breakpoints?: number[]; onToggleBreakpoint?: (line: number) => void }
+  /** Result of the last validation of this exact source: the frame turns
+   * green or red, like a validated form field. */
+  validity?: 'valid' | 'invalid'
 }
 
-export default function PythonSourceEditor({ source, onChange, diagnostics, disabled, height = '420px', reveal, ariaLabel = 'Python source', highlights, debug }: Props) {
+export default function PythonSourceEditor({ source, onChange, diagnostics, disabled, height = '420px', reveal, ariaLabel = 'Python source', highlights, debug, validity }: Props) {
   const styles = useStyles2(getStyles)
   const editor = useRef<MonacoEditor | null>(null)
   const monaco = useRef<Monaco | null>(null)
@@ -81,7 +84,7 @@ export default function PythonSourceEditor({ source, onChange, diagnostics, disa
     editor.current.setPosition(position)
     editor.current.focus()
   }, [reveal])
-  return <div className={styles.frame}>
+  return <div className={cx(styles.frame, validity === 'valid' && styles.frameValid, validity === 'invalid' && styles.frameInvalid)}>
     <CodeEditor language="python" value={source} onChange={onChange} height={height} width="100%" showLineNumbers showMiniMap={false} readOnly={disabled} wordWrap
       monacoOptions={{ tabSize: 4, insertSpaces: true, fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true, ariaLabel, glyphMargin: true, renderValidationDecorations: 'on' }}
       onEditorDidMount={(instance, api) => {
@@ -99,7 +102,9 @@ export default function PythonSourceEditor({ source, onChange, diagnostics, disa
 
 const glyph = (content: string, color: string) => css({ '&::before': { content: `"${content}"`, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color, fontSize: 12, fontWeight: 700 } })
 const getStyles = (theme: GrafanaTheme2) => ({
-  frame: css({ border: `1px solid ${theme.colors.border.medium}`, borderRadius: theme.shape.radius.default, overflow: 'hidden' }),
+  frame: css({ border: `1px solid ${theme.colors.border.medium}`, borderRadius: theme.shape.radius.default, overflow: 'hidden', transition: 'border-color 150ms, box-shadow 150ms' }),
+  frameValid: css({ borderColor: theme.colors.success.border, boxShadow: `0 0 0 1px ${theme.colors.success.border}` }),
+  frameInvalid: css({ borderColor: theme.colors.error.border, boxShadow: `0 0 0 1px ${theme.colors.error.border}` }),
   entryLine: css({ background: theme.colors.primary.transparent }),
   entryGlyph: glyph('▶', theme.colors.primary.text),
   entryPreview: css({ color: theme.colors.primary.text, fontStyle: 'italic', opacity: 0.85 }),

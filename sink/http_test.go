@@ -3,8 +3,10 @@ package sink
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wcrum/gofi/message"
@@ -259,5 +261,31 @@ func TestNewHTTPRejectsUnknownAuthType(t *testing.T) {
 func TestNewHTTPRejectsEmptyAuthType(t *testing.T) {
 	if _, err := newHTTP(spec.SinkCfg{Type: "http", URL: "http://example.com", Auth: &spec.HTTPAuth{}}); err == nil {
 		t.Fatal("expected error for empty auth type on non-nil Auth, got nil")
+	}
+}
+
+func TestStatusErrorRecognizesIstioDenial(t *testing.T) {
+	if !NewStatusError(403, []byte("RBAC: access denied")).PolicyDenied() {
+		t.Error("Istio waypoint denial")
+	}
+	if NewStatusError(403, []byte(`{"error":"forbidden"}`)).PolicyDenied() || NewStatusError(500, []byte("RBAC: access denied")).PolicyDenied() {
+		t.Error("only a 403 with Istio's body is a denial")
+	}
+}
+
+func TestHTTPSinkErrorsOmitTheURL(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close() // nothing listens: the send is refused
+	s, err := newHTTP(spec.SinkCfg{Type: "http", URL: "http://" + address + "/ingest?token=s3cret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Send(message.New([]byte(`{}`), "t", ""))
+	if err == nil || strings.Contains(err.Error(), "s3cret") || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("error must keep the cause and drop the URL: %v", err)
 	}
 }

@@ -726,10 +726,15 @@ func (x *PolicyFinding) GetDetail() string {
 }
 
 type SuggestedFix struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Engine        string                 `protobuf:"bytes,1,opt,name=engine,proto3" json:"engine,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Yaml          string                 `protobuf:"bytes,3,opt,name=yaml,proto3" json:"yaml,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Engine string                 `protobuf:"bytes,1,opt,name=engine,proto3" json:"engine,omitempty"`
+	Title  string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Yaml   string                 `protobuf:"bytes,3,opt,name=yaml,proto3" json:"yaml,omitempty"`
+	// "apply-gofi-package" when GoFi can make the change itself (review with
+	// PlanUDSPackage, then ApplyUDSPackage); empty when it is copy-only.
+	Action string `protobuf:"bytes,4,opt,name=action,proto3" json:"action,omitempty"`
+	// Who owns the change and where it belongs.
+	Note          string `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -785,18 +790,42 @@ func (x *SuggestedFix) GetYaml() string {
 	return ""
 }
 
+func (x *SuggestedFix) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *SuggestedFix) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
 type ConnectivityPath struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Direction     string                 `protobuf:"bytes,2,opt,name=direction,proto3" json:"direction,omitempty"` // "ingress" | "egress"
-	From          string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
-	To            string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
-	Port          int32                  `protobuf:"varint,5,opt,name=port,proto3" json:"port,omitempty"`
-	Protocol      string                 `protobuf:"bytes,6,opt,name=protocol,proto3" json:"protocol,omitempty"`
-	Verdict       string                 `protobuf:"bytes,7,opt,name=verdict,proto3" json:"verdict,omitempty"` // "allowed" | "blocked" | "unknown"
-	Summary       string                 `protobuf:"bytes,8,opt,name=summary,proto3" json:"summary,omitempty"`
-	Findings      []*PolicyFinding       `protobuf:"bytes,9,rep,name=findings,proto3" json:"findings,omitempty"`
-	Fixes         []*SuggestedFix        `protobuf:"bytes,10,rep,name=fixes,proto3" json:"fixes,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Direction string                 `protobuf:"bytes,2,opt,name=direction,proto3" json:"direction,omitempty"` // "ingress" | "egress"
+	From      string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
+	To        string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
+	Port      int32                  `protobuf:"varint,5,opt,name=port,proto3" json:"port,omitempty"`
+	Protocol  string                 `protobuf:"bytes,6,opt,name=protocol,proto3" json:"protocol,omitempty"`
+	Verdict   string                 `protobuf:"bytes,7,opt,name=verdict,proto3" json:"verdict,omitempty"` // "allowed" | "blocked" | "unknown"
+	Summary   string                 `protobuf:"bytes,8,opt,name=summary,proto3" json:"summary,omitempty"`
+	Findings  []*PolicyFinding       `protobuf:"bytes,9,rep,name=findings,proto3" json:"findings,omitempty"`
+	Fixes     []*SuggestedFix        `protobuf:"bytes,10,rep,name=fixes,proto3" json:"fixes,omitempty"`
+	// What the running flow saw on this path, when it is an outbound route and
+	// the analyzed flow matches the saved one.
+	Observed *RouteHealth `protobuf:"bytes,11,opt,name=observed,proto3" json:"observed,omitempty"`
+	// The verdict joined with what was observed:
+	//   "not-allowed"  sends fail and a Package does not allow the path
+	//   "unverified"   sends fail and a Package could not be read
+	//   "unreachable"  sends fail although the Packages allow the path
+	//   "mismatch"     sends succeed although a Package does not allow it
+	// Empty when nothing failed or nothing was observed.
+	Diagnosis     string `protobuf:"bytes,12,opt,name=diagnosis,proto3" json:"diagnosis,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -901,6 +930,20 @@ func (x *ConnectivityPath) GetFixes() []*SuggestedFix {
 	return nil
 }
 
+func (x *ConnectivityPath) GetObserved() *RouteHealth {
+	if x != nil {
+		return x.Observed
+	}
+	return nil
+}
+
+func (x *ConnectivityPath) GetDiagnosis() string {
+	if x != nil {
+		return x.Diagnosis
+	}
+	return ""
+}
+
 type AnalyzeConnectivityResponse struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
@@ -970,6 +1013,244 @@ func (x *AnalyzeConnectivityResponse) GetLimits() []string {
 	return nil
 }
 
+type PlanUDSPackageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlanUDSPackageRequest) Reset() {
+	*x = PlanUDSPackageRequest{}
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlanUDSPackageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlanUDSPackageRequest) ProtoMessage() {}
+
+func (x *PlanUDSPackageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlanUDSPackageRequest.ProtoReflect.Descriptor instead.
+func (*PlanUDSPackageRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{13}
+}
+
+type PlanUDSPackageResponse struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// GoFi applies this Package (uds.manageAllows). When false, plans are
+	// shown for reference and ApplyUDSPackage is refused.
+	Managed bool `protobuf:"varint,3,opt,name=managed,proto3" json:"managed,omitempty"`
+	// The Package as live, and as GoFi would apply it (spec only, YAML).
+	LiveYaml    string `protobuf:"bytes,4,opt,name=live_yaml,json=liveYaml,proto3" json:"live_yaml,omitempty"`
+	DesiredYaml string `protobuf:"bytes,5,opt,name=desired_yaml,json=desiredYaml,proto3" json:"desired_yaml,omitempty"`
+	InSync      bool   `protobuf:"varint,6,opt,name=in_sync,json=inSync,proto3" json:"in_sync,omitempty"`
+	// Pepr admission of the desired Package (server-side dry run).
+	Admission *DryRunResult `protobuf:"bytes,7,opt,name=admission,proto3" json:"admission,omitempty"`
+	// Identifies desired_yaml; ApplyUDSPackage refuses a stale plan.
+	Digest string `protobuf:"bytes,8,opt,name=digest,proto3" json:"digest,omitempty"`
+	// Why there is no plan (no base configured, the Package is unreadable, ...).
+	Error         string `protobuf:"bytes,9,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlanUDSPackageResponse) Reset() {
+	*x = PlanUDSPackageResponse{}
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlanUDSPackageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlanUDSPackageResponse) ProtoMessage() {}
+
+func (x *PlanUDSPackageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlanUDSPackageResponse.ProtoReflect.Descriptor instead.
+func (*PlanUDSPackageResponse) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PlanUDSPackageResponse) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *PlanUDSPackageResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PlanUDSPackageResponse) GetManaged() bool {
+	if x != nil {
+		return x.Managed
+	}
+	return false
+}
+
+func (x *PlanUDSPackageResponse) GetLiveYaml() string {
+	if x != nil {
+		return x.LiveYaml
+	}
+	return ""
+}
+
+func (x *PlanUDSPackageResponse) GetDesiredYaml() string {
+	if x != nil {
+		return x.DesiredYaml
+	}
+	return ""
+}
+
+func (x *PlanUDSPackageResponse) GetInSync() bool {
+	if x != nil {
+		return x.InSync
+	}
+	return false
+}
+
+func (x *PlanUDSPackageResponse) GetAdmission() *DryRunResult {
+	if x != nil {
+		return x.Admission
+	}
+	return nil
+}
+
+func (x *PlanUDSPackageResponse) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *PlanUDSPackageResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type ApplyUDSPackageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Digest        string                 `protobuf:"bytes,1,opt,name=digest,proto3" json:"digest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyUDSPackageRequest) Reset() {
+	*x = ApplyUDSPackageRequest{}
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyUDSPackageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyUDSPackageRequest) ProtoMessage() {}
+
+func (x *ApplyUDSPackageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyUDSPackageRequest.ProtoReflect.Descriptor instead.
+func (*ApplyUDSPackageRequest) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ApplyUDSPackageRequest) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+type ApplyUDSPackageResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Plan          *PlanUDSPackageResponse `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyUDSPackageResponse) Reset() {
+	*x = ApplyUDSPackageResponse{}
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyUDSPackageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyUDSPackageResponse) ProtoMessage() {}
+
+func (x *ApplyUDSPackageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyUDSPackageResponse.ProtoReflect.Descriptor instead.
+func (*ApplyUDSPackageResponse) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ApplyUDSPackageResponse) GetPlan() *PlanUDSPackageResponse {
+	if x != nil {
+		return x.Plan
+	}
+	return nil
+}
+
 type ListNetworkPoliciesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -978,7 +1259,7 @@ type ListNetworkPoliciesRequest struct {
 
 func (x *ListNetworkPoliciesRequest) Reset() {
 	*x = ListNetworkPoliciesRequest{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[13]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -990,7 +1271,7 @@ func (x *ListNetworkPoliciesRequest) String() string {
 func (*ListNetworkPoliciesRequest) ProtoMessage() {}
 
 func (x *ListNetworkPoliciesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[13]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1003,7 +1284,7 @@ func (x *ListNetworkPoliciesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkPoliciesRequest.ProtoReflect.Descriptor instead.
 func (*ListNetworkPoliciesRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{13}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{17}
 }
 
 type PolicySummary struct {
@@ -1021,7 +1302,7 @@ type PolicySummary struct {
 
 func (x *PolicySummary) Reset() {
 	*x = PolicySummary{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[14]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1033,7 +1314,7 @@ func (x *PolicySummary) String() string {
 func (*PolicySummary) ProtoMessage() {}
 
 func (x *PolicySummary) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[14]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1046,7 +1327,7 @@ func (x *PolicySummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicySummary.ProtoReflect.Descriptor instead.
 func (*PolicySummary) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{14}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PolicySummary) GetEngine() string {
@@ -1109,7 +1390,7 @@ type ListNetworkPoliciesResponse struct {
 
 func (x *ListNetworkPoliciesResponse) Reset() {
 	*x = ListNetworkPoliciesResponse{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[15]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1121,7 +1402,7 @@ func (x *ListNetworkPoliciesResponse) String() string {
 func (*ListNetworkPoliciesResponse) ProtoMessage() {}
 
 func (x *ListNetworkPoliciesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[15]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1134,7 +1415,7 @@ func (x *ListNetworkPoliciesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkPoliciesResponse.ProtoReflect.Descriptor instead.
 func (*ListNetworkPoliciesResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{15}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListNetworkPoliciesResponse) GetNamespace() string {
@@ -1166,7 +1447,7 @@ type DescribeClusterRequest struct {
 
 func (x *DescribeClusterRequest) Reset() {
 	*x = DescribeClusterRequest{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[16]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1178,7 +1459,7 @@ func (x *DescribeClusterRequest) String() string {
 func (*DescribeClusterRequest) ProtoMessage() {}
 
 func (x *DescribeClusterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[16]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1191,7 +1472,7 @@ func (x *DescribeClusterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeClusterRequest.ProtoReflect.Descriptor instead.
 func (*DescribeClusterRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{16}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{20}
 }
 
 type ClusterCapability struct {
@@ -1211,7 +1492,7 @@ type ClusterCapability struct {
 
 func (x *ClusterCapability) Reset() {
 	*x = ClusterCapability{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[17]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1223,7 +1504,7 @@ func (x *ClusterCapability) String() string {
 func (*ClusterCapability) ProtoMessage() {}
 
 func (x *ClusterCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[17]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1517,7 @@ func (x *ClusterCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterCapability.ProtoReflect.Descriptor instead.
 func (*ClusterCapability) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{17}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ClusterCapability) GetId() string {
@@ -1298,7 +1579,7 @@ type GatewayListenerInfo struct {
 
 func (x *GatewayListenerInfo) Reset() {
 	*x = GatewayListenerInfo{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[18]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1310,7 +1591,7 @@ func (x *GatewayListenerInfo) String() string {
 func (*GatewayListenerInfo) ProtoMessage() {}
 
 func (x *GatewayListenerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[18]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1323,7 +1604,7 @@ func (x *GatewayListenerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayListenerInfo.ProtoReflect.Descriptor instead.
 func (*GatewayListenerInfo) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{18}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GatewayListenerInfo) GetName() string {
@@ -1396,7 +1677,7 @@ type GatewayInfo struct {
 
 func (x *GatewayInfo) Reset() {
 	*x = GatewayInfo{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[19]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1689,7 @@ func (x *GatewayInfo) String() string {
 func (*GatewayInfo) ProtoMessage() {}
 
 func (x *GatewayInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[19]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1702,7 @@ func (x *GatewayInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayInfo.ProtoReflect.Descriptor instead.
 func (*GatewayInfo) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{19}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GatewayInfo) GetNamespace() string {
@@ -1506,7 +1787,7 @@ type GatewayClassInfo struct {
 
 func (x *GatewayClassInfo) Reset() {
 	*x = GatewayClassInfo{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[20]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1518,7 +1799,7 @@ func (x *GatewayClassInfo) String() string {
 func (*GatewayClassInfo) ProtoMessage() {}
 
 func (x *GatewayClassInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[20]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1531,7 +1812,7 @@ func (x *GatewayClassInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayClassInfo.ProtoReflect.Descriptor instead.
 func (*GatewayClassInfo) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{20}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GatewayClassInfo) GetName() string {
@@ -1574,7 +1855,7 @@ type AddressPoolInfo struct {
 
 func (x *AddressPoolInfo) Reset() {
 	*x = AddressPoolInfo{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[21]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1586,7 +1867,7 @@ func (x *AddressPoolInfo) String() string {
 func (*AddressPoolInfo) ProtoMessage() {}
 
 func (x *AddressPoolInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[21]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1599,7 +1880,7 @@ func (x *AddressPoolInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddressPoolInfo.ProtoReflect.Descriptor instead.
 func (*AddressPoolInfo) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{21}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AddressPoolInfo) GetNamespace() string {
@@ -1643,7 +1924,7 @@ type LoadBalancerInfo struct {
 
 func (x *LoadBalancerInfo) Reset() {
 	*x = LoadBalancerInfo{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[22]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1655,7 +1936,7 @@ func (x *LoadBalancerInfo) String() string {
 func (*LoadBalancerInfo) ProtoMessage() {}
 
 func (x *LoadBalancerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[22]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1668,7 +1949,7 @@ func (x *LoadBalancerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoadBalancerInfo.ProtoReflect.Descriptor instead.
 func (*LoadBalancerInfo) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{22}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *LoadBalancerInfo) GetNamespace() string {
@@ -1734,7 +2015,7 @@ type DescribeClusterResponse struct {
 
 func (x *DescribeClusterResponse) Reset() {
 	*x = DescribeClusterResponse{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[23]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1746,7 +2027,7 @@ func (x *DescribeClusterResponse) String() string {
 func (*DescribeClusterResponse) ProtoMessage() {}
 
 func (x *DescribeClusterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[23]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1759,7 +2040,7 @@ func (x *DescribeClusterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeClusterResponse.ProtoReflect.Descriptor instead.
 func (*DescribeClusterResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{23}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DescribeClusterResponse) GetKubernetesVersion() string {
@@ -1877,7 +2158,7 @@ type ListClusterNetworkingRequest struct {
 
 func (x *ListClusterNetworkingRequest) Reset() {
 	*x = ListClusterNetworkingRequest{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[24]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1889,7 +2170,7 @@ func (x *ListClusterNetworkingRequest) String() string {
 func (*ListClusterNetworkingRequest) ProtoMessage() {}
 
 func (x *ListClusterNetworkingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[24]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1902,7 +2183,7 @@ func (x *ListClusterNetworkingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListClusterNetworkingRequest.ProtoReflect.Descriptor instead.
 func (*ListClusterNetworkingRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{24}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListClusterNetworkingRequest) GetNamespace() string {
@@ -1932,7 +2213,7 @@ type NetworkingObject struct {
 
 func (x *NetworkingObject) Reset() {
 	*x = NetworkingObject{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[25]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1944,7 +2225,7 @@ func (x *NetworkingObject) String() string {
 func (*NetworkingObject) ProtoMessage() {}
 
 func (x *NetworkingObject) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[25]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1957,7 +2238,7 @@ func (x *NetworkingObject) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkingObject.ProtoReflect.Descriptor instead.
 func (*NetworkingObject) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{25}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *NetworkingObject) GetKind() string {
@@ -2034,7 +2315,7 @@ type ListClusterNetworkingResponse struct {
 
 func (x *ListClusterNetworkingResponse) Reset() {
 	*x = ListClusterNetworkingResponse{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[26]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2046,7 +2327,7 @@ func (x *ListClusterNetworkingResponse) String() string {
 func (*ListClusterNetworkingResponse) ProtoMessage() {}
 
 func (x *ListClusterNetworkingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[26]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2059,7 +2340,7 @@ func (x *ListClusterNetworkingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListClusterNetworkingResponse.ProtoReflect.Descriptor instead.
 func (*ListClusterNetworkingResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{26}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ListClusterNetworkingResponse) GetObjects() []*NetworkingObject {
@@ -2091,7 +2372,7 @@ type ListUDSPackagesRequest struct {
 
 func (x *ListUDSPackagesRequest) Reset() {
 	*x = ListUDSPackagesRequest{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[27]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2103,7 +2384,7 @@ func (x *ListUDSPackagesRequest) String() string {
 func (*ListUDSPackagesRequest) ProtoMessage() {}
 
 func (x *ListUDSPackagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[27]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2116,7 +2397,7 @@ func (x *ListUDSPackagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUDSPackagesRequest.ProtoReflect.Descriptor instead.
 func (*ListUDSPackagesRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{27}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{31}
 }
 
 type UDSPackageEndpoint struct {
@@ -2137,7 +2418,7 @@ type UDSPackageEndpoint struct {
 
 func (x *UDSPackageEndpoint) Reset() {
 	*x = UDSPackageEndpoint{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[28]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2149,7 +2430,7 @@ func (x *UDSPackageEndpoint) String() string {
 func (*UDSPackageEndpoint) ProtoMessage() {}
 
 func (x *UDSPackageEndpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[28]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2162,7 +2443,7 @@ func (x *UDSPackageEndpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UDSPackageEndpoint.ProtoReflect.Descriptor instead.
 func (*UDSPackageEndpoint) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{28}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *UDSPackageEndpoint) GetKind() string {
@@ -2235,7 +2516,7 @@ type UDSPackageInfo struct {
 
 func (x *UDSPackageInfo) Reset() {
 	*x = UDSPackageInfo{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[29]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2247,7 +2528,7 @@ func (x *UDSPackageInfo) String() string {
 func (*UDSPackageInfo) ProtoMessage() {}
 
 func (x *UDSPackageInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[29]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2260,7 +2541,7 @@ func (x *UDSPackageInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UDSPackageInfo.ProtoReflect.Descriptor instead.
 func (*UDSPackageInfo) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{29}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UDSPackageInfo) GetNamespace() string {
@@ -2309,7 +2590,7 @@ type ListUDSPackagesResponse struct {
 
 func (x *ListUDSPackagesResponse) Reset() {
 	*x = ListUDSPackagesResponse{}
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[30]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2321,7 +2602,7 @@ func (x *ListUDSPackagesResponse) String() string {
 func (*ListUDSPackagesResponse) ProtoMessage() {}
 
 func (x *ListUDSPackagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_kubernetes_proto_msgTypes[30]
+	mi := &file_gofi_v1_kubernetes_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2334,7 +2615,7 @@ func (x *ListUDSPackagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUDSPackagesResponse.ProtoReflect.Descriptor instead.
 func (*ListUDSPackagesResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{30}
+	return file_gofi_v1_kubernetes_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListUDSPackagesResponse) GetPackages() []*UDSPackageInfo {
@@ -2423,11 +2704,13 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1c\n" +
 	"\tnamespace\x18\x04 \x01(\tR\tnamespace\x12\x16\n" +
 	"\x06effect\x18\x05 \x01(\tR\x06effect\x12\x16\n" +
-	"\x06detail\x18\x06 \x01(\tR\x06detail\"P\n" +
+	"\x06detail\x18\x06 \x01(\tR\x06detail\"|\n" +
 	"\fSuggestedFix\x12\x16\n" +
 	"\x06engine\x18\x01 \x01(\tR\x06engine\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
-	"\x04yaml\x18\x03 \x01(\tR\x04yaml\"\xa9\x02\n" +
+	"\x04yaml\x18\x03 \x01(\tR\x04yaml\x12\x16\n" +
+	"\x06action\x18\x04 \x01(\tR\x06action\x12\x12\n" +
+	"\x04note\x18\x05 \x01(\tR\x04note\"\xf9\x02\n" +
 	"\x10ConnectivityPath\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1c\n" +
 	"\tdirection\x18\x02 \x01(\tR\tdirection\x12\x12\n" +
@@ -2439,12 +2722,29 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\asummary\x18\b \x01(\tR\asummary\x122\n" +
 	"\bfindings\x18\t \x03(\v2\x16.gofi.v1.PolicyFindingR\bfindings\x12+\n" +
 	"\x05fixes\x18\n" +
-	" \x03(\v2\x15.gofi.v1.SuggestedFixR\x05fixes\"\xb5\x01\n" +
+	" \x03(\v2\x15.gofi.v1.SuggestedFixR\x05fixes\x120\n" +
+	"\bobserved\x18\v \x01(\v2\x14.gofi.v1.RouteHealthR\bobserved\x12\x1c\n" +
+	"\tdiagnosis\x18\f \x01(\tR\tdiagnosis\"\xb5\x01\n" +
 	"\x1bAnalyzeConnectivityResponse\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12/\n" +
 	"\x05paths\x18\x02 \x03(\v2\x19.gofi.v1.ConnectivityPathR\x05paths\x12/\n" +
 	"\aengines\x18\x03 \x03(\v2\x15.gofi.v1.PolicyEngineR\aengines\x12\x16\n" +
-	"\x06limits\x18\x04 \x03(\tR\x06limits\"\x1c\n" +
+	"\x06limits\x18\x04 \x03(\tR\x06limits\"\x17\n" +
+	"\x15PlanUDSPackageRequest\"\xa0\x02\n" +
+	"\x16PlanUDSPackageResponse\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\amanaged\x18\x03 \x01(\bR\amanaged\x12\x1b\n" +
+	"\tlive_yaml\x18\x04 \x01(\tR\bliveYaml\x12!\n" +
+	"\fdesired_yaml\x18\x05 \x01(\tR\vdesiredYaml\x12\x17\n" +
+	"\ain_sync\x18\x06 \x01(\bR\x06inSync\x123\n" +
+	"\tadmission\x18\a \x01(\v2\x15.gofi.v1.DryRunResultR\tadmission\x12\x16\n" +
+	"\x06digest\x18\b \x01(\tR\x06digest\x12\x14\n" +
+	"\x05error\x18\t \x01(\tR\x05error\"0\n" +
+	"\x16ApplyUDSPackageRequest\x12\x16\n" +
+	"\x06digest\x18\x01 \x01(\tR\x06digest\"N\n" +
+	"\x17ApplyUDSPackageResponse\x123\n" +
+	"\x04plan\x18\x01 \x01(\v2\x1f.gofi.v1.PlanUDSPackageResponseR\x04plan\"\x1c\n" +
 	"\x1aListNetworkPoliciesRequest\"\xc2\x01\n" +
 	"\rPolicySummary\x12\x16\n" +
 	"\x06engine\x18\x01 \x01(\tR\x06engine\x12\x12\n" +
@@ -2572,7 +2872,7 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\x17ListUDSPackagesResponse\x123\n" +
 	"\bpackages\x18\x01 \x03(\v2\x17.gofi.v1.UDSPackageInfoR\bpackages\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x1a\n" +
-	"\bwarnings\x18\x03 \x03(\tR\bwarnings2\xa3\x05\n" +
+	"\bwarnings\x18\x03 \x03(\tR\bwarnings2\xcc\x06\n" +
 	"\x11KubernetesService\x12`\n" +
 	"\x13RenderFlowResources\x12#.gofi.v1.RenderFlowResourcesRequest\x1a$.gofi.v1.RenderFlowResourcesResponse\x12T\n" +
 	"\x0fPreviewSelector\x12\x1f.gofi.v1.PreviewSelectorRequest\x1a .gofi.v1.PreviewSelectorResponse\x12`\n" +
@@ -2580,7 +2880,9 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\x13ListNetworkPolicies\x12#.gofi.v1.ListNetworkPoliciesRequest\x1a$.gofi.v1.ListNetworkPoliciesResponse\x12T\n" +
 	"\x0fDescribeCluster\x12\x1f.gofi.v1.DescribeClusterRequest\x1a .gofi.v1.DescribeClusterResponse\x12f\n" +
 	"\x15ListClusterNetworking\x12%.gofi.v1.ListClusterNetworkingRequest\x1a&.gofi.v1.ListClusterNetworkingResponse\x12T\n" +
-	"\x0fListUDSPackages\x12\x1f.gofi.v1.ListUDSPackagesRequest\x1a .gofi.v1.ListUDSPackagesResponseB*Z(github.com/wcrum/gofi/gen/gofi/v1;gofiv1b\x06proto3"
+	"\x0fListUDSPackages\x12\x1f.gofi.v1.ListUDSPackagesRequest\x1a .gofi.v1.ListUDSPackagesResponse\x12Q\n" +
+	"\x0ePlanUDSPackage\x12\x1e.gofi.v1.PlanUDSPackageRequest\x1a\x1f.gofi.v1.PlanUDSPackageResponse\x12T\n" +
+	"\x0fApplyUDSPackage\x12\x1f.gofi.v1.ApplyUDSPackageRequest\x1a .gofi.v1.ApplyUDSPackageResponseB*Z(github.com/wcrum/gofi/gen/gofi/v1;gofiv1b\x06proto3"
 
 var (
 	file_gofi_v1_kubernetes_proto_rawDescOnce sync.Once
@@ -2594,7 +2896,7 @@ func file_gofi_v1_kubernetes_proto_rawDescGZIP() []byte {
 	return file_gofi_v1_kubernetes_proto_rawDescData
 }
 
-var file_gofi_v1_kubernetes_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_gofi_v1_kubernetes_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_gofi_v1_kubernetes_proto_goTypes = []any{
 	(*RenderFlowResourcesRequest)(nil),    // 0: gofi.v1.RenderFlowResourcesRequest
 	(*RenderedObject)(nil),                // 1: gofi.v1.RenderedObject
@@ -2609,72 +2911,84 @@ var file_gofi_v1_kubernetes_proto_goTypes = []any{
 	(*SuggestedFix)(nil),                  // 10: gofi.v1.SuggestedFix
 	(*ConnectivityPath)(nil),              // 11: gofi.v1.ConnectivityPath
 	(*AnalyzeConnectivityResponse)(nil),   // 12: gofi.v1.AnalyzeConnectivityResponse
-	(*ListNetworkPoliciesRequest)(nil),    // 13: gofi.v1.ListNetworkPoliciesRequest
-	(*PolicySummary)(nil),                 // 14: gofi.v1.PolicySummary
-	(*ListNetworkPoliciesResponse)(nil),   // 15: gofi.v1.ListNetworkPoliciesResponse
-	(*DescribeClusterRequest)(nil),        // 16: gofi.v1.DescribeClusterRequest
-	(*ClusterCapability)(nil),             // 17: gofi.v1.ClusterCapability
-	(*GatewayListenerInfo)(nil),           // 18: gofi.v1.GatewayListenerInfo
-	(*GatewayInfo)(nil),                   // 19: gofi.v1.GatewayInfo
-	(*GatewayClassInfo)(nil),              // 20: gofi.v1.GatewayClassInfo
-	(*AddressPoolInfo)(nil),               // 21: gofi.v1.AddressPoolInfo
-	(*LoadBalancerInfo)(nil),              // 22: gofi.v1.LoadBalancerInfo
-	(*DescribeClusterResponse)(nil),       // 23: gofi.v1.DescribeClusterResponse
-	(*ListClusterNetworkingRequest)(nil),  // 24: gofi.v1.ListClusterNetworkingRequest
-	(*NetworkingObject)(nil),              // 25: gofi.v1.NetworkingObject
-	(*ListClusterNetworkingResponse)(nil), // 26: gofi.v1.ListClusterNetworkingResponse
-	(*ListUDSPackagesRequest)(nil),        // 27: gofi.v1.ListUDSPackagesRequest
-	(*UDSPackageEndpoint)(nil),            // 28: gofi.v1.UDSPackageEndpoint
-	(*UDSPackageInfo)(nil),                // 29: gofi.v1.UDSPackageInfo
-	(*ListUDSPackagesResponse)(nil),       // 30: gofi.v1.ListUDSPackagesResponse
-	nil,                                   // 31: gofi.v1.PreviewSelectorRequest.MatchLabelsEntry
-	nil,                                   // 32: gofi.v1.SelectorMatch.LabelsEntry
-	nil,                                   // 33: gofi.v1.UDSPackageEndpoint.SelectorEntry
-	(*Flow)(nil),                          // 34: gofi.v1.Flow
+	(*PlanUDSPackageRequest)(nil),         // 13: gofi.v1.PlanUDSPackageRequest
+	(*PlanUDSPackageResponse)(nil),        // 14: gofi.v1.PlanUDSPackageResponse
+	(*ApplyUDSPackageRequest)(nil),        // 15: gofi.v1.ApplyUDSPackageRequest
+	(*ApplyUDSPackageResponse)(nil),       // 16: gofi.v1.ApplyUDSPackageResponse
+	(*ListNetworkPoliciesRequest)(nil),    // 17: gofi.v1.ListNetworkPoliciesRequest
+	(*PolicySummary)(nil),                 // 18: gofi.v1.PolicySummary
+	(*ListNetworkPoliciesResponse)(nil),   // 19: gofi.v1.ListNetworkPoliciesResponse
+	(*DescribeClusterRequest)(nil),        // 20: gofi.v1.DescribeClusterRequest
+	(*ClusterCapability)(nil),             // 21: gofi.v1.ClusterCapability
+	(*GatewayListenerInfo)(nil),           // 22: gofi.v1.GatewayListenerInfo
+	(*GatewayInfo)(nil),                   // 23: gofi.v1.GatewayInfo
+	(*GatewayClassInfo)(nil),              // 24: gofi.v1.GatewayClassInfo
+	(*AddressPoolInfo)(nil),               // 25: gofi.v1.AddressPoolInfo
+	(*LoadBalancerInfo)(nil),              // 26: gofi.v1.LoadBalancerInfo
+	(*DescribeClusterResponse)(nil),       // 27: gofi.v1.DescribeClusterResponse
+	(*ListClusterNetworkingRequest)(nil),  // 28: gofi.v1.ListClusterNetworkingRequest
+	(*NetworkingObject)(nil),              // 29: gofi.v1.NetworkingObject
+	(*ListClusterNetworkingResponse)(nil), // 30: gofi.v1.ListClusterNetworkingResponse
+	(*ListUDSPackagesRequest)(nil),        // 31: gofi.v1.ListUDSPackagesRequest
+	(*UDSPackageEndpoint)(nil),            // 32: gofi.v1.UDSPackageEndpoint
+	(*UDSPackageInfo)(nil),                // 33: gofi.v1.UDSPackageInfo
+	(*ListUDSPackagesResponse)(nil),       // 34: gofi.v1.ListUDSPackagesResponse
+	nil,                                   // 35: gofi.v1.PreviewSelectorRequest.MatchLabelsEntry
+	nil,                                   // 36: gofi.v1.SelectorMatch.LabelsEntry
+	nil,                                   // 37: gofi.v1.UDSPackageEndpoint.SelectorEntry
+	(*Flow)(nil),                          // 38: gofi.v1.Flow
+	(*RouteHealth)(nil),                   // 39: gofi.v1.RouteHealth
 }
 var file_gofi_v1_kubernetes_proto_depIdxs = []int32{
-	34, // 0: gofi.v1.RenderFlowResourcesRequest.flow:type_name -> gofi.v1.Flow
+	38, // 0: gofi.v1.RenderFlowResourcesRequest.flow:type_name -> gofi.v1.Flow
 	2,  // 1: gofi.v1.RenderedObject.dry_run:type_name -> gofi.v1.DryRunResult
 	1,  // 2: gofi.v1.RenderFlowResourcesResponse.objects:type_name -> gofi.v1.RenderedObject
-	31, // 3: gofi.v1.PreviewSelectorRequest.match_labels:type_name -> gofi.v1.PreviewSelectorRequest.MatchLabelsEntry
-	32, // 4: gofi.v1.SelectorMatch.labels:type_name -> gofi.v1.SelectorMatch.LabelsEntry
+	35, // 3: gofi.v1.PreviewSelectorRequest.match_labels:type_name -> gofi.v1.PreviewSelectorRequest.MatchLabelsEntry
+	36, // 4: gofi.v1.SelectorMatch.labels:type_name -> gofi.v1.SelectorMatch.LabelsEntry
 	5,  // 5: gofi.v1.PreviewSelectorResponse.matches:type_name -> gofi.v1.SelectorMatch
-	34, // 6: gofi.v1.AnalyzeConnectivityRequest.flow:type_name -> gofi.v1.Flow
+	38, // 6: gofi.v1.AnalyzeConnectivityRequest.flow:type_name -> gofi.v1.Flow
 	9,  // 7: gofi.v1.ConnectivityPath.findings:type_name -> gofi.v1.PolicyFinding
 	10, // 8: gofi.v1.ConnectivityPath.fixes:type_name -> gofi.v1.SuggestedFix
-	11, // 9: gofi.v1.AnalyzeConnectivityResponse.paths:type_name -> gofi.v1.ConnectivityPath
-	8,  // 10: gofi.v1.AnalyzeConnectivityResponse.engines:type_name -> gofi.v1.PolicyEngine
-	14, // 11: gofi.v1.ListNetworkPoliciesResponse.policies:type_name -> gofi.v1.PolicySummary
-	8,  // 12: gofi.v1.ListNetworkPoliciesResponse.engines:type_name -> gofi.v1.PolicyEngine
-	18, // 13: gofi.v1.GatewayInfo.listeners:type_name -> gofi.v1.GatewayListenerInfo
-	17, // 14: gofi.v1.DescribeClusterResponse.capabilities:type_name -> gofi.v1.ClusterCapability
-	20, // 15: gofi.v1.DescribeClusterResponse.gateway_classes:type_name -> gofi.v1.GatewayClassInfo
-	19, // 16: gofi.v1.DescribeClusterResponse.gateways:type_name -> gofi.v1.GatewayInfo
-	21, // 17: gofi.v1.DescribeClusterResponse.address_pools:type_name -> gofi.v1.AddressPoolInfo
-	22, // 18: gofi.v1.DescribeClusterResponse.load_balancers:type_name -> gofi.v1.LoadBalancerInfo
-	25, // 19: gofi.v1.ListClusterNetworkingResponse.objects:type_name -> gofi.v1.NetworkingObject
-	33, // 20: gofi.v1.UDSPackageEndpoint.selector:type_name -> gofi.v1.UDSPackageEndpoint.SelectorEntry
-	28, // 21: gofi.v1.UDSPackageInfo.endpoints:type_name -> gofi.v1.UDSPackageEndpoint
-	29, // 22: gofi.v1.ListUDSPackagesResponse.packages:type_name -> gofi.v1.UDSPackageInfo
-	0,  // 23: gofi.v1.KubernetesService.RenderFlowResources:input_type -> gofi.v1.RenderFlowResourcesRequest
-	4,  // 24: gofi.v1.KubernetesService.PreviewSelector:input_type -> gofi.v1.PreviewSelectorRequest
-	7,  // 25: gofi.v1.KubernetesService.AnalyzeConnectivity:input_type -> gofi.v1.AnalyzeConnectivityRequest
-	13, // 26: gofi.v1.KubernetesService.ListNetworkPolicies:input_type -> gofi.v1.ListNetworkPoliciesRequest
-	16, // 27: gofi.v1.KubernetesService.DescribeCluster:input_type -> gofi.v1.DescribeClusterRequest
-	24, // 28: gofi.v1.KubernetesService.ListClusterNetworking:input_type -> gofi.v1.ListClusterNetworkingRequest
-	27, // 29: gofi.v1.KubernetesService.ListUDSPackages:input_type -> gofi.v1.ListUDSPackagesRequest
-	3,  // 30: gofi.v1.KubernetesService.RenderFlowResources:output_type -> gofi.v1.RenderFlowResourcesResponse
-	6,  // 31: gofi.v1.KubernetesService.PreviewSelector:output_type -> gofi.v1.PreviewSelectorResponse
-	12, // 32: gofi.v1.KubernetesService.AnalyzeConnectivity:output_type -> gofi.v1.AnalyzeConnectivityResponse
-	15, // 33: gofi.v1.KubernetesService.ListNetworkPolicies:output_type -> gofi.v1.ListNetworkPoliciesResponse
-	23, // 34: gofi.v1.KubernetesService.DescribeCluster:output_type -> gofi.v1.DescribeClusterResponse
-	26, // 35: gofi.v1.KubernetesService.ListClusterNetworking:output_type -> gofi.v1.ListClusterNetworkingResponse
-	30, // 36: gofi.v1.KubernetesService.ListUDSPackages:output_type -> gofi.v1.ListUDSPackagesResponse
-	30, // [30:37] is the sub-list for method output_type
-	23, // [23:30] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	39, // 9: gofi.v1.ConnectivityPath.observed:type_name -> gofi.v1.RouteHealth
+	11, // 10: gofi.v1.AnalyzeConnectivityResponse.paths:type_name -> gofi.v1.ConnectivityPath
+	8,  // 11: gofi.v1.AnalyzeConnectivityResponse.engines:type_name -> gofi.v1.PolicyEngine
+	2,  // 12: gofi.v1.PlanUDSPackageResponse.admission:type_name -> gofi.v1.DryRunResult
+	14, // 13: gofi.v1.ApplyUDSPackageResponse.plan:type_name -> gofi.v1.PlanUDSPackageResponse
+	18, // 14: gofi.v1.ListNetworkPoliciesResponse.policies:type_name -> gofi.v1.PolicySummary
+	8,  // 15: gofi.v1.ListNetworkPoliciesResponse.engines:type_name -> gofi.v1.PolicyEngine
+	22, // 16: gofi.v1.GatewayInfo.listeners:type_name -> gofi.v1.GatewayListenerInfo
+	21, // 17: gofi.v1.DescribeClusterResponse.capabilities:type_name -> gofi.v1.ClusterCapability
+	24, // 18: gofi.v1.DescribeClusterResponse.gateway_classes:type_name -> gofi.v1.GatewayClassInfo
+	23, // 19: gofi.v1.DescribeClusterResponse.gateways:type_name -> gofi.v1.GatewayInfo
+	25, // 20: gofi.v1.DescribeClusterResponse.address_pools:type_name -> gofi.v1.AddressPoolInfo
+	26, // 21: gofi.v1.DescribeClusterResponse.load_balancers:type_name -> gofi.v1.LoadBalancerInfo
+	29, // 22: gofi.v1.ListClusterNetworkingResponse.objects:type_name -> gofi.v1.NetworkingObject
+	37, // 23: gofi.v1.UDSPackageEndpoint.selector:type_name -> gofi.v1.UDSPackageEndpoint.SelectorEntry
+	32, // 24: gofi.v1.UDSPackageInfo.endpoints:type_name -> gofi.v1.UDSPackageEndpoint
+	33, // 25: gofi.v1.ListUDSPackagesResponse.packages:type_name -> gofi.v1.UDSPackageInfo
+	0,  // 26: gofi.v1.KubernetesService.RenderFlowResources:input_type -> gofi.v1.RenderFlowResourcesRequest
+	4,  // 27: gofi.v1.KubernetesService.PreviewSelector:input_type -> gofi.v1.PreviewSelectorRequest
+	7,  // 28: gofi.v1.KubernetesService.AnalyzeConnectivity:input_type -> gofi.v1.AnalyzeConnectivityRequest
+	17, // 29: gofi.v1.KubernetesService.ListNetworkPolicies:input_type -> gofi.v1.ListNetworkPoliciesRequest
+	20, // 30: gofi.v1.KubernetesService.DescribeCluster:input_type -> gofi.v1.DescribeClusterRequest
+	28, // 31: gofi.v1.KubernetesService.ListClusterNetworking:input_type -> gofi.v1.ListClusterNetworkingRequest
+	31, // 32: gofi.v1.KubernetesService.ListUDSPackages:input_type -> gofi.v1.ListUDSPackagesRequest
+	13, // 33: gofi.v1.KubernetesService.PlanUDSPackage:input_type -> gofi.v1.PlanUDSPackageRequest
+	15, // 34: gofi.v1.KubernetesService.ApplyUDSPackage:input_type -> gofi.v1.ApplyUDSPackageRequest
+	3,  // 35: gofi.v1.KubernetesService.RenderFlowResources:output_type -> gofi.v1.RenderFlowResourcesResponse
+	6,  // 36: gofi.v1.KubernetesService.PreviewSelector:output_type -> gofi.v1.PreviewSelectorResponse
+	12, // 37: gofi.v1.KubernetesService.AnalyzeConnectivity:output_type -> gofi.v1.AnalyzeConnectivityResponse
+	19, // 38: gofi.v1.KubernetesService.ListNetworkPolicies:output_type -> gofi.v1.ListNetworkPoliciesResponse
+	27, // 39: gofi.v1.KubernetesService.DescribeCluster:output_type -> gofi.v1.DescribeClusterResponse
+	30, // 40: gofi.v1.KubernetesService.ListClusterNetworking:output_type -> gofi.v1.ListClusterNetworkingResponse
+	34, // 41: gofi.v1.KubernetesService.ListUDSPackages:output_type -> gofi.v1.ListUDSPackagesResponse
+	14, // 42: gofi.v1.KubernetesService.PlanUDSPackage:output_type -> gofi.v1.PlanUDSPackageResponse
+	16, // 43: gofi.v1.KubernetesService.ApplyUDSPackage:output_type -> gofi.v1.ApplyUDSPackageResponse
+	35, // [35:44] is the sub-list for method output_type
+	26, // [26:35] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_gofi_v1_kubernetes_proto_init() }
@@ -2689,7 +3003,7 @@ func file_gofi_v1_kubernetes_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gofi_v1_kubernetes_proto_rawDesc), len(file_gofi_v1_kubernetes_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

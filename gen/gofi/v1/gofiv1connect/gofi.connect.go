@@ -64,6 +64,9 @@ const (
 	// GoFiServiceWatchTrafficProcedure is the fully-qualified name of the GoFiService's WatchTraffic
 	// RPC.
 	GoFiServiceWatchTrafficProcedure = "/gofi.v1.GoFiService/WatchTraffic"
+	// GoFiServiceGetRouteHealthProcedure is the fully-qualified name of the GoFiService's
+	// GetRouteHealth RPC.
+	GoFiServiceGetRouteHealthProcedure = "/gofi.v1.GoFiService/GetRouteHealth"
 )
 
 // GoFiServiceClient is a client for the gofi.v1.GoFiService service.
@@ -86,6 +89,10 @@ type GoFiServiceClient interface {
 	// Empty name watches every configured flow over one connection. The
 	// inventory is refreshed continuously as flows are added or replaced.
 	WatchTraffic(context.Context, *connect.Request[v1.WatchTrafficRequest]) (*connect.ServerStreamForClient[v1.WatchTrafficResponse], error)
+	// What the flow's runtime has seen on each outbound route (destinations,
+	// dead letter, pulled source) since it started: whether the last attempt
+	// failed, and how. Empty while the runtime is not running.
+	GetRouteHealth(context.Context, *connect.Request[v1.GetRouteHealthRequest]) (*connect.Response[v1.GetRouteHealthResponse], error)
 }
 
 // NewGoFiServiceClient constructs a client for the gofi.v1.GoFiService service. By default, it uses
@@ -177,6 +184,12 @@ func NewGoFiServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(goFiServiceMethods.ByName("WatchTraffic")),
 			connect.WithClientOptions(opts...),
 		),
+		getRouteHealth: connect.NewClient[v1.GetRouteHealthRequest, v1.GetRouteHealthResponse](
+			httpClient,
+			baseURL+GoFiServiceGetRouteHealthProcedure,
+			connect.WithSchema(goFiServiceMethods.ByName("GetRouteHealth")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -195,6 +208,7 @@ type goFiServiceClient struct {
 	simulate         *connect.Client[v1.SimulateRequest, v1.SimulateResponse]
 	debugFrame       *connect.Client[v1.DebugFrameRequest, v1.DebugFrameResponse]
 	watchTraffic     *connect.Client[v1.WatchTrafficRequest, v1.WatchTrafficResponse]
+	getRouteHealth   *connect.Client[v1.GetRouteHealthRequest, v1.GetRouteHealthResponse]
 }
 
 // ListFlows calls gofi.v1.GoFiService.ListFlows.
@@ -262,6 +276,11 @@ func (c *goFiServiceClient) WatchTraffic(ctx context.Context, req *connect.Reque
 	return c.watchTraffic.CallServerStream(ctx, req)
 }
 
+// GetRouteHealth calls gofi.v1.GoFiService.GetRouteHealth.
+func (c *goFiServiceClient) GetRouteHealth(ctx context.Context, req *connect.Request[v1.GetRouteHealthRequest]) (*connect.Response[v1.GetRouteHealthResponse], error) {
+	return c.getRouteHealth.CallUnary(ctx, req)
+}
+
 // GoFiServiceHandler is an implementation of the gofi.v1.GoFiService service.
 type GoFiServiceHandler interface {
 	ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error)
@@ -282,6 +301,10 @@ type GoFiServiceHandler interface {
 	// Empty name watches every configured flow over one connection. The
 	// inventory is refreshed continuously as flows are added or replaced.
 	WatchTraffic(context.Context, *connect.Request[v1.WatchTrafficRequest], *connect.ServerStream[v1.WatchTrafficResponse]) error
+	// What the flow's runtime has seen on each outbound route (destinations,
+	// dead letter, pulled source) since it started: whether the last attempt
+	// failed, and how. Empty while the runtime is not running.
+	GetRouteHealth(context.Context, *connect.Request[v1.GetRouteHealthRequest]) (*connect.Response[v1.GetRouteHealthResponse], error)
 }
 
 // NewGoFiServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -369,6 +392,12 @@ func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(goFiServiceMethods.ByName("WatchTraffic")),
 		connect.WithHandlerOptions(opts...),
 	)
+	goFiServiceGetRouteHealthHandler := connect.NewUnaryHandler(
+		GoFiServiceGetRouteHealthProcedure,
+		svc.GetRouteHealth,
+		connect.WithSchema(goFiServiceMethods.ByName("GetRouteHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gofi.v1.GoFiService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GoFiServiceListFlowsProcedure:
@@ -397,6 +426,8 @@ func NewGoFiServiceHandler(svc GoFiServiceHandler, opts ...connect.HandlerOption
 			goFiServiceDebugFrameHandler.ServeHTTP(w, r)
 		case GoFiServiceWatchTrafficProcedure:
 			goFiServiceWatchTrafficHandler.ServeHTTP(w, r)
+		case GoFiServiceGetRouteHealthProcedure:
+			goFiServiceGetRouteHealthHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -456,4 +487,8 @@ func (UnimplementedGoFiServiceHandler) DebugFrame(context.Context, *connect.Requ
 
 func (UnimplementedGoFiServiceHandler) WatchTraffic(context.Context, *connect.Request[v1.WatchTrafficRequest], *connect.ServerStream[v1.WatchTrafficResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.WatchTraffic is not implemented"))
+}
+
+func (UnimplementedGoFiServiceHandler) GetRouteHealth(context.Context, *connect.Request[v1.GetRouteHealthRequest]) (*connect.Response[v1.GetRouteHealthResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.GoFiService.GetRouteHealth is not implemented"))
 }

@@ -4,7 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Flow } from "./gofi_pb.ts";
+import type { Flow, RouteHealth } from "./gofi_pb.ts";
 import { file_gofi_v1_gofi } from "./gofi_pb.ts";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file gofi/v1/kubernetes.proto.
  */
 export const file_gofi_v1_kubernetes: GenFile = /*@__PURE__*/
-  fileDesc("Chhnb2ZpL3YxL2t1YmVybmV0ZXMucHJvdG8SB2dvZmkudjEiSgoaUmVuZGVyRmxvd1Jlc291cmNlc1JlcXVlc3QSGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdxIPCgdkcnlfcnVuGAIgASgIIrQBCg5SZW5kZXJlZE9iamVjdBITCgthcGlfdmVyc2lvbhgBIAEoCRIMCgRraW5kGAIgASgJEgwKBG5hbWUYAyABKAkSEQoJbmFtZXNwYWNlGAQgASgJEgwKBHlhbWwYBSABKAkSDwoHcHVycG9zZRgGIAEoCRIXCg9yZWRhY3RlZF9maWVsZHMYByADKAkSJgoHZHJ5X3J1bhgIIAEoCzIVLmdvZmkudjEuRHJ5UnVuUmVzdWx0IkEKDERyeVJ1blJlc3VsdBIQCghhY2NlcHRlZBgBIAEoCBINCgVlcnJvchgCIAEoCRIQCgh3YXJuaW5ncxgDIAMoCSJpChtSZW5kZXJGbG93UmVzb3VyY2VzUmVzcG9uc2USEQoJbmFtZXNwYWNlGAEgASgJEigKB29iamVjdHMYAiADKAsyFy5nb2ZpLnYxLlJlbmRlcmVkT2JqZWN0Eg0KBW5vdGVzGAMgAygJIrQBChZQcmV2aWV3U2VsZWN0b3JSZXF1ZXN0EhAKCHNlbGVjdG9yGAEgASgJEkYKDG1hdGNoX2xhYmVscxgCIAMoCzIwLmdvZmkudjEuUHJldmlld1NlbGVjdG9yUmVxdWVzdC5NYXRjaExhYmVsc0VudHJ5EgwKBGtpbmQYAyABKAkaMgoQTWF0Y2hMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBItIBCg1TZWxlY3Rvck1hdGNoEgwKBGtpbmQYASABKAkSDAoEbmFtZRgCIAEoCRIRCgluYW1lc3BhY2UYAyABKAkSMgoGbGFiZWxzGAQgAygLMiIuZ29maS52MS5TZWxlY3Rvck1hdGNoLkxhYmVsc0VudHJ5Eg0KBXJlYWR5GAUgASgIEhEKCWFkZHJlc3NlcxgGIAMoCRINCgVwb3J0cxgHIAMoCRotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIp0BChdQcmV2aWV3U2VsZWN0b3JSZXNwb25zZRISCgpub3JtYWxpemVkGAEgASgJEicKB21hdGNoZXMYAiADKAsyFi5nb2ZpLnYxLlNlbGVjdG9yTWF0Y2gSDQoFdG90YWwYAyABKAUSEQoJdHJ1bmNhdGVkGAQgASgIEg0KBWVycm9yGAUgASgJEhQKDGVycm9yX29mZnNldBgGIAEoBSI5ChpBbmFseXplQ29ubmVjdGl2aXR5UmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93IjsKDFBvbGljeUVuZ2luZRIMCgRuYW1lGAEgASgJEg8KB3ByZXNlbnQYAiABKAgSDAoEbm90ZRgDIAEoCSJuCg1Qb2xpY3lGaW5kaW5nEg4KBmVuZ2luZRgBIAEoCRIMCgRraW5kGAIgASgJEgwKBG5hbWUYAyABKAkSEQoJbmFtZXNwYWNlGAQgASgJEg4KBmVmZmVjdBgFIAEoCRIOCgZkZXRhaWwYBiABKAkiOwoMU3VnZ2VzdGVkRml4Eg4KBmVuZ2luZRgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgR5YW1sGAMgASgJIt0BChBDb25uZWN0aXZpdHlQYXRoEgoKAmlkGAEgASgJEhEKCWRpcmVjdGlvbhgCIAEoCRIMCgRmcm9tGAMgASgJEgoKAnRvGAQgASgJEgwKBHBvcnQYBSABKAUSEAoIcHJvdG9jb2wYBiABKAkSDwoHdmVyZGljdBgHIAEoCRIPCgdzdW1tYXJ5GAggASgJEigKCGZpbmRpbmdzGAkgAygLMhYuZ29maS52MS5Qb2xpY3lGaW5kaW5nEiQKBWZpeGVzGAogAygLMhUuZ29maS52MS5TdWdnZXN0ZWRGaXgikgEKG0FuYWx5emVDb25uZWN0aXZpdHlSZXNwb25zZRIRCgluYW1lc3BhY2UYASABKAkSKAoFcGF0aHMYAiADKAsyGS5nb2ZpLnYxLkNvbm5lY3Rpdml0eVBhdGgSJgoHZW5naW5lcxgDIAMoCzIVLmdvZmkudjEuUG9saWN5RW5naW5lEg4KBmxpbWl0cxgEIAMoCSIcChpMaXN0TmV0d29ya1BvbGljaWVzUmVxdWVzdCKFAQoNUG9saWN5U3VtbWFyeRIOCgZlbmdpbmUYASABKAkSDAoEa2luZBgCIAEoCRIMCgRuYW1lGAMgASgJEhEKCW5hbWVzcGFjZRgEIAEoCRIPCgdzdW1tYXJ5GAUgASgJEhYKDmFmZmVjdGVkX2Zsb3dzGAYgAygJEgwKBHlhbWwYByABKAkiggEKG0xpc3ROZXR3b3JrUG9saWNpZXNSZXNwb25zZRIRCgluYW1lc3BhY2UYASABKAkSKAoIcG9saWNpZXMYAiADKAsyFi5nb2ZpLnYxLlBvbGljeVN1bW1hcnkSJgoHZW5naW5lcxgDIAMoCzIVLmdvZmkudjEuUG9saWN5RW5naW5lIhgKFkRlc2NyaWJlQ2x1c3RlclJlcXVlc3QicQoRQ2x1c3RlckNhcGFiaWxpdHkSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIPCgdwcmVzZW50GAMgASgIEg8KB3ZlcnNpb24YBCABKAkSDgoGZGV0YWlsGAUgASgJEhAKCGV2aWRlbmNlGAYgAygJIp8BChNHYXRld2F5TGlzdGVuZXJJbmZvEgwKBG5hbWUYASABKAkSEAoIcHJvdG9jb2wYAiABKAkSDAoEcG9ydBgDIAEoBRIQCghob3N0bmFtZRgEIAEoCRIWCg5hbGxvd2VkX3JvdXRlcxgFIAEoCRIXCg9hdHRhY2hlZF9yb3V0ZXMYBiABKAUSFwoPbWFuYWdlZF9ieV9nb2ZpGAcgASgIIu0BCgtHYXRld2F5SW5mbxIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjbGFzc19uYW1lGAMgASgJEhIKCmNvbnRyb2xsZXIYBCABKAkSEQoJYWRkcmVzc2VzGAUgAygJEhIKCnByb2dyYW1tZWQYBiABKAgSLwoJbGlzdGVuZXJzGAcgAygLMhwuZ29maS52MS5HYXRld2F5TGlzdGVuZXJJbmZvEhYKDmltcGxlbWVudGF0aW9uGAggASgJEhAKCHdheXBvaW50GAkgASgIEhMKC3JvdXRlX2tpbmRzGAogAygJIl4KEEdhdGV3YXlDbGFzc0luZm8SDAoEbmFtZRgBIAEoCRISCgpjb250cm9sbGVyGAIgASgJEhAKCGFjY2VwdGVkGAMgASgIEhYKDmltcGxlbWVudGF0aW9uGAQgASgJIloKD0FkZHJlc3NQb29sSW5mbxIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRIRCglhZGRyZXNzZXMYAyADKAkSEwoLYXV0b19hc3NpZ24YBCABKAgiaQoQTG9hZEJhbGFuY2VySW5mbxIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjbGFzc19uYW1lGAMgASgJEhEKCWFkZHJlc3NlcxgEIAMoCRINCgVwb3J0cxgFIAMoCSKABAoXRGVzY3JpYmVDbHVzdGVyUmVzcG9uc2USGgoSa3ViZXJuZXRlc192ZXJzaW9uGAEgASgJEhEKCW5hbWVzcGFjZRgCIAEoCRIUCgxjbHVzdGVyX3dpZGUYAyABKAgSMAoMY2FwYWJpbGl0aWVzGAQgAygLMhouZ29maS52MS5DbHVzdGVyQ2FwYWJpbGl0eRIyCg9nYXRld2F5X2NsYXNzZXMYBSADKAsyGS5nb2ZpLnYxLkdhdGV3YXlDbGFzc0luZm8SJgoIZ2F0ZXdheXMYBiADKAsyFC5nb2ZpLnYxLkdhdGV3YXlJbmZvEi8KDWFkZHJlc3NfcG9vbHMYByADKAsyGC5nb2ZpLnYxLkFkZHJlc3NQb29sSW5mbxIdChVsb2FkX2JhbGFuY2VyX2NsYXNzZXMYCCADKAkSMQoObG9hZF9iYWxhbmNlcnMYCSADKAsyGS5nb2ZpLnYxLkxvYWRCYWxhbmNlckluZm8SFQoNbm9kZV9wb3J0X21pbhgKIAEoBRIVCg1ub2RlX3BvcnRfbWF4GAsgASgFEhAKCHdhcm5pbmdzGAwgAygJEiAKGG1hbmFnZV9nYXRld2F5X2xpc3RlbmVycxgNIAEoCBIZChFtYW5hZ2VfdWRzX2FsbG93cxgOIAEoCBISCgpuYW1lc3BhY2VzGA8gAygJIjEKHExpc3RDbHVzdGVyTmV0d29ya2luZ1JlcXVlc3QSEQoJbmFtZXNwYWNlGAEgASgJIq4BChBOZXR3b3JraW5nT2JqZWN0EgwKBGtpbmQYASABKAkSEwoLYXBpX3ZlcnNpb24YAiABKAkSEQoJbmFtZXNwYWNlGAMgASgJEgwKBG5hbWUYBCABKAkSDgoGZW5naW5lGAUgASgJEg8KB3N1bW1hcnkYBiABKAkSDwoHZGV0YWlscxgHIAMoCRIMCgR5YW1sGAggASgJEhYKDmFmZmVjdGVkX2Zsb3dzGAkgAygJInEKHUxpc3RDbHVzdGVyTmV0d29ya2luZ1Jlc3BvbnNlEioKB29iamVjdHMYASADKAsyGS5nb2ZpLnYxLk5ldHdvcmtpbmdPYmplY3QSEgoKbmFtZXNwYWNlcxgCIAMoCRIQCgh3YXJuaW5ncxgDIAMoCSIYChZMaXN0VURTUGFja2FnZXNSZXF1ZXN0IvQBChJVRFNQYWNrYWdlRW5kcG9pbnQSDAoEa2luZBgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRI7CghzZWxlY3RvchgDIAMoCzIpLmdvZmkudjEuVURTUGFja2FnZUVuZHBvaW50LlNlbGVjdG9yRW50cnkSDAoEcG9ydBgEIAEoBRIQCghwcm90b2NvbBgFIAEoCRIPCgdzZXJ2aWNlGAYgASgJEgwKBGhvc3QYByABKAkSDgoGcmVtb3RlGAggASgJGi8KDVNlbGVjdG9yRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKDAQoOVURTUGFja2FnZUluZm8SEQoJbmFtZXNwYWNlGAEgASgJEgwKBG5hbWUYAiABKAkSDQoFcGhhc2UYAyABKAkSLgoJZW5kcG9pbnRzGAQgAygLMhsuZ29maS52MS5VRFNQYWNrYWdlRW5kcG9pbnQSEQoJd29ya2xvYWRzGAUgAygJImkKF0xpc3RVRFNQYWNrYWdlc1Jlc3BvbnNlEikKCHBhY2thZ2VzGAEgAygLMhcuZ29maS52MS5VRFNQYWNrYWdlSW5mbxIRCgluYW1lc3BhY2UYAiABKAkSEAoId2FybmluZ3MYAyADKAkyowUKEUt1YmVybmV0ZXNTZXJ2aWNlEmAKE1JlbmRlckZsb3dSZXNvdXJjZXMSIy5nb2ZpLnYxLlJlbmRlckZsb3dSZXNvdXJjZXNSZXF1ZXN0GiQuZ29maS52MS5SZW5kZXJGbG93UmVzb3VyY2VzUmVzcG9uc2USVAoPUHJldmlld1NlbGVjdG9yEh8uZ29maS52MS5QcmV2aWV3U2VsZWN0b3JSZXF1ZXN0GiAuZ29maS52MS5QcmV2aWV3U2VsZWN0b3JSZXNwb25zZRJgChNBbmFseXplQ29ubmVjdGl2aXR5EiMuZ29maS52MS5BbmFseXplQ29ubmVjdGl2aXR5UmVxdWVzdBokLmdvZmkudjEuQW5hbHl6ZUNvbm5lY3Rpdml0eVJlc3BvbnNlEmAKE0xpc3ROZXR3b3JrUG9saWNpZXMSIy5nb2ZpLnYxLkxpc3ROZXR3b3JrUG9saWNpZXNSZXF1ZXN0GiQuZ29maS52MS5MaXN0TmV0d29ya1BvbGljaWVzUmVzcG9uc2USVAoPRGVzY3JpYmVDbHVzdGVyEh8uZ29maS52MS5EZXNjcmliZUNsdXN0ZXJSZXF1ZXN0GiAuZ29maS52MS5EZXNjcmliZUNsdXN0ZXJSZXNwb25zZRJmChVMaXN0Q2x1c3Rlck5ldHdvcmtpbmcSJS5nb2ZpLnYxLkxpc3RDbHVzdGVyTmV0d29ya2luZ1JlcXVlc3QaJi5nb2ZpLnYxLkxpc3RDbHVzdGVyTmV0d29ya2luZ1Jlc3BvbnNlElQKD0xpc3RVRFNQYWNrYWdlcxIfLmdvZmkudjEuTGlzdFVEU1BhY2thZ2VzUmVxdWVzdBogLmdvZmkudjEuTGlzdFVEU1BhY2thZ2VzUmVzcG9uc2VCKlooZ2l0aHViLmNvbS93Y3J1bS9nb2ZpL2dlbi9nb2ZpL3YxO2dvZml2MWIGcHJvdG8z", [file_gofi_v1_gofi]);
+  fileDesc("Chhnb2ZpL3YxL2t1YmVybmV0ZXMucHJvdG8SB2dvZmkudjEiSgoaUmVuZGVyRmxvd1Jlc291cmNlc1JlcXVlc3QSGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdxIPCgdkcnlfcnVuGAIgASgIIrQBCg5SZW5kZXJlZE9iamVjdBITCgthcGlfdmVyc2lvbhgBIAEoCRIMCgRraW5kGAIgASgJEgwKBG5hbWUYAyABKAkSEQoJbmFtZXNwYWNlGAQgASgJEgwKBHlhbWwYBSABKAkSDwoHcHVycG9zZRgGIAEoCRIXCg9yZWRhY3RlZF9maWVsZHMYByADKAkSJgoHZHJ5X3J1bhgIIAEoCzIVLmdvZmkudjEuRHJ5UnVuUmVzdWx0IkEKDERyeVJ1blJlc3VsdBIQCghhY2NlcHRlZBgBIAEoCBINCgVlcnJvchgCIAEoCRIQCgh3YXJuaW5ncxgDIAMoCSJpChtSZW5kZXJGbG93UmVzb3VyY2VzUmVzcG9uc2USEQoJbmFtZXNwYWNlGAEgASgJEigKB29iamVjdHMYAiADKAsyFy5nb2ZpLnYxLlJlbmRlcmVkT2JqZWN0Eg0KBW5vdGVzGAMgAygJIrQBChZQcmV2aWV3U2VsZWN0b3JSZXF1ZXN0EhAKCHNlbGVjdG9yGAEgASgJEkYKDG1hdGNoX2xhYmVscxgCIAMoCzIwLmdvZmkudjEuUHJldmlld1NlbGVjdG9yUmVxdWVzdC5NYXRjaExhYmVsc0VudHJ5EgwKBGtpbmQYAyABKAkaMgoQTWF0Y2hMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBItIBCg1TZWxlY3Rvck1hdGNoEgwKBGtpbmQYASABKAkSDAoEbmFtZRgCIAEoCRIRCgluYW1lc3BhY2UYAyABKAkSMgoGbGFiZWxzGAQgAygLMiIuZ29maS52MS5TZWxlY3Rvck1hdGNoLkxhYmVsc0VudHJ5Eg0KBXJlYWR5GAUgASgIEhEKCWFkZHJlc3NlcxgGIAMoCRINCgVwb3J0cxgHIAMoCRotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIp0BChdQcmV2aWV3U2VsZWN0b3JSZXNwb25zZRISCgpub3JtYWxpemVkGAEgASgJEicKB21hdGNoZXMYAiADKAsyFi5nb2ZpLnYxLlNlbGVjdG9yTWF0Y2gSDQoFdG90YWwYAyABKAUSEQoJdHJ1bmNhdGVkGAQgASgIEg0KBWVycm9yGAUgASgJEhQKDGVycm9yX29mZnNldBgGIAEoBSI5ChpBbmFseXplQ29ubmVjdGl2aXR5UmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93IjsKDFBvbGljeUVuZ2luZRIMCgRuYW1lGAEgASgJEg8KB3ByZXNlbnQYAiABKAgSDAoEbm90ZRgDIAEoCSJuCg1Qb2xpY3lGaW5kaW5nEg4KBmVuZ2luZRgBIAEoCRIMCgRraW5kGAIgASgJEgwKBG5hbWUYAyABKAkSEQoJbmFtZXNwYWNlGAQgASgJEg4KBmVmZmVjdBgFIAEoCRIOCgZkZXRhaWwYBiABKAkiWQoMU3VnZ2VzdGVkRml4Eg4KBmVuZ2luZRgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgR5YW1sGAMgASgJEg4KBmFjdGlvbhgEIAEoCRIMCgRub3RlGAUgASgJIpgCChBDb25uZWN0aXZpdHlQYXRoEgoKAmlkGAEgASgJEhEKCWRpcmVjdGlvbhgCIAEoCRIMCgRmcm9tGAMgASgJEgoKAnRvGAQgASgJEgwKBHBvcnQYBSABKAUSEAoIcHJvdG9jb2wYBiABKAkSDwoHdmVyZGljdBgHIAEoCRIPCgdzdW1tYXJ5GAggASgJEigKCGZpbmRpbmdzGAkgAygLMhYuZ29maS52MS5Qb2xpY3lGaW5kaW5nEiQKBWZpeGVzGAogAygLMhUuZ29maS52MS5TdWdnZXN0ZWRGaXgSJgoIb2JzZXJ2ZWQYCyABKAsyFC5nb2ZpLnYxLlJvdXRlSGVhbHRoEhEKCWRpYWdub3NpcxgMIAEoCSKSAQobQW5hbHl6ZUNvbm5lY3Rpdml0eVJlc3BvbnNlEhEKCW5hbWVzcGFjZRgBIAEoCRIoCgVwYXRocxgCIAMoCzIZLmdvZmkudjEuQ29ubmVjdGl2aXR5UGF0aBImCgdlbmdpbmVzGAMgAygLMhUuZ29maS52MS5Qb2xpY3lFbmdpbmUSDgoGbGltaXRzGAQgAygJIhcKFVBsYW5VRFNQYWNrYWdlUmVxdWVzdCLNAQoWUGxhblVEU1BhY2thZ2VSZXNwb25zZRIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRIPCgdtYW5hZ2VkGAMgASgIEhEKCWxpdmVfeWFtbBgEIAEoCRIUCgxkZXNpcmVkX3lhbWwYBSABKAkSDwoHaW5fc3luYxgGIAEoCBIoCglhZG1pc3Npb24YByABKAsyFS5nb2ZpLnYxLkRyeVJ1blJlc3VsdBIOCgZkaWdlc3QYCCABKAkSDQoFZXJyb3IYCSABKAkiKAoWQXBwbHlVRFNQYWNrYWdlUmVxdWVzdBIOCgZkaWdlc3QYASABKAkiSAoXQXBwbHlVRFNQYWNrYWdlUmVzcG9uc2USLQoEcGxhbhgBIAEoCzIfLmdvZmkudjEuUGxhblVEU1BhY2thZ2VSZXNwb25zZSIcChpMaXN0TmV0d29ya1BvbGljaWVzUmVxdWVzdCKFAQoNUG9saWN5U3VtbWFyeRIOCgZlbmdpbmUYASABKAkSDAoEa2luZBgCIAEoCRIMCgRuYW1lGAMgASgJEhEKCW5hbWVzcGFjZRgEIAEoCRIPCgdzdW1tYXJ5GAUgASgJEhYKDmFmZmVjdGVkX2Zsb3dzGAYgAygJEgwKBHlhbWwYByABKAkiggEKG0xpc3ROZXR3b3JrUG9saWNpZXNSZXNwb25zZRIRCgluYW1lc3BhY2UYASABKAkSKAoIcG9saWNpZXMYAiADKAsyFi5nb2ZpLnYxLlBvbGljeVN1bW1hcnkSJgoHZW5naW5lcxgDIAMoCzIVLmdvZmkudjEuUG9saWN5RW5naW5lIhgKFkRlc2NyaWJlQ2x1c3RlclJlcXVlc3QicQoRQ2x1c3RlckNhcGFiaWxpdHkSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIPCgdwcmVzZW50GAMgASgIEg8KB3ZlcnNpb24YBCABKAkSDgoGZGV0YWlsGAUgASgJEhAKCGV2aWRlbmNlGAYgAygJIp8BChNHYXRld2F5TGlzdGVuZXJJbmZvEgwKBG5hbWUYASABKAkSEAoIcHJvdG9jb2wYAiABKAkSDAoEcG9ydBgDIAEoBRIQCghob3N0bmFtZRgEIAEoCRIWCg5hbGxvd2VkX3JvdXRlcxgFIAEoCRIXCg9hdHRhY2hlZF9yb3V0ZXMYBiABKAUSFwoPbWFuYWdlZF9ieV9nb2ZpGAcgASgIIu0BCgtHYXRld2F5SW5mbxIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjbGFzc19uYW1lGAMgASgJEhIKCmNvbnRyb2xsZXIYBCABKAkSEQoJYWRkcmVzc2VzGAUgAygJEhIKCnByb2dyYW1tZWQYBiABKAgSLwoJbGlzdGVuZXJzGAcgAygLMhwuZ29maS52MS5HYXRld2F5TGlzdGVuZXJJbmZvEhYKDmltcGxlbWVudGF0aW9uGAggASgJEhAKCHdheXBvaW50GAkgASgIEhMKC3JvdXRlX2tpbmRzGAogAygJIl4KEEdhdGV3YXlDbGFzc0luZm8SDAoEbmFtZRgBIAEoCRISCgpjb250cm9sbGVyGAIgASgJEhAKCGFjY2VwdGVkGAMgASgIEhYKDmltcGxlbWVudGF0aW9uGAQgASgJIloKD0FkZHJlc3NQb29sSW5mbxIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRIRCglhZGRyZXNzZXMYAyADKAkSEwoLYXV0b19hc3NpZ24YBCABKAgiaQoQTG9hZEJhbGFuY2VySW5mbxIRCgluYW1lc3BhY2UYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjbGFzc19uYW1lGAMgASgJEhEKCWFkZHJlc3NlcxgEIAMoCRINCgVwb3J0cxgFIAMoCSKABAoXRGVzY3JpYmVDbHVzdGVyUmVzcG9uc2USGgoSa3ViZXJuZXRlc192ZXJzaW9uGAEgASgJEhEKCW5hbWVzcGFjZRgCIAEoCRIUCgxjbHVzdGVyX3dpZGUYAyABKAgSMAoMY2FwYWJpbGl0aWVzGAQgAygLMhouZ29maS52MS5DbHVzdGVyQ2FwYWJpbGl0eRIyCg9nYXRld2F5X2NsYXNzZXMYBSADKAsyGS5nb2ZpLnYxLkdhdGV3YXlDbGFzc0luZm8SJgoIZ2F0ZXdheXMYBiADKAsyFC5nb2ZpLnYxLkdhdGV3YXlJbmZvEi8KDWFkZHJlc3NfcG9vbHMYByADKAsyGC5nb2ZpLnYxLkFkZHJlc3NQb29sSW5mbxIdChVsb2FkX2JhbGFuY2VyX2NsYXNzZXMYCCADKAkSMQoObG9hZF9iYWxhbmNlcnMYCSADKAsyGS5nb2ZpLnYxLkxvYWRCYWxhbmNlckluZm8SFQoNbm9kZV9wb3J0X21pbhgKIAEoBRIVCg1ub2RlX3BvcnRfbWF4GAsgASgFEhAKCHdhcm5pbmdzGAwgAygJEiAKGG1hbmFnZV9nYXRld2F5X2xpc3RlbmVycxgNIAEoCBIZChFtYW5hZ2VfdWRzX2FsbG93cxgOIAEoCBISCgpuYW1lc3BhY2VzGA8gAygJIjEKHExpc3RDbHVzdGVyTmV0d29ya2luZ1JlcXVlc3QSEQoJbmFtZXNwYWNlGAEgASgJIq4BChBOZXR3b3JraW5nT2JqZWN0EgwKBGtpbmQYASABKAkSEwoLYXBpX3ZlcnNpb24YAiABKAkSEQoJbmFtZXNwYWNlGAMgASgJEgwKBG5hbWUYBCABKAkSDgoGZW5naW5lGAUgASgJEg8KB3N1bW1hcnkYBiABKAkSDwoHZGV0YWlscxgHIAMoCRIMCgR5YW1sGAggASgJEhYKDmFmZmVjdGVkX2Zsb3dzGAkgAygJInEKHUxpc3RDbHVzdGVyTmV0d29ya2luZ1Jlc3BvbnNlEioKB29iamVjdHMYASADKAsyGS5nb2ZpLnYxLk5ldHdvcmtpbmdPYmplY3QSEgoKbmFtZXNwYWNlcxgCIAMoCRIQCgh3YXJuaW5ncxgDIAMoCSIYChZMaXN0VURTUGFja2FnZXNSZXF1ZXN0IvQBChJVRFNQYWNrYWdlRW5kcG9pbnQSDAoEa2luZBgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRI7CghzZWxlY3RvchgDIAMoCzIpLmdvZmkudjEuVURTUGFja2FnZUVuZHBvaW50LlNlbGVjdG9yRW50cnkSDAoEcG9ydBgEIAEoBRIQCghwcm90b2NvbBgFIAEoCRIPCgdzZXJ2aWNlGAYgASgJEgwKBGhvc3QYByABKAkSDgoGcmVtb3RlGAggASgJGi8KDVNlbGVjdG9yRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKDAQoOVURTUGFja2FnZUluZm8SEQoJbmFtZXNwYWNlGAEgASgJEgwKBG5hbWUYAiABKAkSDQoFcGhhc2UYAyABKAkSLgoJZW5kcG9pbnRzGAQgAygLMhsuZ29maS52MS5VRFNQYWNrYWdlRW5kcG9pbnQSEQoJd29ya2xvYWRzGAUgAygJImkKF0xpc3RVRFNQYWNrYWdlc1Jlc3BvbnNlEikKCHBhY2thZ2VzGAEgAygLMhcuZ29maS52MS5VRFNQYWNrYWdlSW5mbxIRCgluYW1lc3BhY2UYAiABKAkSEAoId2FybmluZ3MYAyADKAkyzAYKEUt1YmVybmV0ZXNTZXJ2aWNlEmAKE1JlbmRlckZsb3dSZXNvdXJjZXMSIy5nb2ZpLnYxLlJlbmRlckZsb3dSZXNvdXJjZXNSZXF1ZXN0GiQuZ29maS52MS5SZW5kZXJGbG93UmVzb3VyY2VzUmVzcG9uc2USVAoPUHJldmlld1NlbGVjdG9yEh8uZ29maS52MS5QcmV2aWV3U2VsZWN0b3JSZXF1ZXN0GiAuZ29maS52MS5QcmV2aWV3U2VsZWN0b3JSZXNwb25zZRJgChNBbmFseXplQ29ubmVjdGl2aXR5EiMuZ29maS52MS5BbmFseXplQ29ubmVjdGl2aXR5UmVxdWVzdBokLmdvZmkudjEuQW5hbHl6ZUNvbm5lY3Rpdml0eVJlc3BvbnNlEmAKE0xpc3ROZXR3b3JrUG9saWNpZXMSIy5nb2ZpLnYxLkxpc3ROZXR3b3JrUG9saWNpZXNSZXF1ZXN0GiQuZ29maS52MS5MaXN0TmV0d29ya1BvbGljaWVzUmVzcG9uc2USVAoPRGVzY3JpYmVDbHVzdGVyEh8uZ29maS52MS5EZXNjcmliZUNsdXN0ZXJSZXF1ZXN0GiAuZ29maS52MS5EZXNjcmliZUNsdXN0ZXJSZXNwb25zZRJmChVMaXN0Q2x1c3Rlck5ldHdvcmtpbmcSJS5nb2ZpLnYxLkxpc3RDbHVzdGVyTmV0d29ya2luZ1JlcXVlc3QaJi5nb2ZpLnYxLkxpc3RDbHVzdGVyTmV0d29ya2luZ1Jlc3BvbnNlElQKD0xpc3RVRFNQYWNrYWdlcxIfLmdvZmkudjEuTGlzdFVEU1BhY2thZ2VzUmVxdWVzdBogLmdvZmkudjEuTGlzdFVEU1BhY2thZ2VzUmVzcG9uc2USUQoOUGxhblVEU1BhY2thZ2USHi5nb2ZpLnYxLlBsYW5VRFNQYWNrYWdlUmVxdWVzdBofLmdvZmkudjEuUGxhblVEU1BhY2thZ2VSZXNwb25zZRJUCg9BcHBseVVEU1BhY2thZ2USHy5nb2ZpLnYxLkFwcGx5VURTUGFja2FnZVJlcXVlc3QaIC5nb2ZpLnYxLkFwcGx5VURTUGFja2FnZVJlc3BvbnNlQipaKGdpdGh1Yi5jb20vd2NydW0vZ29maS9nZW4vZ29maS92MTtnb2ZpdjFiBnByb3RvMw", [file_gofi_v1_gofi]);
 
 /**
  * @generated from message gofi.v1.RenderFlowResourcesRequest
@@ -381,6 +381,21 @@ export type SuggestedFix = Message<"gofi.v1.SuggestedFix"> & {
    * @generated from field: string yaml = 3;
    */
   yaml: string;
+
+  /**
+   * "apply-gofi-package" when GoFi can make the change itself (review with
+   * PlanUDSPackage, then ApplyUDSPackage); empty when it is copy-only.
+   *
+   * @generated from field: string action = 4;
+   */
+  action: string;
+
+  /**
+   * Who owns the change and where it belongs.
+   *
+   * @generated from field: string note = 5;
+   */
+  note: string;
 };
 
 /**
@@ -447,6 +462,26 @@ export type ConnectivityPath = Message<"gofi.v1.ConnectivityPath"> & {
    * @generated from field: repeated gofi.v1.SuggestedFix fixes = 10;
    */
   fixes: SuggestedFix[];
+
+  /**
+   * What the running flow saw on this path, when it is an outbound route and
+   * the analyzed flow matches the saved one.
+   *
+   * @generated from field: gofi.v1.RouteHealth observed = 11;
+   */
+  observed?: RouteHealth | undefined;
+
+  /**
+   * The verdict joined with what was observed:
+   *   "not-allowed"  sends fail and a Package does not allow the path
+   *   "unverified"   sends fail and a Package could not be read
+   *   "unreachable"  sends fail although the Packages allow the path
+   *   "mismatch"     sends succeed although a Package does not allow it
+   * Empty when nothing failed or nothing was observed.
+   *
+   * @generated from field: string diagnosis = 12;
+   */
+  diagnosis: string;
 };
 
 /**
@@ -491,6 +526,121 @@ export const AnalyzeConnectivityResponseSchema: GenMessage<AnalyzeConnectivityRe
   messageDesc(file_gofi_v1_kubernetes, 12);
 
 /**
+ * @generated from message gofi.v1.PlanUDSPackageRequest
+ */
+export type PlanUDSPackageRequest = Message<"gofi.v1.PlanUDSPackageRequest"> & {
+};
+
+/**
+ * Describes the message gofi.v1.PlanUDSPackageRequest.
+ * Use `create(PlanUDSPackageRequestSchema)` to create a new message.
+ */
+export const PlanUDSPackageRequestSchema: GenMessage<PlanUDSPackageRequest> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_kubernetes, 13);
+
+/**
+ * @generated from message gofi.v1.PlanUDSPackageResponse
+ */
+export type PlanUDSPackageResponse = Message<"gofi.v1.PlanUDSPackageResponse"> & {
+  /**
+   * @generated from field: string namespace = 1;
+   */
+  namespace: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * GoFi applies this Package (uds.manageAllows). When false, plans are
+   * shown for reference and ApplyUDSPackage is refused.
+   *
+   * @generated from field: bool managed = 3;
+   */
+  managed: boolean;
+
+  /**
+   * The Package as live, and as GoFi would apply it (spec only, YAML).
+   *
+   * @generated from field: string live_yaml = 4;
+   */
+  liveYaml: string;
+
+  /**
+   * @generated from field: string desired_yaml = 5;
+   */
+  desiredYaml: string;
+
+  /**
+   * @generated from field: bool in_sync = 6;
+   */
+  inSync: boolean;
+
+  /**
+   * Pepr admission of the desired Package (server-side dry run).
+   *
+   * @generated from field: gofi.v1.DryRunResult admission = 7;
+   */
+  admission?: DryRunResult | undefined;
+
+  /**
+   * Identifies desired_yaml; ApplyUDSPackage refuses a stale plan.
+   *
+   * @generated from field: string digest = 8;
+   */
+  digest: string;
+
+  /**
+   * Why there is no plan (no base configured, the Package is unreadable, ...).
+   *
+   * @generated from field: string error = 9;
+   */
+  error: string;
+};
+
+/**
+ * Describes the message gofi.v1.PlanUDSPackageResponse.
+ * Use `create(PlanUDSPackageResponseSchema)` to create a new message.
+ */
+export const PlanUDSPackageResponseSchema: GenMessage<PlanUDSPackageResponse> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_kubernetes, 14);
+
+/**
+ * @generated from message gofi.v1.ApplyUDSPackageRequest
+ */
+export type ApplyUDSPackageRequest = Message<"gofi.v1.ApplyUDSPackageRequest"> & {
+  /**
+   * @generated from field: string digest = 1;
+   */
+  digest: string;
+};
+
+/**
+ * Describes the message gofi.v1.ApplyUDSPackageRequest.
+ * Use `create(ApplyUDSPackageRequestSchema)` to create a new message.
+ */
+export const ApplyUDSPackageRequestSchema: GenMessage<ApplyUDSPackageRequest> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_kubernetes, 15);
+
+/**
+ * @generated from message gofi.v1.ApplyUDSPackageResponse
+ */
+export type ApplyUDSPackageResponse = Message<"gofi.v1.ApplyUDSPackageResponse"> & {
+  /**
+   * @generated from field: gofi.v1.PlanUDSPackageResponse plan = 1;
+   */
+  plan?: PlanUDSPackageResponse | undefined;
+};
+
+/**
+ * Describes the message gofi.v1.ApplyUDSPackageResponse.
+ * Use `create(ApplyUDSPackageResponseSchema)` to create a new message.
+ */
+export const ApplyUDSPackageResponseSchema: GenMessage<ApplyUDSPackageResponse> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_kubernetes, 16);
+
+/**
  * @generated from message gofi.v1.ListNetworkPoliciesRequest
  */
 export type ListNetworkPoliciesRequest = Message<"gofi.v1.ListNetworkPoliciesRequest"> & {
@@ -501,7 +651,7 @@ export type ListNetworkPoliciesRequest = Message<"gofi.v1.ListNetworkPoliciesReq
  * Use `create(ListNetworkPoliciesRequestSchema)` to create a new message.
  */
 export const ListNetworkPoliciesRequestSchema: GenMessage<ListNetworkPoliciesRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 13);
+  messageDesc(file_gofi_v1_kubernetes, 17);
 
 /**
  * @generated from message gofi.v1.PolicySummary
@@ -548,7 +698,7 @@ export type PolicySummary = Message<"gofi.v1.PolicySummary"> & {
  * Use `create(PolicySummarySchema)` to create a new message.
  */
 export const PolicySummarySchema: GenMessage<PolicySummary> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 14);
+  messageDesc(file_gofi_v1_kubernetes, 18);
 
 /**
  * @generated from message gofi.v1.ListNetworkPoliciesResponse
@@ -575,7 +725,7 @@ export type ListNetworkPoliciesResponse = Message<"gofi.v1.ListNetworkPoliciesRe
  * Use `create(ListNetworkPoliciesResponseSchema)` to create a new message.
  */
 export const ListNetworkPoliciesResponseSchema: GenMessage<ListNetworkPoliciesResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 15);
+  messageDesc(file_gofi_v1_kubernetes, 19);
 
 /**
  * @generated from message gofi.v1.DescribeClusterRequest
@@ -588,7 +738,7 @@ export type DescribeClusterRequest = Message<"gofi.v1.DescribeClusterRequest"> &
  * Use `create(DescribeClusterRequestSchema)` to create a new message.
  */
 export const DescribeClusterRequestSchema: GenMessage<DescribeClusterRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 16);
+  messageDesc(file_gofi_v1_kubernetes, 20);
 
 /**
  * @generated from message gofi.v1.ClusterCapability
@@ -635,7 +785,7 @@ export type ClusterCapability = Message<"gofi.v1.ClusterCapability"> & {
  * Use `create(ClusterCapabilitySchema)` to create a new message.
  */
 export const ClusterCapabilitySchema: GenMessage<ClusterCapability> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 17);
+  messageDesc(file_gofi_v1_kubernetes, 21);
 
 /**
  * @generated from message gofi.v1.GatewayListenerInfo
@@ -686,7 +836,7 @@ export type GatewayListenerInfo = Message<"gofi.v1.GatewayListenerInfo"> & {
  * Use `create(GatewayListenerInfoSchema)` to create a new message.
  */
 export const GatewayListenerInfoSchema: GenMessage<GatewayListenerInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 18);
+  messageDesc(file_gofi_v1_kubernetes, 22);
 
 /**
  * @generated from message gofi.v1.GatewayInfo
@@ -754,7 +904,7 @@ export type GatewayInfo = Message<"gofi.v1.GatewayInfo"> & {
  * Use `create(GatewayInfoSchema)` to create a new message.
  */
 export const GatewayInfoSchema: GenMessage<GatewayInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 19);
+  messageDesc(file_gofi_v1_kubernetes, 23);
 
 /**
  * @generated from message gofi.v1.GatewayClassInfo
@@ -786,7 +936,7 @@ export type GatewayClassInfo = Message<"gofi.v1.GatewayClassInfo"> & {
  * Use `create(GatewayClassInfoSchema)` to create a new message.
  */
 export const GatewayClassInfoSchema: GenMessage<GatewayClassInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 20);
+  messageDesc(file_gofi_v1_kubernetes, 24);
 
 /**
  * @generated from message gofi.v1.AddressPoolInfo
@@ -818,7 +968,7 @@ export type AddressPoolInfo = Message<"gofi.v1.AddressPoolInfo"> & {
  * Use `create(AddressPoolInfoSchema)` to create a new message.
  */
 export const AddressPoolInfoSchema: GenMessage<AddressPoolInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 21);
+  messageDesc(file_gofi_v1_kubernetes, 25);
 
 /**
  * @generated from message gofi.v1.LoadBalancerInfo
@@ -855,7 +1005,7 @@ export type LoadBalancerInfo = Message<"gofi.v1.LoadBalancerInfo"> & {
  * Use `create(LoadBalancerInfoSchema)` to create a new message.
  */
 export const LoadBalancerInfoSchema: GenMessage<LoadBalancerInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 22);
+  messageDesc(file_gofi_v1_kubernetes, 26);
 
 /**
  * @generated from message gofi.v1.DescribeClusterResponse
@@ -952,7 +1102,7 @@ export type DescribeClusterResponse = Message<"gofi.v1.DescribeClusterResponse">
  * Use `create(DescribeClusterResponseSchema)` to create a new message.
  */
 export const DescribeClusterResponseSchema: GenMessage<DescribeClusterResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 23);
+  messageDesc(file_gofi_v1_kubernetes, 27);
 
 /**
  * @generated from message gofi.v1.ListClusterNetworkingRequest
@@ -971,7 +1121,7 @@ export type ListClusterNetworkingRequest = Message<"gofi.v1.ListClusterNetworkin
  * Use `create(ListClusterNetworkingRequestSchema)` to create a new message.
  */
 export const ListClusterNetworkingRequestSchema: GenMessage<ListClusterNetworkingRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 24);
+  messageDesc(file_gofi_v1_kubernetes, 28);
 
 /**
  * @generated from message gofi.v1.NetworkingObject
@@ -1034,7 +1184,7 @@ export type NetworkingObject = Message<"gofi.v1.NetworkingObject"> & {
  * Use `create(NetworkingObjectSchema)` to create a new message.
  */
 export const NetworkingObjectSchema: GenMessage<NetworkingObject> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 25);
+  messageDesc(file_gofi_v1_kubernetes, 29);
 
 /**
  * @generated from message gofi.v1.ListClusterNetworkingResponse
@@ -1061,7 +1211,7 @@ export type ListClusterNetworkingResponse = Message<"gofi.v1.ListClusterNetworki
  * Use `create(ListClusterNetworkingResponseSchema)` to create a new message.
  */
 export const ListClusterNetworkingResponseSchema: GenMessage<ListClusterNetworkingResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 26);
+  messageDesc(file_gofi_v1_kubernetes, 30);
 
 /**
  * @generated from message gofi.v1.ListUDSPackagesRequest
@@ -1074,7 +1224,7 @@ export type ListUDSPackagesRequest = Message<"gofi.v1.ListUDSPackagesRequest"> &
  * Use `create(ListUDSPackagesRequestSchema)` to create a new message.
  */
 export const ListUDSPackagesRequestSchema: GenMessage<ListUDSPackagesRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 27);
+  messageDesc(file_gofi_v1_kubernetes, 31);
 
 /**
  * @generated from message gofi.v1.UDSPackageEndpoint
@@ -1130,7 +1280,7 @@ export type UDSPackageEndpoint = Message<"gofi.v1.UDSPackageEndpoint"> & {
  * Use `create(UDSPackageEndpointSchema)` to create a new message.
  */
 export const UDSPackageEndpointSchema: GenMessage<UDSPackageEndpoint> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 28);
+  messageDesc(file_gofi_v1_kubernetes, 32);
 
 /**
  * @generated from message gofi.v1.UDSPackageInfo
@@ -1169,7 +1319,7 @@ export type UDSPackageInfo = Message<"gofi.v1.UDSPackageInfo"> & {
  * Use `create(UDSPackageInfoSchema)` to create a new message.
  */
 export const UDSPackageInfoSchema: GenMessage<UDSPackageInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 29);
+  messageDesc(file_gofi_v1_kubernetes, 33);
 
 /**
  * @generated from message gofi.v1.ListUDSPackagesResponse
@@ -1196,13 +1346,13 @@ export type ListUDSPackagesResponse = Message<"gofi.v1.ListUDSPackagesResponse">
  * Use `create(ListUDSPackagesResponseSchema)` to create a new message.
  */
 export const ListUDSPackagesResponseSchema: GenMessage<ListUDSPackagesResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_kubernetes, 30);
+  messageDesc(file_gofi_v1_kubernetes, 34);
 
 /**
  * KubernetesService explains what a flow becomes in Kubernetes and what may
- * block its traffic. Every RPC is read-only: rendering builds objects with the
- * driver's own builders, and a dry run submits them with dryRun=All. Outside
- * Kubernetes mode each RPC returns FailedPrecondition.
+ * block its traffic. Every RPC except ApplyUDSPackage is read-only: rendering
+ * builds objects with the driver's own builders, and a dry run submits them
+ * with dryRun=All. Outside Kubernetes mode each RPC returns FailedPrecondition.
  *
  * @generated from service gofi.v1.KubernetesService
  */
@@ -1271,6 +1421,29 @@ export const KubernetesService: GenService<{
     methodKind: "unary";
     input: typeof ListUDSPackagesRequestSchema;
     output: typeof ListUDSPackagesResponseSchema;
+  },
+  /**
+   * GoFi's own Package as it is live and as GoFi would apply it for the saved
+   * flows, with Pepr's verdict on the change.
+   *
+   * @generated from rpc gofi.v1.KubernetesService.PlanUDSPackage
+   */
+  planUDSPackage: {
+    methodKind: "unary";
+    input: typeof PlanUDSPackageRequestSchema;
+    output: typeof PlanUDSPackageResponseSchema;
+  },
+  /**
+   * Applies the planned Package. Only GoFi's own Package, and only when GoFi
+   * manages its allows (uds.manageAllows); Packages of other applications are
+   * never written.
+   *
+   * @generated from rpc gofi.v1.KubernetesService.ApplyUDSPackage
+   */
+  applyUDSPackage: {
+    methodKind: "unary";
+    input: typeof ApplyUDSPackageRequestSchema;
+    output: typeof ApplyUDSPackageResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_gofi_v1_kubernetes, 0);

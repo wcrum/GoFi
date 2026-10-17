@@ -91,7 +91,7 @@ frame, then the selected parser runs. For example, `[base64, gzip]` expects
 base64 text wrapping a compressed payload. Use line framing for newline-separated
 base64; binary payloads generally need raw or length-prefix framing.
 
-Supported decoders are `base64`, `base64url`, `hex`, `gzip`, `zlib`, and `url`.
+Supported decoders are `base64`, `base64url`, `base32`, `hex`, `url`, `gzip`, `zlib`, `deflate`, `zstd`, `snappy` (block format), `lz4` (frame format), `brotli`, and `bzip2`. Every one but `bzip2` also works as an encoder. Decompressed output is capped at the step's byte limit.
 Base64 accepts padded and unpadded input. URL query decoding converts `+` to a
 space. `maxDecodedBytes` caps each step at 1 MiB by default. Invalid encoding,
 checksum failures, and oversized results become parse errors.

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import '../lib/monaco'
-import { Badge, ClipboardButton, CodeEditor, ConfirmModal, LinkButton, Button, Stack, useStyles2 } from '@grafana/ui'
+import { Badge, ClipboardButton, CodeEditor, ConfirmModal, LinkButton, Button, RadioButtonGroup, Stack, useStyles2 } from '@grafana/ui'
 import FlowCanvas from '../components/canvas/FlowCanvas'
 import { LogsExplorer } from '../components/logs/LogsExplorer'
 import { deleteFlow } from '../api'
@@ -15,7 +15,13 @@ import { listenOf, sourceSummary, type FlowDefinition } from '../types'
 import { NotFoundPage } from './NotFoundPage'
 import { PageLoading } from '../components/PageLoading'
 import { RuntimeFailure } from '../components/RuntimeFailure'
+import { RouteFailures } from '../components/RouteFailures'
 import { ConnectivityPanel } from '../components/ConnectivityPanel'
+import { FlowYamlEditor } from '../components/FlowYamlEditor'
+
+type EditorKind = 'visual' | 'yaml'
+const EDITOR_KEY = 'gofi.flow.editor'
+const EDITOR_OPTIONS = [{ label: 'Visual', value: 'visual' as const, icon: 'sitemap' as const }, { label: 'YAML', value: 'yaml' as const, icon: 'brackets-curly' as const }]
 
 /** One flow: Flow, Live traffic, and Resource tabs; Edit is a mode. */
 export default function FlowPage({ name, tab }: { name: string; tab: FlowTab }) {
@@ -23,6 +29,9 @@ export default function FlowPage({ name, tab }: { name: string; tab: FlowTab }) 
   const { flows, loading, reload, upsertLocal, mode } = useGoFi()
   const addToast = useToast()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Edit visually or as the Flow resource; remembered per browser.
+  const [editor, setEditorState] = useState<EditorKind>(() => { try { return localStorage.getItem(EDITOR_KEY) === 'yaml' ? 'yaml' : 'visual' } catch { return 'visual' } })
+  const setEditor = (next: EditorKind) => { setEditorState(next); try { localStorage.setItem(EDITOR_KEY, next) } catch { /* private mode */ } }
   const definition = flows.find(flow => flow.name === name)
   if (!definition) return loading ? <PageLoading text="Loading flow..." /> : <NotFoundPage path={paths.flow(name)} message={`Flow "${name}" does not exist.`} />
 
@@ -44,8 +53,9 @@ export default function FlowPage({ name, tab }: { name: string; tab: FlowTab }) 
   return <Page
     title={editing ? `Edit ${name}` : name}
     icon="exchange-alt"
-    subTitle={<Stack direction="column" gap={1}><Stack gap={1} alignItems="center" wrap="wrap"><span>{ingress}</span>{listen.service && <Badge color="blue" text={`${listen.service.type}${listen.service.nodePort ? ` :${listen.service.nodePort}` : ''}`} />}<span>· {definition.stages?.length ?? 0} stages · {definition.sinks?.length ?? 0} destinations</span></Stack><RuntimeFailure name={name} /></Stack>}
-    actions={editing ? undefined : <>
+    subTitle={<Stack direction="column" gap={1}><Stack gap={1} alignItems="center" wrap="wrap"><span>{ingress}</span>{listen.service && <Badge color="blue" text={`${listen.service.type}${listen.service.nodePort ? ` :${listen.service.nodePort}` : ''}`} />}<span>· {definition.stages?.length ?? 0} stages · {definition.sinks?.length ?? 0} destinations</span></Stack></Stack>}
+    banner={<><RuntimeFailure name={name} />{tab !== 'connectivity' && <RouteFailures name={name} connectivityHref={mode?.driverKind === 'kubernetes' ? paths.flow(name, 'connectivity') : undefined} />}</>}
+    actions={editing ? <RadioButtonGroup options={EDITOR_OPTIONS} value={editor} onChange={setEditor} size="sm" /> : <>
       <LinkButton variant="secondary" icon="compass" href={paths.explore(name)}>Explore</LinkButton>
       <LinkButton variant="secondary" icon="pen" href={paths.flow(name, 'edit')}>Edit</LinkButton>
       <Button variant="destructive" fill="outline" icon="trash-alt" onClick={() => setConfirmDelete(true)}>Delete</Button>
@@ -54,7 +64,8 @@ export default function FlowPage({ name, tab }: { name: string; tab: FlowTab }) 
     layout={tab === 'resource' || tab === 'connectivity' ? 'standard' : 'canvas'}
   >
     {tab === 'flow' && <FlowCanvas key={JSON.stringify(definition)} mode="view" initial={definition} onClose={() => navigate(paths.flows())} />}
-    {tab === 'edit' && <FlowCanvas key={`edit:${name}`} mode="edit" initial={structuredClone(definition)} onSaved={saved} onClose={() => navigate(paths.flow(name))} closeLabel="Cancel" />}
+    {tab === 'edit' && editor === 'yaml' && <FlowYamlEditor key={`yaml:${name}`} definition={definition} onSaved={saved} onCancel={() => navigate(paths.flow(name))} />}
+    {tab === 'edit' && editor === 'visual' && <FlowCanvas key={`edit:${name}`} mode="edit" initial={structuredClone(definition)} onSaved={saved} onClose={() => navigate(paths.flow(name))} closeLabel="Cancel" />}
     {tab === 'traffic' && <div className={styles.fill}><LogsExplorer flow={name} /></div>}
     {tab === 'connectivity' && <ConnectivityPanel flow={definition} />}
     {tab === 'resource' && <ResourceTab definition={definition} />}

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Alert, Button, Checkbox, Combobox, Field, Input, Modal, RadioButtonGroup, Stack, Text, TextArea } from '@grafana/ui'
+import { Alert, Button, Checkbox, Combobox, Field, Icon, Input, Modal, RadioButtonGroup, Stack, Text, TextArea } from '@grafana/ui'
 import { applySandbox, listSandboxes, validatePythonSource, type LibraryFunction, type PythonRunResult, type SourceDiagnostic } from '../../sandbox-api'
 import type { PythonFunctionRef } from '../../types'
 import { configWithDefaults, INLINE_STARTER, inputPreview, missingParams, newRunId, promoteInlineSource, promotionConflict, suggestLibraryName, unwrapLines, type SourceHighlights } from '../canvas/python-templates'
@@ -43,6 +43,7 @@ export function PythonStageEditor({ stageId, value, functions, registryError, re
 function InlineEditor({ stageId, value, readOnly, onChange }: { stageId: string; value: PythonFunctionRef; readOnly?: boolean; onChange: (value: PythonFunctionRef) => void }) {
   const source = value.inlineSource ?? ''
   const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([])
+  const [validity, setValidity] = useState<'valid' | 'invalid' | undefined>()
   const [reveal, setReveal] = useState<RevealRequest | null>(null)
   const [fields, setFields] = useState('{"sensor":"alpha","temperature":28}')
   const [result, setResult] = useState<PythonRunResult | null>(null)
@@ -61,7 +62,7 @@ function InlineEditor({ stageId, value, readOnly, onChange }: { stageId: string;
     executed: result ? unwrapLines(result.executedLines, offset, snippetLines) : undefined, error: result?.errorLocation?.line }
   async function validate() {
     setBusy('validate'); setError('')
-    try { const validation = await validatePythonSource(source); setDiagnostics(validation.diagnostics); if (validation.valid) setError('') }
+    try { const validation = await validatePythonSource(source); setDiagnostics(validation.diagnostics); setValidity(validation.valid ? 'valid' : 'invalid'); if (validation.valid) setError('') }
     catch (reason) { setError(String(reason)) } finally { setBusy(null) }
   }
   async function run() {
@@ -78,8 +79,9 @@ function InlineEditor({ stageId, value, readOnly, onChange }: { stageId: string;
   return <Stack direction="column" gap={1.5}>
     <Text color="secondary" variant="bodySmall">Define <Text variant="code">transform(fields, meta)</Text>. Return the fields, or <Text variant="code">None</Text> to drop. GoFi runs it in this listener's isolated worker.</Text>
     <Suspense fallback={<PageLoading text="Loading editor..." />}>
-      <PythonSourceEditor source={source} onChange={inlineSource => { onChange({ ...value, inlineSource }); setDiagnostics([]); setResult(null) }} diagnostics={diagnostics} disabled={readOnly} height="220px" reveal={reveal} ariaLabel="Inline Python source" highlights={highlights} />
+      <PythonSourceEditor source={source} onChange={inlineSource => { onChange({ ...value, inlineSource }); setDiagnostics([]); setValidity(undefined); setResult(null) }} diagnostics={diagnostics} disabled={readOnly} height="220px" reveal={reveal} ariaLabel="Inline Python source" highlights={highlights} validity={validity} />
     </Suspense>
+    {validity === 'valid' && <Text color="success" variant="bodySmall"><Icon name="check-circle" /> Validation passed</Text>}
     {diagnostics.map((diagnostic, index) => <Text key={index} color="error" variant="bodySmall">{diagnostic.line}:{diagnostic.column} {diagnostic.code} {diagnostic.message}</Text>)}
     <Field label="Sample fields (JSON)" noMargin><TextArea rows={2} value={fields} aria-label="Inline sample fields" onChange={event => setFields(event.currentTarget.value)} /></Field>
     <Stack gap={1} wrap="wrap">

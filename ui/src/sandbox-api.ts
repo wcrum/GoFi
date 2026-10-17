@@ -25,7 +25,8 @@ export interface SandboxDefinition {
 }
 export interface SandboxStatus { name: string; phase: string; error?: string }
 export interface FunctionParam { name: string; type?: string; default?: unknown; required?: boolean; description?: string }
-export interface LibraryFunction { library: string; name: string; kind: PythonFunctionKind; description: string; params: FunctionParam[] }
+/** managedBy is "flow:<name>" for a library GoFi generates from that flow's inline Python. */
+export interface LibraryFunction { library: string; name: string; kind: PythonFunctionKind; description: string; params: FunctionParam[]; managedBy?: string }
 export interface SourceDiagnostic { line: number; column: number; code: string; message: string }
 export interface SourceValidation { valid: boolean; diagnostics: SourceDiagnostic[] }
 export interface PythonRunResult {

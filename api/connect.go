@@ -36,6 +36,7 @@ func rpcError(code connect.Code, err error) error { return connect.NewError(code
 func (h *Handler) ListFlows(_ context.Context, _ *connect.Request[gofiv1.ListFlowsRequest]) (*connect.Response[gofiv1.ListFlowsResponse], error) {
 	response := &gofiv1.ListFlowsResponse{}
 	for _, def := range h.ctrl.List() {
+		def.StripDerivedPython()
 		item := &gofiv1.Flow{}
 		if err := toProto(def, item); err != nil {
 			return nil, rpcError(connect.CodeInternal, err)
@@ -50,12 +51,13 @@ func (h *Handler) GetFlow(_ context.Context, req *connect.Request[gofiv1.GetFlow
 		return nil, rpcError(connect.CodeNotFound, errors.New("flow not found"))
 	}
 	item := &gofiv1.Flow{}
+	def.StripDerivedPython() // people see inline code, not its managed library
 	if err := toProto(def, item); err != nil {
 		return nil, rpcError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&gofiv1.GetFlowResponse{Flow: item}), nil
 }
-func (h *Handler) UpsertFlow(_ context.Context, req *connect.Request[gofiv1.UpsertFlowRequest]) (*connect.Response[gofiv1.UpsertFlowResponse], error) {
+func (h *Handler) UpsertFlow(ctx context.Context, req *connect.Request[gofiv1.UpsertFlowRequest]) (*connect.Response[gofiv1.UpsertFlowResponse], error) {
 	if req.Msg.Flow == nil {
 		return nil, rpcError(connect.CodeInvalidArgument, errors.New("flow is required"))
 	}
@@ -66,6 +68,12 @@ func (h *Handler) UpsertFlow(_ context.Context, req *connect.Request[gofiv1.Upse
 	if err := h.ctrl.Validate(def); err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}
+	if req.Msg.ValidateOnly {
+		if err := h.ctrl.Check(ctx, def); err != nil {
+			return nil, rpcError(connect.CodeInvalidArgument, err)
+		}
+		return connect.NewResponse(&gofiv1.UpsertFlowResponse{Flow: req.Msg.Flow, Warnings: h.blockedPaths(ctx, def)}), nil
+	}
 	if err := h.ctrl.Add(def); err != nil {
 		if errors.As(err, new(controller.InvalidInlineError)) {
 			return nil, rpcError(connect.CodeInvalidArgument, err)
@@ -73,7 +81,7 @@ func (h *Handler) UpsertFlow(_ context.Context, req *connect.Request[gofiv1.Upse
 		return nil, rpcError(connect.CodeInternal, err)
 	}
 	slog.Info("flow configured via ConnectRPC", "name", def.Name)
-	return connect.NewResponse(&gofiv1.UpsertFlowResponse{Flow: req.Msg.Flow}), nil
+	return connect.NewResponse(&gofiv1.UpsertFlowResponse{Flow: req.Msg.Flow, Warnings: h.blockedPaths(ctx, def)}), nil
 }
 func (h *Handler) DeleteFlow(_ context.Context, req *connect.Request[gofiv1.DeleteFlowRequest]) (*connect.Response[gofiv1.DeleteFlowResponse], error) {
 	if _, found := h.ctrl.Get(req.Msg.Name); !found {

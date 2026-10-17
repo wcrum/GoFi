@@ -87,11 +87,11 @@ export function definitionToGraph(def: FlowDefinition): { nodes: FlowNode[]; edg
   for (let i = 0; i < chainIds.length - 1; i++) {
     const source = chainIds[i]
     const target = chainIds[i + 1]
-    edges.push({ id: `e-${source}-${target}`, source, target, type: 'smoothstep' })
+    edges.push({ id: `e-${source}-${target}`, source, target, type: 'default' })
   }
   // Fan-out: one edge from the terminal node to each sink node.
   for (const sinkNode of sinkNodes) {
-    edges.push({ id: `e-${terminalId}-${sinkNode.id}`, source: terminalId, target: sinkNode.id, type: 'smoothstep' })
+    edges.push({ id: `e-${terminalId}-${sinkNode.id}`, source: terminalId, target: sinkNode.id, type: 'default' })
   }
 
   if (def.deadLetterSink) {

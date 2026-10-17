@@ -1,4 +1,5 @@
-import { EmptyState, LinkButton } from '@grafana/ui'
+import { LinkButton } from '@grafana/ui'
+import { EmptyState } from '../components/EmptyState'
 import { Page } from '../shell/Page'
 import { paths } from '../router'
 

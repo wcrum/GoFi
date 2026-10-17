@@ -1,12 +1,13 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
-/* Grafana palettes (mirror @grafana/data createColors DarkColors/LightColors
- * for Tailwind and React Flow; grafana-theme.ts uses the stock themes with
- * this radius). Translucent text/border/hover colors are pre-composited over
- * the panel background so Tailwind opacity modifiers keep working on
- * triplets. Dark is the default; data-theme="light" on <html> (set by the
- * theme provider and the pre-paint script in index.html) selects light. */
+/* Fallback tokens: Grafana's stock dark/light palettes as RGB triplets for
+ * Tailwind and React Flow, used before JS runs. ThemeProvider (and the
+ * pre-paint script in index.html, from its cache) overrides every --g-*
+ * variable inline on <html> from the active theme via cssTokens() in
+ * grafana-theme.ts. Translucent colors are pre-composited over the panel
+ * background so Tailwind opacity modifiers keep working on triplets. Dark is
+ * the default; data-theme="light" on <html> selects the light fallback. */
 :root {
   color-scheme: dark;
   --gofi-radius: 4px;

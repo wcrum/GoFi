@@ -78,6 +78,7 @@ func (t *Tap) broadcast(ev TapEvent) {
 type sinkTarget struct {
 	sink     sink.Sink
 	kind     string
+	route    string         // observability route ID, matching the connectivity path
 	when     cel.Program    // nil = always send
 	encoding *spec.Encoding // nil = the sink's default payload
 }
@@ -113,7 +114,7 @@ func New(def spec.FlowDefinition, r io.Reader, sinks []sink.Sink, deadLetterSink
 
 	targets := make([]sinkTarget, len(sinks))
 	for i, sk := range sinks {
-		st := sinkTarget{sink: sk}
+		st := sinkTarget{sink: sk, route: observability.RouteSink(i)}
 		if i < len(def.Sinks) {
 			st.kind = def.Sinks[i].Type
 			st.encoding = def.Sinks[i].Encoding
@@ -220,6 +221,7 @@ func (p *Pipeline) Run(ctx context.Context, remoteAddr string) {
 			out, err := Encode(ctx, st.encoding, msg)
 			if err == nil {
 				err = st.sink.Send(out)
+				observability.RouteResult(p.name, st.route, err)
 			}
 			observability.SinkDispatch(p.name, st.kind, time.Since(started), err)
 			if err != nil {
@@ -245,6 +247,7 @@ func (p *Pipeline) reject(msg *message.Message, droppedBy string) {
 		out, err := Encode(context.Background(), p.deadLetterEnc, msg)
 		if err == nil {
 			err = p.deadLetterSink.Send(out)
+			observability.RouteResult(p.name, observability.RouteDeadLetter, err)
 		}
 		observability.SinkDispatch(p.name, p.deadLetterType, time.Since(started), err)
 		if err != nil {

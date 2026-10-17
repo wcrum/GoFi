@@ -1,4 +1,4 @@
-import { stringify } from 'yaml'
+import { parseDocument, stringify } from 'yaml'
 import type { FlowDefinition } from '../types'
 import type { ConfigurationInfo } from '../api'
 
@@ -11,6 +11,28 @@ export function flowResource(definition: FlowDefinition, configuration: Configur
     metadata: { name, ...(configuration?.namespace ? { namespace: configuration.namespace } : {}) },
     spec,
   }
+}
+
+/** A Flow resource parsed from YAML: the definition, or the first problem
+ * with its 1-based line when the YAML itself is malformed. */
+export type ParsedFlow = { definition: FlowDefinition; error?: undefined } | { definition?: undefined; error: string; line?: number }
+
+/** Parses one gofi.wcrum.dev Flow resource (the inverse of flowResource).
+ * Field-level checks happen when the definition is converted and validated. */
+export function parseFlowResource(text: string): ParsedFlow {
+  const document = parseDocument(text, { prettyErrors: false })
+  if (document.errors.length) {
+    const first = document.errors[0]
+    return { error: first.message.split('\n')[0], line: text.slice(0, first.pos[0]).split('\n').length }
+  }
+  const resource = document.toJS() as { apiVersion?: unknown; kind?: unknown; metadata?: { name?: unknown }; spec?: unknown } | null
+  if (!resource || typeof resource !== 'object' || Array.isArray(resource)) return { error: 'Expected a Flow resource (a YAML mapping)' }
+  if (resource.kind !== 'Flow') return { error: `kind must be Flow, not ${JSON.stringify(resource.kind ?? null)}` }
+  if (typeof resource.apiVersion !== 'string' || !resource.apiVersion.startsWith('gofi.wcrum.dev/')) return { error: 'apiVersion must be gofi.wcrum.dev/<version>' }
+  const name = resource.metadata?.name
+  if (typeof name !== 'string' || !name) return { error: 'metadata.name is required' }
+  if (!resource.spec || typeof resource.spec !== 'object' || Array.isArray(resource.spec)) return { error: 'spec must be a mapping' }
+  return { definition: { ...(resource.spec as Omit<FlowDefinition, 'name'>), name } }
 }
 
 /** Kubernetes-style YAML; several resources become one multi-document stream

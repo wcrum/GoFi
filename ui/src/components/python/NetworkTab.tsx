@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
-import { Alert, Button, Card, Combobox, EmptyState, Field, IconButton, Input, RadioButtonGroup, Stack, useStyles2 } from '@grafana/ui'
+import { Alert, Button, Card, Combobox, Field, IconButton, Input, RadioButtonGroup, Stack, useStyles2 } from '@grafana/ui'
+import { EmptyState } from '../EmptyState'
 import type { EgressRule } from '../../sandbox-api'
 
 /** Outbound destinations a library worker may reach. Empty = no egress. */

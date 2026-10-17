@@ -5,14 +5,17 @@ import type { CodecStep } from '../../types'
 import { codecChain, codecLabel } from '../../lib/codec'
 import { useLibraryFunctions } from './python-functions'
 
+// Built-in codecs (spec.BuiltinCodecs), by role. bzip2 decodes only.
 const BUILTIN_DESCRIPTIONS: Record<'decoder' | 'encoder', Record<string, string>> = {
   decoder: {
-    base64: 'Standard Base64 (RFC 4648) to bytes', base64url: 'URL-safe Base64 to bytes', hex: 'Hexadecimal text to bytes',
-    gzip: 'Decompress gzip', zlib: 'Decompress zlib/deflate', url: 'URL percent-decoding',
+    base64: 'Standard Base64 (RFC 4648) to bytes', base64url: 'URL-safe Base64 to bytes', base32: 'Base32 (RFC 4648) to bytes', hex: 'Hexadecimal text to bytes', url: 'URL percent-decoding',
+    gzip: 'Decompress gzip', zlib: 'Decompress zlib (deflate with a zlib header)', deflate: 'Decompress raw deflate', zstd: 'Decompress Zstandard',
+    snappy: 'Decompress Snappy (block format, as in Prometheus remote write)', lz4: 'Decompress LZ4 (frame format)', brotli: 'Decompress Brotli', bzip2: 'Decompress bzip2',
   },
   encoder: {
-    base64: 'Bytes to standard Base64 (RFC 4648)', base64url: 'Bytes to URL-safe Base64', hex: 'Bytes to hexadecimal text',
-    gzip: 'Compress with gzip', zlib: 'Compress with zlib/deflate', url: 'URL percent-encoding',
+    base64: 'Bytes to standard Base64 (RFC 4648)', base64url: 'Bytes to URL-safe Base64', base32: 'Bytes to Base32 (RFC 4648)', hex: 'Bytes to hexadecimal text', url: 'URL percent-encoding',
+    gzip: 'Compress with gzip', zlib: 'Compress with zlib (deflate with a zlib header)', deflate: 'Compress with raw deflate', zstd: 'Compress with Zstandard',
+    snappy: 'Compress with Snappy (block format)', lz4: 'Compress with LZ4 (frame format)', brotli: 'Compress with Brotli',
   },
 }
 

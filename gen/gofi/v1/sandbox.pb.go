@@ -1502,7 +1502,10 @@ type LibraryFunction struct {
 	Kind        string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	Description string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Keyword parameters accepted as per-node configuration.
-	Params        []*FunctionParam `protobuf:"bytes,6,rep,name=params,proto3" json:"params,omitempty"`
+	Params []*FunctionParam `protobuf:"bytes,6,rep,name=params,proto3" json:"params,omitempty"`
+	// "flow:<name>" when the library is generated from a flow's inline Python;
+	// such functions belong to that flow and are not offered to others.
+	ManagedBy     string `protobuf:"bytes,7,opt,name=managed_by,json=managedBy,proto3" json:"managed_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1570,6 +1573,13 @@ func (x *LibraryFunction) GetParams() []*FunctionParam {
 		return x.Params
 	}
 	return nil
+}
+
+func (x *LibraryFunction) GetManagedBy() string {
+	if x != nil {
+		return x.ManagedBy
+	}
+	return ""
 }
 
 type FunctionParam struct {
@@ -3448,13 +3458,15 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x17\n" +
 	"\x15DeleteSandboxResponse\"7\n" +
 	"\x1bListLibraryFunctionsRequest\x12\x18\n" +
-	"\alibrary\x18\x01 \x01(\tR\alibrary\"\xb4\x01\n" +
+	"\alibrary\x18\x01 \x01(\tR\alibrary\"\xd3\x01\n" +
 	"\x0fLibraryFunction\x12\x18\n" +
 	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12.\n" +
-	"\x06params\x18\x06 \x03(\v2\x16.gofi.v1.FunctionParamR\x06paramsJ\x04\b\x05\x10\x06R\aingress\"\xa7\x01\n" +
+	"\x06params\x18\x06 \x03(\v2\x16.gofi.v1.FunctionParamR\x06params\x12\x1d\n" +
+	"\n" +
+	"managed_by\x18\a \x01(\tR\tmanagedByJ\x04\b\x05\x10\x06R\aingress\"\xa7\x01\n" +
 	"\rFunctionParam\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x120\n" +

@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
-import { EmptyState, LinkButton, PanelChrome, TextLink, useStyles2 } from '@grafana/ui'
+import { LinkButton, PanelChrome, TextLink, useStyles2 } from '@grafana/ui'
+import { EmptyState } from '../components/EmptyState'
 import { Page } from '../shell/Page'
 import { listenOf, sourceSummary } from '../types'
 import { paths, to } from '../router'
@@ -20,7 +21,7 @@ export default function HomePage() {
   // One all-flow stream feeds the stat panels, the topology, and the table.
   const traffic = useTrafficObservations(flows.map(flow => flow.name))
   const [libraries, setLibraries] = useState<number | null>(null)
-  useEffect(() => { listSandboxes().then(result => setLibraries(result.sandboxes.length)).catch(() => setLibraries(null)) }, [])
+  useEffect(() => { listSandboxes().then(result => setLibraries(result.sandboxes.filter(library => !library.managedBy?.startsWith('flow:')).length)).catch(() => setLibraries(null)) }, [])
   const series = (key: 'observed' | 'dropped' | 'parseErrors') => traffic.history.map(bucket => bucket[key])
 
   return <Page title="Home" icon="home-alt"

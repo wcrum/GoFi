@@ -157,6 +157,9 @@ message LibraryFunction {
  reserved "ingress";
  // Keyword parameters accepted as per-node configuration.
  repeated FunctionParam params=6;
+ // "flow:<name>" when the library is generated from a flow's inline Python;
+ // such functions belong to that flow and are not offered to others.
+ string managed_by=7;
 }
 message FunctionParam {
  string name=1;

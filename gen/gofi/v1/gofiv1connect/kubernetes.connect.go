@@ -54,6 +54,12 @@ const (
 	// KubernetesServiceListUDSPackagesProcedure is the fully-qualified name of the KubernetesService's
 	// ListUDSPackages RPC.
 	KubernetesServiceListUDSPackagesProcedure = "/gofi.v1.KubernetesService/ListUDSPackages"
+	// KubernetesServicePlanUDSPackageProcedure is the fully-qualified name of the KubernetesService's
+	// PlanUDSPackage RPC.
+	KubernetesServicePlanUDSPackageProcedure = "/gofi.v1.KubernetesService/PlanUDSPackage"
+	// KubernetesServiceApplyUDSPackageProcedure is the fully-qualified name of the KubernetesService's
+	// ApplyUDSPackage RPC.
+	KubernetesServiceApplyUDSPackageProcedure = "/gofi.v1.KubernetesService/ApplyUDSPackage"
 )
 
 // KubernetesServiceClient is a client for the gofi.v1.KubernetesService service.
@@ -71,6 +77,13 @@ type KubernetesServiceClient interface {
 	// UDS Packages as connection endpoints: the workloads and ports each one
 	// exposes or admits, for choosing a Package as a flow's source or destination.
 	ListUDSPackages(context.Context, *connect.Request[v1.ListUDSPackagesRequest]) (*connect.Response[v1.ListUDSPackagesResponse], error)
+	// GoFi's own Package as it is live and as GoFi would apply it for the saved
+	// flows, with Pepr's verdict on the change.
+	PlanUDSPackage(context.Context, *connect.Request[v1.PlanUDSPackageRequest]) (*connect.Response[v1.PlanUDSPackageResponse], error)
+	// Applies the planned Package. Only GoFi's own Package, and only when GoFi
+	// manages its allows (uds.manageAllows); Packages of other applications are
+	// never written.
+	ApplyUDSPackage(context.Context, *connect.Request[v1.ApplyUDSPackageRequest]) (*connect.Response[v1.ApplyUDSPackageResponse], error)
 }
 
 // NewKubernetesServiceClient constructs a client for the gofi.v1.KubernetesService service. By
@@ -126,6 +139,18 @@ func NewKubernetesServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(kubernetesServiceMethods.ByName("ListUDSPackages")),
 			connect.WithClientOptions(opts...),
 		),
+		planUDSPackage: connect.NewClient[v1.PlanUDSPackageRequest, v1.PlanUDSPackageResponse](
+			httpClient,
+			baseURL+KubernetesServicePlanUDSPackageProcedure,
+			connect.WithSchema(kubernetesServiceMethods.ByName("PlanUDSPackage")),
+			connect.WithClientOptions(opts...),
+		),
+		applyUDSPackage: connect.NewClient[v1.ApplyUDSPackageRequest, v1.ApplyUDSPackageResponse](
+			httpClient,
+			baseURL+KubernetesServiceApplyUDSPackageProcedure,
+			connect.WithSchema(kubernetesServiceMethods.ByName("ApplyUDSPackage")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -138,6 +163,8 @@ type kubernetesServiceClient struct {
 	describeCluster       *connect.Client[v1.DescribeClusterRequest, v1.DescribeClusterResponse]
 	listClusterNetworking *connect.Client[v1.ListClusterNetworkingRequest, v1.ListClusterNetworkingResponse]
 	listUDSPackages       *connect.Client[v1.ListUDSPackagesRequest, v1.ListUDSPackagesResponse]
+	planUDSPackage        *connect.Client[v1.PlanUDSPackageRequest, v1.PlanUDSPackageResponse]
+	applyUDSPackage       *connect.Client[v1.ApplyUDSPackageRequest, v1.ApplyUDSPackageResponse]
 }
 
 // RenderFlowResources calls gofi.v1.KubernetesService.RenderFlowResources.
@@ -175,6 +202,16 @@ func (c *kubernetesServiceClient) ListUDSPackages(ctx context.Context, req *conn
 	return c.listUDSPackages.CallUnary(ctx, req)
 }
 
+// PlanUDSPackage calls gofi.v1.KubernetesService.PlanUDSPackage.
+func (c *kubernetesServiceClient) PlanUDSPackage(ctx context.Context, req *connect.Request[v1.PlanUDSPackageRequest]) (*connect.Response[v1.PlanUDSPackageResponse], error) {
+	return c.planUDSPackage.CallUnary(ctx, req)
+}
+
+// ApplyUDSPackage calls gofi.v1.KubernetesService.ApplyUDSPackage.
+func (c *kubernetesServiceClient) ApplyUDSPackage(ctx context.Context, req *connect.Request[v1.ApplyUDSPackageRequest]) (*connect.Response[v1.ApplyUDSPackageResponse], error) {
+	return c.applyUDSPackage.CallUnary(ctx, req)
+}
+
 // KubernetesServiceHandler is an implementation of the gofi.v1.KubernetesService service.
 type KubernetesServiceHandler interface {
 	RenderFlowResources(context.Context, *connect.Request[v1.RenderFlowResourcesRequest]) (*connect.Response[v1.RenderFlowResourcesResponse], error)
@@ -190,6 +227,13 @@ type KubernetesServiceHandler interface {
 	// UDS Packages as connection endpoints: the workloads and ports each one
 	// exposes or admits, for choosing a Package as a flow's source or destination.
 	ListUDSPackages(context.Context, *connect.Request[v1.ListUDSPackagesRequest]) (*connect.Response[v1.ListUDSPackagesResponse], error)
+	// GoFi's own Package as it is live and as GoFi would apply it for the saved
+	// flows, with Pepr's verdict on the change.
+	PlanUDSPackage(context.Context, *connect.Request[v1.PlanUDSPackageRequest]) (*connect.Response[v1.PlanUDSPackageResponse], error)
+	// Applies the planned Package. Only GoFi's own Package, and only when GoFi
+	// manages its allows (uds.manageAllows); Packages of other applications are
+	// never written.
+	ApplyUDSPackage(context.Context, *connect.Request[v1.ApplyUDSPackageRequest]) (*connect.Response[v1.ApplyUDSPackageResponse], error)
 }
 
 // NewKubernetesServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -241,6 +285,18 @@ func NewKubernetesServiceHandler(svc KubernetesServiceHandler, opts ...connect.H
 		connect.WithSchema(kubernetesServiceMethods.ByName("ListUDSPackages")),
 		connect.WithHandlerOptions(opts...),
 	)
+	kubernetesServicePlanUDSPackageHandler := connect.NewUnaryHandler(
+		KubernetesServicePlanUDSPackageProcedure,
+		svc.PlanUDSPackage,
+		connect.WithSchema(kubernetesServiceMethods.ByName("PlanUDSPackage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	kubernetesServiceApplyUDSPackageHandler := connect.NewUnaryHandler(
+		KubernetesServiceApplyUDSPackageProcedure,
+		svc.ApplyUDSPackage,
+		connect.WithSchema(kubernetesServiceMethods.ByName("ApplyUDSPackage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/gofi.v1.KubernetesService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KubernetesServiceRenderFlowResourcesProcedure:
@@ -257,6 +313,10 @@ func NewKubernetesServiceHandler(svc KubernetesServiceHandler, opts ...connect.H
 			kubernetesServiceListClusterNetworkingHandler.ServeHTTP(w, r)
 		case KubernetesServiceListUDSPackagesProcedure:
 			kubernetesServiceListUDSPackagesHandler.ServeHTTP(w, r)
+		case KubernetesServicePlanUDSPackageProcedure:
+			kubernetesServicePlanUDSPackageHandler.ServeHTTP(w, r)
+		case KubernetesServiceApplyUDSPackageProcedure:
+			kubernetesServiceApplyUDSPackageHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -292,4 +352,12 @@ func (UnimplementedKubernetesServiceHandler) ListClusterNetworking(context.Conte
 
 func (UnimplementedKubernetesServiceHandler) ListUDSPackages(context.Context, *connect.Request[v1.ListUDSPackagesRequest]) (*connect.Response[v1.ListUDSPackagesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.KubernetesService.ListUDSPackages is not implemented"))
+}
+
+func (UnimplementedKubernetesServiceHandler) PlanUDSPackage(context.Context, *connect.Request[v1.PlanUDSPackageRequest]) (*connect.Response[v1.PlanUDSPackageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.KubernetesService.PlanUDSPackage is not implemented"))
+}
+
+func (UnimplementedKubernetesServiceHandler) ApplyUDSPackage(context.Context, *connect.Request[v1.ApplyUDSPackageRequest]) (*connect.Response[v1.ApplyUDSPackageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.KubernetesService.ApplyUDSPackage is not implemented"))
 }

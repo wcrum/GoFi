@@ -84,6 +84,13 @@ interface FlowCanvasProps {
   onSaved?: (def: FlowDefinition) => void
   onClose: () => void
   closeLabel?: string
+  /** Part of another editor (the YAML split): no name, Save, or Cancel here;
+   * edits are reported through onChange instead. */
+  embedded?: boolean
+  /** Stream the running flow's traffic onto the graph while editing too. */
+  live?: boolean
+  /** Each structurally different, valid definition the graph forms. */
+  onChange?: (def: FlowDefinition) => void
 }
 
 export default function FlowCanvas(props: FlowCanvasProps) {
@@ -94,7 +101,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close' }: FlowCanvasProps) {
+function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close', embedded, live, onChange }: FlowCanvasProps) {
   const styles = useStyles2(getStyles)
   const colorMode = useTheme2().isDark ? 'dark' : 'light'
   const addToast = useToast()
@@ -133,7 +140,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
   // resulting graph is actually valid.
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge({ ...connection, type: 'smoothstep' }, eds))
+      setEdges((eds) => addEdge({ ...connection, type: 'default' }, eds))
     },
     [setEdges],
   )
@@ -168,8 +175,8 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
         const rest = prevEdges.filter((e) => !rerouted.includes(e))
         return [
           ...rest,
-          { id: `e-${terminalId}-${id}`, source: terminalId, target: id, type: 'smoothstep' },
-          ...rerouted.map((e) => ({ id: `e-${id}-${e.target}`, source: id, target: e.target, type: 'smoothstep' })),
+          { id: `e-${terminalId}-${id}`, source: terminalId, target: id, type: 'default' },
+          ...rerouted.map((e) => ({ id: `e-${id}-${e.target}`, source: id, target: e.target, type: 'default' })),
         ]
       })
 
@@ -196,7 +203,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
       data: { sink: { type: 'stdout' } },
     }
     setNodes((prev) => [...prev, newNode])
-    setEdges((prev) => [...prev, { id: `e-${terminalId}-${id}`, source: terminalId, target: id, type: 'smoothstep' }])
+    setEdges((prev) => [...prev, { id: `e-${terminalId}-${id}`, source: terminalId, target: id, type: 'default' }])
     setSelectedId(id)
   }, [nodes, edges, setNodes, setEdges])
 
@@ -234,7 +241,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
         const moved = prev.filter((e) => e.source === before.id)
         return [
           ...prev.filter((e) => e.source !== before.id),
-          { id: `e-${before.id}-${type}`, source: before.id, target: type, type: 'smoothstep' },
+          { id: `e-${before.id}-${type}`, source: before.id, target: type, type: 'default' },
           ...moved.map((e) => ({ ...e, id: `e-${type}-${e.target}`, source: type })),
         ]
       })
@@ -257,7 +264,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
             const from = incoming[0].source
             for (const out of outgoing) {
               if (!next.some((e) => e.source === from && e.target === out.target)) {
-                next = [...next, { id: `e-${from}-${out.target}`, source: from, target: out.target, type: 'smoothstep' }]
+                next = [...next, { id: `e-${from}-${out.target}`, source: from, target: out.target, type: 'default' }]
               }
             }
           }
@@ -272,7 +279,18 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
   // Drag-and-drop from the palette. A stage dropped on a connection between two
   // chain nodes is inserted there; dropped on a sink connection or empty
   // canvas it is appended before the sinks. Steps go to their canonical place.
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
+  // Embedded beside another editor, the pane's width settles after mount and
+  // changes as the splitter moves: keep the whole flow in view.
+  const canvasRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const element = canvasRef.current
+    if (!embedded || !element) return
+    let frame = 0
+    const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => void fitView({ padding: 0.1, minZoom: 0.3, maxZoom: 1 })) })
+    observer.observe(element)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [embedded, fitView])
   const insertStageOnEdge = useCallback(
     (entry: StagePaletteEntry, edge: Edge) => {
       const target = nodes.find((n) => n.id === edge.target)
@@ -286,8 +304,8 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
       ])
       setEdges((prev) => [
         ...prev.filter((e) => e.id !== edge.id),
-        { id: `e-${edge.source}-${id}`, source: edge.source, target: id, type: 'smoothstep' },
-        { id: `e-${id}-${edge.target}`, source: id, target: edge.target, type: 'smoothstep' },
+        { id: `e-${edge.source}-${id}`, source: edge.source, target: id, type: 'default' },
+        { id: `e-${id}-${edge.target}`, source: id, target: edge.target, type: 'default' },
       ])
       setSelectedId(id)
     },
@@ -381,7 +399,8 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
     setSaving(true)
     try {
       const def = { ...graphToDefinition(name.trim(), nodes, edges), testCases }
-      const created = await saveFlow(def)
+      const { flow: created, warnings } = await saveFlow(def)
+      if (warnings.length) addToast(warnings.join('\n'), 'warning', `Saved, but ${warnings.length === 1 ? 'a path is' : `${warnings.length} paths are`} not allowed`)
       onSaved?.(created)
     } catch (e) {
       addToast(String(e))
@@ -390,7 +409,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
     }
   }
 
-  // --- Live stats (mode === 'view' only) ---
+  // --- Live stats (view mode, or editing with live) ---
   // Aggregated in a ref (not per-event setState) to avoid a re-render per
   // streamed observation under load; flushed to node data on a throttled interval.
   const statsRef = useRef<{
@@ -401,7 +420,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
   }>({ connected: false, total: 0, perStage: new Map() })
 
   useEffect(() => {
-    if (mode !== 'view' || !initial) return
+    if ((mode !== 'view' && !live) || !initial) return
 
     statsRef.current = { connected: false, total: 0, perStage: new Map() }
     const rates = new RateTracker()
@@ -469,7 +488,23 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
       setEdgeRates({})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, initial?.name])
+  }, [mode, live, initial?.name])
+
+  // Report graph edits (not the live stats refreshed above) as definitions.
+  // A graph that is mid-edit and not yet a valid flow reports nothing.
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const lastReported = useRef<string | null>(null)
+  useEffect(() => {
+    if (!onChangeRef.current) return
+    let def: FlowDefinition
+    try { def = { ...graphToDefinition(name.trim() || initial?.name || '', nodes, edges), ...(testCases.length ? { testCases } : {}) } } catch { return }
+    const key = JSON.stringify(def)
+    if (lastReported.current === null) { lastReported.current = key; return } // the initial graph is not an edit
+    if (key === lastReported.current) return
+    lastReported.current = key
+    onChangeRef.current(def)
+  }, [nodes, edges, testCases, name, initial?.name])
 
   const readOnly = mode === 'view'
   // Every edge is directional; in view mode it also carries live traffic.
@@ -481,7 +516,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
   return (
     <div className={styles.root}>
       <div className={styles.toolbar}>
-        {mode !== 'view' && (<>
+        {mode !== 'view' && !embedded && (<>
           <InlineField label="Name" labelWidth={8} invalid={!!nameError}>
             <Input
               ref={nameInput}
@@ -497,13 +532,13 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
           {nameError && <span className={styles.nameError} role="alert">{nameError}</span>}
         </>)}
         {mode === 'create' && <GrafanaButton variant="secondary" fill="text" icon="file-alt" onClick={loadExample}>Load example</GrafanaButton>}
-        {/* The side palette adds stages on wide screens; this menu replaces it where the palette is hidden. */}
-        {!readOnly && <span className={styles.narrowOnly}><AddStageMenu onAdd={handleAddStage} onAddSink={handleAddSink} onAddDeadLetter={handleAddDeadLetter} hasDeadLetter={hasDeadLetter} /></span>}
+        {/* The side palette adds stages on wide screens; this menu replaces it where the palette is hidden (narrow screens, embedded). */}
+        {!readOnly && <span className={embedded ? undefined : styles.narrowOnly}><AddStageMenu onAdd={handleAddStage} onAddSink={handleAddSink} onAddDeadLetter={handleAddDeadLetter} hasDeadLetter={hasDeadLetter} /></span>}
         <div className={styles.spacer} />
         <ToolbarButton icon="vial" aria-pressed={mockOpen} variant={mockOpen ? 'active' : 'default'} onClick={() => { setMockOpen((o) => !o); setSelectedId(null) }}>
           Test flow
         </ToolbarButton>
-        {mode !== 'view' && <>
+        {mode !== 'view' && !embedded && <>
           <GrafanaButton variant="secondary" onClick={onClose}>{closeLabel}</GrafanaButton>
           <GrafanaButton variant="primary" icon={saving ? 'spinner' : 'save'} onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Save flow' : 'Create flow'}
@@ -512,7 +547,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
       </div>
 
       <div className={styles.body}>
-        <ResizableSplit side="left" storageKey="gofi.flow.paletteShare" defaultShare={0.22} panel={readOnly ? null : (
+        <ResizableSplit side="left" storageKey="gofi.flow.paletteShare" defaultShare={0.22} panel={readOnly || embedded ? null : (
           <StagePalette
             onAdd={handleAddStage}
             onAddSink={handleAddSink}
@@ -546,7 +581,7 @@ function FlowCanvasInner({ initial, mode, onSaved, onClose, closeLabel = 'Close'
             onClose={() => setSelectedId(null)}
           />
         ) : null} main={
-        <div className={styles.canvas}>
+        <div className={styles.canvas} ref={canvasRef}>
           <ReactFlow
             className={readOnly ? 'gofi-flow-readonly' : 'gofi-flow-editor'}
             defaultEdgeOptions={{ interactionWidth: 20 }}

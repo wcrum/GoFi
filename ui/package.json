@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/*.test.mjs src/components/canvas/*.test.mjs src/components/python/*.test.mjs",
+    "test": "node --experimental-strip-types --test src/*.test.mjs src/components/canvas/*.test.mjs src/components/python/*.test.mjs src/components/*.test.mjs src/lib/*.test.mjs src/theme/*.test.mjs src/shell/*.test.mjs",
     "prebuild": "node scripts/copy-grafana-assets.mjs",
     "predev": "node scripts/copy-grafana-assets.mjs"
   },

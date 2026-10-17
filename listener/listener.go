@@ -15,6 +15,7 @@ import (
 
 	"github.com/wcrum/gofi/filter"
 	"github.com/wcrum/gofi/framing"
+	"github.com/wcrum/gofi/observability"
 	"github.com/wcrum/gofi/parser"
 	"github.com/wcrum/gofi/pipeline"
 	"github.com/wcrum/gofi/sink"
@@ -48,6 +49,8 @@ func New(def spec.FlowDefinition) (*Listener, error) {
 	if err := def.Source.Validate(); err != nil {
 		return nil, err
 	}
+	// Route health describes this definition's destinations only.
+	observability.ResetRoutes(def.Name)
 	if _, err := parser.New(def.Parser); err != nil {
 		return nil, err
 	}

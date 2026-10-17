@@ -10,6 +10,8 @@ interface PageProps {
   subTitle?: ReactNode
   /** Right-aligned header controls, typically Grafana Buttons/LinkButtons. */
   actions?: ReactNode
+  /** Full-width alerts between the title and the tabs (runtime failures). */
+  banner?: ReactNode
   tabs?: PageTab[]
   /** `canvas` removes content padding and fills the remaining height. */
   layout?: 'standard' | 'canvas'
@@ -18,7 +20,7 @@ interface PageProps {
 
 /** Grafana page layout: header (icon, title, subtitle, actions), optional
  * tab bar, then padded scrolling content or a full-bleed canvas. */
-export function Page({ title, icon, subTitle, actions, tabs, layout = 'standard', children }: PageProps) {
+export function Page({ title, icon, subTitle, actions, banner, tabs, layout = 'standard', children }: PageProps) {
   const styles = useStyles2(getStyles)
   return <div className={styles.page}>
     <header className={styles.header}>
@@ -32,6 +34,7 @@ export function Page({ title, icon, subTitle, actions, tabs, layout = 'standard'
         </div>
         {actions && <Stack gap={1} alignItems="center" wrap="wrap">{actions}</Stack>}
       </Stack>
+      {banner && <div className={styles.banner}>{banner}</div>}
       {tabs && <TabsBar className={styles.tabs}>{tabs.map(tab => <Tab key={tab.href} label={tab.label} href={tab.href} active={tab.active} icon={tab.icon} counter={tab.counter} />)}</TabsBar>}
     </header>
     <div className={layout === 'canvas' ? styles.canvas : styles.content}>{children}</div>
@@ -44,6 +47,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   titleBlock: css({ minWidth: 0, flex: '1 1 320px', paddingBottom: theme.spacing(2) }),
   titleIcon: css({ color: theme.colors.text.secondary }),
   subTitle: css({ marginTop: theme.spacing(0.5), maxWidth: '80ch' }),
+  banner: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(1), paddingBottom: theme.spacing(2), '&:empty': { display: 'none' } }),
   tabs: css({ marginTop: theme.spacing(-1) }),
   content: css({ flex: 1, minHeight: 0, overflow: 'auto', padding: theme.spacing(2, 3, 3), [theme.breakpoints.down('md')]: { padding: theme.spacing(2) } }),
   canvas: css({ flex: 1, minHeight: 0, position: 'relative', borderTop: `1px solid ${theme.colors.border.weak}` }),

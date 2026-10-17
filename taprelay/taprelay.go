@@ -50,6 +50,11 @@ func (s *Server) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.W
 	}
 }
 
+// GetRouteHealth reports this listener process's outbound routes.
+func (s *Server) GetRouteHealth(_ context.Context, req *connect.Request[gofiv1.GetRouteHealthRequest]) (*connect.Response[gofiv1.GetRouteHealthResponse], error) {
+	return connect.NewResponse(&gofiv1.GetRouteHealthResponse{Routes: tapstream.Routes(req.Msg.Name)}), nil
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", observability.Handler())

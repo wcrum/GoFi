@@ -77,6 +77,7 @@ func reconnect(ctx context.Context, flow, kind string, connect func(context.Cont
 			delay = backoff.min
 		}
 		observability.SourceEvent(flow, kind, "reconnect")
+		observability.SourceFailure(flow, err)
 		slog.Warn("flow source disconnected; reconnecting", "flow", flow, "source", kind, "error", err, "retryIn", delay)
 		select {
 		case <-ctx.Done():

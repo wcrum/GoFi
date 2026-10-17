@@ -238,3 +238,46 @@ func TestHealthSPARoutesAndRetiredREST(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateOnlyChecksWithoutSaving(t *testing.T) {
+	client, ctrl, _ := newTestClient()
+	ctx := context.Background()
+	def := basicDefinition()
+	if _, err := client.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def), ValidateOnly: true})); err != nil {
+		t.Fatal(err)
+	}
+	if len(ctrl.List()) != 0 {
+		t.Fatal("validation saved the flow")
+	}
+	def.Sinks = []spec.SinkCfg{{Type: "http", URL: "https://receiver.example", Encoding: &spec.Encoding{Encoders: []spec.CodecStep{{Type: "bzip2"}}}}}
+	if _, err := client.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def), ValidateOnly: true})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an invalid flow fails validation: %v", err)
+	}
+}
+
+func TestInlinePythonIsShownAsCodeNotItsManagedLibrary(t *testing.T) {
+	client, ctrl, _ := newTestClient()
+	ctx := context.Background()
+	def := basicDefinition()
+	def.Stages = []spec.StageSpec{{ID: "enrich", Kind: "python", Python: &spec.PythonRef{InlineSource: "def transform(fields, meta):\n    return fields\n"}}}
+	if _, err := client.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def)})); err != nil {
+		t.Fatal(err)
+	}
+	// The controller runs it through its managed library...
+	if running, _ := ctrl.Get(def.Name); running.Stages[0].Python.Library == "" {
+		t.Fatal("the controller resolves inline stages to their managed library")
+	}
+	// ...but people only see the code.
+	got, err := client.GetFlow(ctx, connect.NewRequest(&gofiv1.GetFlowRequest{Name: def.Name}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	python := got.Msg.Flow.Stages[0].Python
+	if python.Library != "" || python.Function != "" || python.InlineSource == "" {
+		t.Fatalf("inline stage leaked its managed library: %+v", python)
+	}
+	list, _ := client.ListFlows(ctx, connect.NewRequest(&gofiv1.ListFlowsRequest{}))
+	if list.Msg.Flows[0].Stages[0].Python.Library != "" {
+		t.Fatal("list leaked the managed library")
+	}
+}

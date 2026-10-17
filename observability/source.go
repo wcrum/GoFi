@@ -11,10 +11,20 @@ var sourceLastSuccess = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "gofi_
 
 func init() { registry.MustRegister(sourceEvents, sourceLastSuccess) }
 
-// SourceEvent counts one poll or connection outcome of a fetch/subscribe source.
+// SourceEvent counts one poll or connection outcome of a fetch/subscribe
+// source. "ok" also records the source route as working; failures are
+// recorded with their error by SourceFailure.
 func SourceEvent(listener, source, outcome string) {
 	sourceEvents.WithLabelValues(listener, source, outcome).Inc()
 	if outcome == "ok" {
 		sourceLastSuccess.WithLabelValues(listener, source).Set(float64(time.Now().Unix()))
+		RouteResult(listener, RouteSource, nil)
+	}
+}
+
+// SourceFailure records a failed poll or connection on the source route.
+func SourceFailure(listener string, err error) {
+	if err != nil {
+		RouteResult(listener, RouteSource, err)
 	}
 }

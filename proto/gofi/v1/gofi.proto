@@ -29,6 +29,10 @@ service GoFiService {
   // Empty name watches every configured flow over one connection. The
   // inventory is refreshed continuously as flows are added or replaced.
   rpc WatchTraffic(WatchTrafficRequest) returns (stream WatchTrafficResponse);
+  // What the flow's runtime has seen on each outbound route (destinations,
+  // dead letter, pulled source) since it started: whether the last attempt
+  // failed, and how. Empty while the runtime is not running.
+  rpc GetRouteHealth(GetRouteHealthRequest) returns (GetRouteHealthResponse);
 }
 
 // Flow is GoFi's top-level object: where data comes from (source), how
@@ -171,7 +175,8 @@ message Framing {
   PythonRef python = 5;
 }
 // CodecStep is one decoding or encoding step: a built-in byte transformation
-// ("base64", "base64url", "hex", "gzip", "zlib", "url") or a Python function
+// ("base64", "base64url", "base32", "hex", "url", "gzip", "zlib", "deflate",
+// "zstd", "snappy", "lz4", "brotli", and "bzip2" for decoding only) or a Python function
 // (type "python": @gofi.decoder for decoding, @gofi.encoder for encoding).
 message CodecStep {
   string type = 1;
@@ -352,10 +357,39 @@ message ListFlowsRequest {}
 message ListFlowsResponse { repeated Flow flows = 1; }
 message GetFlowRequest { string name = 1; }
 message GetFlowResponse { Flow flow = 1; }
-message UpsertFlowRequest { Flow flow = 1; }
-message UpsertFlowResponse { Flow flow = 1; }
+message UpsertFlowRequest {
+  Flow flow = 1;
+  // Run every check a save runs (validation, inline Python, platform
+  // admission such as Pepr) and report warnings, without saving.
+  bool validate_only = 2;
+}
+message UpsertFlowResponse {
+  Flow flow = 1;
+  // The flow was saved, but some of its paths are not allowed (in
+  // Kubernetes, by another application's UDS Package). See AnalyzeConnectivity.
+  repeated string warnings = 2;
+}
 message DeleteFlowRequest { string name = 1; }
 message DeleteFlowResponse {}
+message GetRouteHealthRequest { string name = 1; }
+message GetRouteHealthResponse { repeated RouteHealth routes = 1; }
+// RouteHealth is one outbound route as the runtime observed it.
+message RouteHealth {
+  // "egress-sink-<i>" (0-based destination), "egress-deadletter", or
+  // "egress-source"; the same IDs as Kubernetes connectivity paths.
+  string route = 1;
+  int64 successes = 2;
+  int64 failures = 3;
+  google.protobuf.Timestamp last_success_at = 4;
+  google.protobuf.Timestamp last_failure_at = 5;
+  string last_error = 6;
+  // How the last failure looked on the socket: "denied" (Istio RBAC),
+  // "forbidden", "http", "dns", "refused", "reset", "timeout",
+  // "unreachable", "tls", or "other".
+  string error_class = 7;
+  // The most recent attempt failed.
+  bool failing = 8;
+}
 message GetRuntimeStatusRequest { string name = 1; }
 message GetRuntimeStatusResponse { RuntimeInfo runtime = 1; }
 message ListEndpointsRequest {}

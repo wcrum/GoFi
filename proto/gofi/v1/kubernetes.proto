@@ -7,9 +7,9 @@ import "gofi/v1/gofi.proto";
 option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
 
 // KubernetesService explains what a flow becomes in Kubernetes and what may
-// block its traffic. Every RPC is read-only: rendering builds objects with the
-// driver's own builders, and a dry run submits them with dryRun=All. Outside
-// Kubernetes mode each RPC returns FailedPrecondition.
+// block its traffic. Every RPC except ApplyUDSPackage is read-only: rendering
+// builds objects with the driver's own builders, and a dry run submits them
+// with dryRun=All. Outside Kubernetes mode each RPC returns FailedPrecondition.
 service KubernetesService {
   rpc RenderFlowResources(RenderFlowResourcesRequest) returns (RenderFlowResourcesResponse);
   rpc PreviewSelector(PreviewSelectorRequest) returns (PreviewSelectorResponse);
@@ -24,6 +24,13 @@ service KubernetesService {
   // UDS Packages as connection endpoints: the workloads and ports each one
   // exposes or admits, for choosing a Package as a flow's source or destination.
   rpc ListUDSPackages(ListUDSPackagesRequest) returns (ListUDSPackagesResponse);
+  // GoFi's own Package as it is live and as GoFi would apply it for the saved
+  // flows, with Pepr's verdict on the change.
+  rpc PlanUDSPackage(PlanUDSPackageRequest) returns (PlanUDSPackageResponse);
+  // Applies the planned Package. Only GoFi's own Package, and only when GoFi
+  // manages its allows (uds.manageAllows); Packages of other applications are
+  // never written.
+  rpc ApplyUDSPackage(ApplyUDSPackageRequest) returns (ApplyUDSPackageResponse);
 }
 
 message RenderFlowResourcesRequest {
@@ -100,6 +107,11 @@ message SuggestedFix {
   string engine = 1;
   string title = 2;
   string yaml = 3;
+  // "apply-gofi-package" when GoFi can make the change itself (review with
+  // PlanUDSPackage, then ApplyUDSPackage); empty when it is copy-only.
+  string action = 4;
+  // Who owns the change and where it belongs.
+  string note = 5;
 }
 message ConnectivityPath {
   string id = 1;
@@ -112,6 +124,16 @@ message ConnectivityPath {
   string summary = 8;
   repeated PolicyFinding findings = 9;
   repeated SuggestedFix fixes = 10;
+  // What the running flow saw on this path, when it is an outbound route and
+  // the analyzed flow matches the saved one.
+  RouteHealth observed = 11;
+  // The verdict joined with what was observed:
+  //   "not-allowed"  sends fail and a Package does not allow the path
+  //   "unverified"   sends fail and a Package could not be read
+  //   "unreachable"  sends fail although the Packages allow the path
+  //   "mismatch"     sends succeed although a Package does not allow it
+  // Empty when nothing failed or nothing was observed.
+  string diagnosis = 12;
 }
 message AnalyzeConnectivityResponse {
   string namespace = 1;
@@ -120,6 +142,27 @@ message AnalyzeConnectivityResponse {
   // What static analysis cannot see (CNI-specific policies, firewalls, ...).
   repeated string limits = 4;
 }
+
+message PlanUDSPackageRequest {}
+message PlanUDSPackageResponse {
+  string namespace = 1;
+  string name = 2;
+  // GoFi applies this Package (uds.manageAllows). When false, plans are
+  // shown for reference and ApplyUDSPackage is refused.
+  bool managed = 3;
+  // The Package as live, and as GoFi would apply it (spec only, YAML).
+  string live_yaml = 4;
+  string desired_yaml = 5;
+  bool in_sync = 6;
+  // Pepr admission of the desired Package (server-side dry run).
+  DryRunResult admission = 7;
+  // Identifies desired_yaml; ApplyUDSPackage refuses a stale plan.
+  string digest = 8;
+  // Why there is no plan (no base configured, the Package is unreadable, ...).
+  string error = 9;
+}
+message ApplyUDSPackageRequest { string digest = 1; }
+message ApplyUDSPackageResponse { PlanUDSPackageResponse plan = 1; }
 
 message ListNetworkPoliciesRequest {}
 message PolicySummary {

@@ -3,11 +3,17 @@ package spec
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // BuiltinCodecs are the byte transformations GoFi implements natively. Each
-// works in both directions: decoding before parsing, encoding before a sink.
-var BuiltinCodecs = []string{"base64", "base64url", "hex", "gzip", "zlib", "url"}
+// works in both directions (decoding before parsing, encoding before a sink)
+// except those in DecodeOnlyCodecs.
+var BuiltinCodecs = []string{"base64", "base64url", "base32", "hex", "url", "gzip", "zlib", "deflate", "zstd", "snappy", "lz4", "brotli", "bzip2"}
+
+// DecodeOnlyCodecs have no encoder (Go has no bzip2 compressor).
+var DecodeOnlyCodecs = []string{"bzip2"}
 
 // CodecStep is one ordered decoding or encoding step: a built-in codec, or a
 // Python function (Type "python": @gofi.decoder or @gofi.encoder).
@@ -39,12 +45,13 @@ func (c CodecStep) Validate(role string) error {
 	if c.Python != nil {
 		return fmt.Errorf("%s %q: python is only valid with type python", role, c.Type)
 	}
-	for _, name := range BuiltinCodecs {
-		if c.Type == name {
-			return nil
-		}
+	if role == "encoder" && slices.Contains(DecodeOnlyCodecs, c.Type) {
+		return fmt.Errorf("%s %q: decoding only; there is no %s encoder", role, c.Type, c.Type)
 	}
-	return fmt.Errorf("unknown %s %q (built-ins: base64, base64url, hex, gzip, zlib, url; or python)", role, c.Type)
+	if slices.Contains(BuiltinCodecs, c.Type) {
+		return nil
+	}
+	return fmt.Errorf("unknown %s %q (built-ins: %s; or python)", role, c.Type, strings.Join(BuiltinCodecs, ", "))
 }
 
 // Encoding is how a message becomes the bytes a sink sends: a format, then
