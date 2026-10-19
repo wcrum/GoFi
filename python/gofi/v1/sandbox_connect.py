@@ -18,7 +18,7 @@ from connectrpc.protocol import ProtocolType
 from connectrpc.server import ConnectASGIApplication, ConnectWSGIApplication, DEFAULT_READ_MAX_BYTES, Endpoint, EndpointSync
 from pyqwest import Client, SyncClient
 
-from .sandbox_pb2 import ApplySandboxRequest, ApplySandboxResponse, DebugFunctionRequest, DebugRecording, DeleteSandboxRequest, DeleteSandboxResponse, DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse, FormatSourceRequest, FormatSourceResponse, GetSandboxRequest, GetSandboxResponse, ListLibraryFunctionsRequest, ListLibraryFunctionsResponse, ListSandboxesRequest, ListSandboxesResponse, RunFunctionRequest, RunFunctionResponse, RunSourceRequest, ValidateSourceRequest, ValidateSourceResponse, WatchWorkerLogsRequest, WorkerDebugRequest, WorkerFormatSourceRequest, WorkerFormatSourceResponse, WorkerInvokeRequest, WorkerInvokeResponse, WorkerListFunctionsRequest, WorkerListFunctionsResponse, WorkerListenRequest, WorkerListenResponse, WorkerLogEntry, WorkerValidateSourceRequest, WorkerValidateSourceResponse
+from .sandbox_pb2 import ApplySandboxRequest, ApplySandboxResponse, DebugFunctionRequest, DebugRecording, DeleteSandboxRequest, DeleteSandboxResponse, DescribePythonEnvironmentRequest, DescribePythonEnvironmentResponse, FormatSourceRequest, FormatSourceResponse, GetSandboxRequest, GetSandboxResponse, ListLibraryFunctionsRequest, ListLibraryFunctionsResponse, ListSandboxesRequest, ListSandboxesResponse, RunFunctionRequest, RunFunctionResponse, RunSourceRequest, ValidateSourceRequest, ValidateSourceResponse, WatchWorkerLogsRequest, WorkerDebugRequest, WorkerFetchResponse, WorkerFormatSourceRequest, WorkerFormatSourceResponse, WorkerInvokeRequest, WorkerInvokeResponse, WorkerListFunctionsRequest, WorkerListFunctionsResponse, WorkerLogEntry, WorkerSourceRequest, WorkerStreamResponse, WorkerValidateSourceRequest, WorkerValidateSourceResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Iterator, Mapping
@@ -1012,7 +1012,20 @@ class WorkerService(Protocol):
     async def invoke(self, request: WorkerInvokeRequest, ctx: RequestContext[WorkerInvokeRequest, WorkerInvokeResponse], /) -> WorkerInvokeResponse:
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    def listen(self, request: WorkerListenRequest, ctx: RequestContext[WorkerListenRequest, WorkerListenResponse], /) -> AsyncIterator[WorkerListenResponse]:
+    async def fetch(self, request: WorkerSourceRequest, ctx: RequestContext[WorkerSourceRequest, WorkerFetchResponse], /) -> WorkerFetchResponse:
+        """
+        Fetch calls one @gofi.fetcher poll under the library's deadline and
+        returns the frames it produced (Flow source.python, docs/flows.md).
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def stream(self, request: WorkerSourceRequest, ctx: RequestContext[WorkerSourceRequest, WorkerStreamResponse], /) -> AsyncIterator[WorkerStreamResponse]:
+        """
+        Stream runs one @gofi.streamer until it ends, fails, or the caller
+        cancels. The first message (started = true) carries no frames; later
+        messages carry frames. The worker produces at most a small window of
+        messages ahead of the caller (bounded backpressure).
+        """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
     async def format_source(self, request: WorkerFormatSourceRequest, ctx: RequestContext[WorkerFormatSourceRequest, WorkerFormatSourceResponse], /) -> WorkerFormatSourceResponse:
@@ -1061,15 +1074,25 @@ class WorkerServiceASGIApplication(ConnectASGIApplication[WorkerService]):
                     ),
                     function=svc.invoke,
                 ),
-                "/gofi.v1.WorkerService/Listen": Endpoint.server_stream(
+                "/gofi.v1.WorkerService/Fetch": Endpoint.unary(
                     method=MethodInfo(
-                        name="Listen",
+                        name="Fetch",
                         service_name="gofi.v1.WorkerService",
-                        input=WorkerListenRequest,
-                        output=WorkerListenResponse,
+                        input=WorkerSourceRequest,
+                        output=WorkerFetchResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=svc.listen,
+                    function=svc.fetch,
+                ),
+                "/gofi.v1.WorkerService/Stream": Endpoint.server_stream(
+                    method=MethodInfo(
+                        name="Stream",
+                        service_name="gofi.v1.WorkerService",
+                        input=WorkerSourceRequest,
+                        output=WorkerStreamResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.stream,
                 ),
                 "/gofi.v1.WorkerService/FormatSource": Endpoint.unary(
                     method=MethodInfo(
@@ -1192,20 +1215,50 @@ class WorkerServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
-    def listen(
+    async def fetch(
         self,
-        request: WorkerListenRequest,
+        request: WorkerSourceRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> AsyncIterator[WorkerListenResponse]:
+    ) -> WorkerFetchResponse:
+        """
+        Fetch calls one @gofi.fetcher poll under the library's deadline and
+        returns the frames it produced (Flow source.python, docs/flows.md).
+        """
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Fetch",
+                service_name="gofi.v1.WorkerService",
+                input=WorkerSourceRequest,
+                output=WorkerFetchResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def stream(
+        self,
+        request: WorkerSourceRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> AsyncIterator[WorkerStreamResponse]:
+        """
+        Stream runs one @gofi.streamer until it ends, fails, or the caller
+        cancels. The first message (started = true) carries no frames; later
+        messages carry frames. The worker produces at most a small window of
+        messages ahead of the caller (bounded backpressure).
+        """
         return self.execute_server_stream(
             request=request,
             method=MethodInfo(
-                name="Listen",
+                name="Stream",
                 service_name="gofi.v1.WorkerService",
-                input=WorkerListenRequest,
-                output=WorkerListenResponse,
+                input=WorkerSourceRequest,
+                output=WorkerStreamResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -1302,7 +1355,20 @@ class WorkerServiceSync(Protocol):
     def invoke(self, request: WorkerInvokeRequest, ctx: RequestContext[WorkerInvokeRequest, WorkerInvokeResponse], /) -> WorkerInvokeResponse:
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    def listen(self, request: WorkerListenRequest, ctx: RequestContext[WorkerListenRequest, WorkerListenResponse], /) -> Iterator[WorkerListenResponse]:
+    def fetch(self, request: WorkerSourceRequest, ctx: RequestContext[WorkerSourceRequest, WorkerFetchResponse], /) -> WorkerFetchResponse:
+        """
+        Fetch calls one @gofi.fetcher poll under the library's deadline and
+        returns the frames it produced (Flow source.python, docs/flows.md).
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def stream(self, request: WorkerSourceRequest, ctx: RequestContext[WorkerSourceRequest, WorkerStreamResponse], /) -> Iterator[WorkerStreamResponse]:
+        """
+        Stream runs one @gofi.streamer until it ends, fails, or the caller
+        cancels. The first message (started = true) carries no frames; later
+        messages carry frames. The worker produces at most a small window of
+        messages ahead of the caller (bounded backpressure).
+        """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
     def format_source(self, request: WorkerFormatSourceRequest, ctx: RequestContext[WorkerFormatSourceRequest, WorkerFormatSourceResponse], /) -> WorkerFormatSourceResponse:
@@ -1349,15 +1415,25 @@ class WorkerServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.invoke,
                 ),
-                "/gofi.v1.WorkerService/Listen": EndpointSync.server_stream(
+                "/gofi.v1.WorkerService/Fetch": EndpointSync.unary(
                     method=MethodInfo(
-                        name="Listen",
+                        name="Fetch",
                         service_name="gofi.v1.WorkerService",
-                        input=WorkerListenRequest,
-                        output=WorkerListenResponse,
+                        input=WorkerSourceRequest,
+                        output=WorkerFetchResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=service.listen,
+                    function=service.fetch,
+                ),
+                "/gofi.v1.WorkerService/Stream": EndpointSync.server_stream(
+                    method=MethodInfo(
+                        name="Stream",
+                        service_name="gofi.v1.WorkerService",
+                        input=WorkerSourceRequest,
+                        output=WorkerStreamResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.stream,
                 ),
                 "/gofi.v1.WorkerService/FormatSource": EndpointSync.unary(
                     method=MethodInfo(
@@ -1478,20 +1554,49 @@ class WorkerServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
         )
-    def listen(
+    def fetch(
         self,
-        request: WorkerListenRequest,
+        request: WorkerSourceRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> Iterator[WorkerListenResponse]:
+    ) -> WorkerFetchResponse:
+        """
+        Fetch calls one @gofi.fetcher poll under the library's deadline and
+        returns the frames it produced (Flow source.python, docs/flows.md).
+        """
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Fetch",
+                service_name="gofi.v1.WorkerService",
+                input=WorkerSourceRequest,
+                output=WorkerFetchResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+    def stream(
+        self,
+        request: WorkerSourceRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> Iterator[WorkerStreamResponse]:
+        """
+        Stream runs one @gofi.streamer until it ends, fails, or the caller
+        cancels. The first message (started = true) carries no frames; later
+        messages carry frames. The worker produces at most a small window of
+        messages ahead of the caller (bounded backpressure).
+        """
         return self.execute_server_stream(
             request=request,
             method=MethodInfo(
-                name="Listen",
+                name="Stream",
                 service_name="gofi.v1.WorkerService",
-                input=WorkerListenRequest,
-                output=WorkerListenResponse,
+                input=WorkerSourceRequest,
+                output=WorkerStreamResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

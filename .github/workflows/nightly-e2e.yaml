@@ -1,0 +1,103 @@
+name: Nightly e2e
+# Chaos, scale, and Kubernetes scenarios that need Docker and a cluster. The
+# fast jobs stay in ci.yaml; this runs on a schedule and on demand.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      run:
+        description: "go test -run pattern for tests/e2e (default: all)"
+        default: "."
+permissions:
+  contents: read
+concurrency:
+  group: nightly-e2e-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  GOWORK: "off"
+  GOTOOLCHAIN: auto
+jobs:
+  binary-chaos:
+    name: Chaos scenarios (binary + edge profile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Binary scenarios and edge profile
+        run: |
+          mkdir -p testenv/reports
+          go test -tags e2e -count=1 -timeout 45m -v ./tests/e2e/ -run '${{ github.event.inputs.run || '.' }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-binary-chaos
+          path: testenv/reports/
+  compose-chaos:
+    name: Chaos scenarios (Docker shape)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build runtime image
+        run: docker build -t gofi:e2e .
+      - name: Docker-shape scenarios
+        env:
+          GOFI_E2E_MODE: compose
+          GOFI_E2E_IMAGE: gofi:e2e
+        run: |
+          mkdir -p testenv/reports
+          go test -tags e2e -count=1 -timeout 45m -v ./tests/e2e/ -run '${{ github.event.inputs.run || '.' }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-compose-chaos
+          path: testenv/reports/
+  k3d-e2e:
+    name: Kubernetes scenarios and scale ladder (k3d, 3 agents)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install k3d, kubectl, helm
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.9.0 bash
+          curl -fsSLo kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && sudo install kubectl /usr/local/bin/kubectl
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      - name: Build runtime image
+        run: docker build -t gofi:e2e .
+      - name: Create cluster and install GoFi
+        env:
+          GOFI_E2E_IMAGE: gofi:e2e
+        run: scripts/load/k3d-up.sh
+      - name: Kubernetes scenarios
+        run: |
+          source testenv/reports/k3d-gofi-e2e.env
+          go test -tags e2e -count=1 -timeout 60m -v ./tests/e2e/ -run '${{ github.event.inputs.run || '.' }}'
+      - name: Scale ladder with KWOK nodes
+        run: |
+          source testenv/reports/k3d-gofi-e2e.env
+          scripts/load/kwok-setup.sh 30
+          scripts/load/scale-ladder.sh 10,100,500 --nodeport \
+            --apiserver-metrics "$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')/metrics" \
+            --kubeconfig "$KUBECONFIG"
+      - name: Delete cluster
+        if: always()
+        run: scripts/load/k3d-up.sh down || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-k3d
+          path: testenv/reports/

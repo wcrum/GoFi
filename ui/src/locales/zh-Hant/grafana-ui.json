@@ -1,0 +1,182 @@
+{
+  "grafana-ui": {
+    "alert": {
+      "close-button": "關閉警示"
+    },
+    "card": {
+      "option": "選項"
+    },
+    "cascader": {
+      "clear-button": "清除選取"
+    },
+    "code-mirror": {
+      "error-label": "CodeMirror 編輯器載入失敗",
+      "language-load-failed": "語法標示載入失敗",
+      "loading-placeholder": "正在載入編輯器"
+    },
+    "confirm-button": {
+      "aria-label-delete": "刪除",
+      "confirmText-delete": "刪除",
+      "cancel": "取消"
+    },
+    "drawer": {
+      "close": "關閉"
+    },
+    "error-boundary": {
+      "title": "發生未預期的錯誤"
+    },
+    "feature-badge": {
+      "experimental": "實驗性",
+      "new": "新功能！",
+      "preview": "預覽",
+      "private-preview": "私人預覽"
+    },
+    "filter-input": {
+      "clear": "清除"
+    },
+    "interactive-table": {
+      "aria-label-collapse-all": "收合所有資料列",
+      "aria-label-expand-all": "展開所有資料列",
+      "aria-label-sort-column": "排序欄位 {{columnName}}",
+      "expand-row-tooltip": "切換展開資料列",
+      "tooltip-collapse-all": "收合所有資料列",
+      "tooltip-expand-all": "展開所有資料列"
+    },
+    "menu-item": {
+      "keyboard-shortcut-label": "鍵盤快速鍵"
+    },
+    "modal": {
+      "close-tooltip": "關閉"
+    },
+    "monaco": {
+      "error-label": "React Monaco Editor 載入失敗",
+      "loading-placeholder": "正在載入編輯器"
+    },
+    "page-loader": {
+      "label": "載入中"
+    },
+    "pagination": {
+      "previous-page": "上一頁",
+      "next-page": "下一頁"
+    },
+    "panel-chrome": {
+      "ariaLabel-panel-loading": "面板載入進度列",
+      "ariaLabel-panel-status": "面板狀態",
+      "aria-label-toggle-collapse": "切換收合面板",
+      "errors-and-notices": "錯誤與通知",
+      "inspect-errors-notices": "檢查",
+      "tooltip-cancel": "取消查詢",
+      "tooltip-cancel-loading": "取消查詢",
+      "tooltip-stop-streaming": "停止串流",
+      "tooltip-streaming": "串流中"
+    },
+    "panel-menu": {
+      "label": "面板 {{ title }} 的選單",
+      "title": "選單"
+    },
+    "row-expander": {
+      "aria-label-expand": "展開資料列",
+      "collapse": "收合資料列",
+      "expand": "展開資料列"
+    },
+    "secret-form-field": {
+      "reset": "重設"
+    },
+    "secret-input": {
+      "hide": "隱藏密碼",
+      "show": "顯示密碼"
+    },
+    "secret-text-area": {
+      "hide-content": "隱藏機密內容",
+      "show-content": "顯示機密內容"
+    },
+    "segment-async": {
+      "error": "無法載入選項",
+      "loading": "正在載入選項…",
+      "no-options": "找不到選項"
+    },
+    "select": {
+      "clear-value": "清除值",
+      "empty-options": "未提供選項",
+      "menu-label": "選項選單",
+      "multi-value-remove": "移除",
+      "no-options-label": "找不到選項",
+      "placeholder": "選擇"
+    },
+    "sidebar": {
+      "close": "關閉",
+      "dock": "固定",
+      "go-back": "返回",
+      "show": "顯示",
+      "undock": "取消固定"
+    },
+    "slider": {
+      "drag-handle-aria-label": "使用方向鍵變更值"
+    },
+    "range-slider": {
+      "drag-handle-aria-label": "使用方向鍵變更值"
+    },
+    "spinner": {
+      "aria-label": "載入中"
+    },
+    "table": {
+      "cell-filter-on": "篩選此值",
+      "cell-filter-out": "排除此值",
+      "cell-inspect": "檢視值",
+      "cell-inspect-tooltip": "檢視值",
+      "filter-placeholder": "篩選值",
+      "filter-popup-aria-label-match-case": "大小寫須相符",
+      "filter-popup-input-placeholder": "篩選值",
+      "filter-popup-match-case": "大小寫須相符",
+      "inspect-drawer-title": "檢視值",
+      "sort-by-column": "依欄位 {{column}} 排序",
+      "sort-by-column-ascending": "依欄位 {{column}} 遞增排序",
+      "sort-by-column-descending": "依欄位 {{column}} 遞減排序",
+      "sort-column": "排序欄位",
+      "sparkline": {
+        "no-data": "沒有資料"
+      },
+      "tooltip": {
+        "trigger": "切換工具提示"
+      },
+      "filter": {
+        "add-all": "將所有顯示的值加入篩選",
+        "blanks": "（空白）",
+        "remove-all": "從篩選中移除所有顯示的值",
+        "select-all": "全選",
+        "selected": "已選取 {{ numSelected }} 個",
+        "selected-some-hidden": "已選取 {{ numSelected }} 個（{{ numHidden }} 個已隱藏）",
+        "operator": {
+          "contains": "包含",
+          "equals": "等於",
+          "expression": "運算式",
+          "greater": "大於",
+          "greater-or-equal": "大於或等於",
+          "less": "小於",
+          "less-or-equal": "小於或等於",
+          "not-equals": "不等於"
+        }
+      }
+    },
+    "tags": {
+      "list-label": "標記"
+    },
+    "tags-input": {
+      "placeholder-new-tag": "新標記（按 Enter 新增）",
+      "remove": "移除標記：{{name}}",
+      "add": "新增"
+    },
+    "toggletip": {
+      "close": "關閉"
+    },
+    "toolbar-button-row": {
+      "show-more": "顯示更多項目"
+    },
+    "user-icon": {
+      "label": "{{name}} 圖示"
+    },
+    "value-pill": {
+      "remove-button": "移除 {{children}}"
+    }
+  }
+}

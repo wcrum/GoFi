@@ -3,11 +3,12 @@ import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { Icon, Text, Tooltip, useStyles2 } from '@grafana/ui'
 import type { DebugVariable } from './debug-api'
+import { t } from '../../../i18n'
 
 /** Expandable name / type / repr tree; values changed at this step are marked. */
-export function VariableTree({ variables, empty = 'No variables.' }: { variables: DebugVariable[]; empty?: string }) {
+export function VariableTree({ variables, empty }: { variables: DebugVariable[]; empty?: string }) {
   const styles = useStyles2(getStyles)
-  if (!variables.length) return <div className={styles.empty}><Text color="secondary" italic variant="bodySmall">{empty}</Text></div>
+  if (!variables.length) return <div className={styles.empty}><Text color="secondary" italic variant="bodySmall">{empty ?? t('gofi.python.debugger.no-variables', 'No variables.')}</Text></div>
   return <ul className={styles.tree} role="tree">{variables.map(variable => <VariableNode key={variable.name} variable={variable} depth={0} />)}</ul>
 }
 
@@ -23,7 +24,7 @@ function VariableNode({ variable, depth }: { variable: DebugVariable; depth: num
       <Tooltip content={<pre className={styles.tooltip}>{variable.repr}</pre>} placement="left">
         <span className={styles.repr}>{variable.repr}{variable.truncated ? ' …' : ''}</span>
       </Tooltip>
-      {variable.changed && <span className={styles.badge} aria-label="changed">changed</span>}
+      {variable.changed && <span className={styles.badge} aria-label={t('gofi.python.debugger.changed', 'changed')}>{t('gofi.python.debugger.changed', 'changed')}</span>}
     </div>
     {open && <ul className={styles.tree}>{variable.children.map((child, index) => <VariableNode key={`${child.name}-${index}`} variable={child} depth={depth + 1} />)}</ul>}
   </li>

@@ -1,0 +1,97 @@
+suite: alerting rules
+templates:
+  - templates/prometheusrule.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: renders nothing unless enabled
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: carries controller alerts with runbook links
+    set:
+      alerting.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.groups[1].name
+          value: gofi-controller
+      - contains:
+          path: spec.groups[1].rules
+          content:
+            alert: GoFiControllerNoLeader
+          any: true
+      - contains:
+          path: spec.groups[1].rules
+          content:
+            alert: GoFiControllerWatchErrors
+          any: true
+      - contains:
+          path: spec.groups[1].rules
+          content:
+            alert: GoFiControllerReconcileStale
+          any: true
+      - contains:
+          path: spec.groups[1].rules
+          content:
+            alert: GoFiControllerAPIThrottled
+          any: true
+      - contains:
+          path: spec.groups[1].rules
+          content:
+            alert: GoFiPodRestarts
+          any: true
+      - equal:
+          path: spec.groups[1].rules[?(@.alert == "GoFiControllerNoLeader")].annotations.runbook_url
+          value: https://github.com/wcrum/GoFi/blob/main/docs/deployment.md#goficontrollernoleader
+      - equal:
+          path: spec.groups[0].rules[?(@.alert == "GoFiFlowDown")].annotations.runbook_url
+          value: https://github.com/wcrum/GoFi/blob/main/docs/deployment.md#gofiflowdown
+      - matchRegex:
+          path: spec.groups[1].rules[?(@.alert == "GoFiControllerAPIThrottled")].expr
+          pattern: rest_client_rate_limiter_duration_seconds_bucket
+      - matchRegex:
+          path: spec.groups[1].rules[?(@.alert == "GoFiPodRestarts")].expr
+          pattern: kube_pod_container_status_restarts_total\{namespace="gofi"
+  - it: carries the live-stream hub alerts with runbook links
+    set:
+      alerting.enabled: true
+    asserts:
+      - equal:
+          path: spec.groups[2].name
+          value: gofi-streaming
+      - contains:
+          path: spec.groups[2].rules
+          content:
+            alert: GoFiLiveViewersDropping
+          any: true
+      - contains:
+          path: spec.groups[2].rules
+          content:
+            alert: GoFiStreamCapReached
+          any: true
+      - contains:
+          path: spec.groups[2].rules
+          content:
+            alert: GoFiRelayReconnectStorm
+          any: true
+      - equal:
+          path: spec.groups[2].rules[?(@.alert == "GoFiStreamCapReached")].annotations.runbook_url
+          value: https://github.com/wcrum/GoFi/blob/main/docs/deployment.md#gofistreamcapreached
+      - matchRegex:
+          path: spec.groups[2].rules[?(@.alert == "GoFiLiveViewersDropping")].expr
+          pattern: gofi_tap_dropped_total\[5m\]\)\) > 10
+      - matchRegex:
+          path: spec.groups[2].rules[?(@.alert == "GoFiRelayReconnectStorm")].expr
+          pattern: gofi_relay_reconnects_total\[5m\]\)\) > 1
+  - it: can drop the controller and streaming groups
+    set:
+      alerting.enabled: true
+      alerting.controller.enabled: false
+      alerting.streaming.enabled: false
+    asserts:
+      - lengthEqual:
+          path: spec.groups
+          count: 1

@@ -2,6 +2,7 @@ package desired
 
 import (
 	"context"
+	"github.com/wcrum/gofi/atomicfile"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,8 +24,16 @@ func TestFileRoundTripAndMissingConfiguration(t *testing.T) {
 	if err != nil || len(defs) != 1 || defs[0].Name != "ingest" {
 		t.Fatalf("failed round trip: %+v %v", defs, err)
 	}
+	// A primary that disappears is served from the backup of the last save;
+	// with every copy gone the store refuses rather than reporting "no flows".
 	if err := os.Remove(f.Path); err != nil {
 		t.Fatal(err)
+	}
+	if defs, err := f.Load(ctx); err != nil || len(defs) != 1 {
+		t.Fatalf("disappearing primary must be served from its backup: %v %v", defs, err)
+	}
+	for _, suffix := range []string{atomicfile.BackupSuffix, atomicfile.PreviousSuffix} {
+		_ = os.Remove(f.Path + suffix)
 	}
 	if _, err := f.Load(ctx); err == nil {
 		t.Fatal("disappearing configuration must not erase live desired state")

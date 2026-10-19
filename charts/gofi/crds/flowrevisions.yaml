@@ -1,0 +1,95 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flowrevisions.gofi.wcrum.dev
+spec:
+  group: gofi.wcrum.dev
+  scope: Namespaced
+  names:
+    plural: flowrevisions
+    singular: flowrevision
+    kind: FlowRevision
+    listKind: FlowRevisionList
+    shortNames: [flowrev]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      additionalPrinterColumns:
+        - name: Flow
+          type: string
+          jsonPath: .spec.flow
+        - name: Revision
+          type: integer
+          jsonPath: .spec.revision
+        - name: Source
+          type: string
+          jsonPath: .spec.source
+        - name: Author
+          type: string
+          jsonPath: .spec.author
+        - name: Deleted
+          type: boolean
+          jsonPath: .spec.deleted
+          priority: 1
+        - name: Message
+          type: string
+          jsonPath: .spec.message
+          priority: 1
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            One immutable revision of a Flow, written by the GoFi controller on
+            every change to the Flow (docs/versioning.md). Named <flow>.r<revision>
+            and labeled gofi.wcrum.dev/flow and gofi.wcrum.dev/revision. Revisions
+            have no owner reference, so they outlive a deleted Flow until the
+            deleted-flow retention window passes.
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required: [flow, revision, createdAt, source]
+              # A revision is history: it can be deleted (retention), never changed.
+              x-kubernetes-validations:
+                - rule: self == oldSelf
+                  message: FlowRevision spec is immutable
+              properties:
+                flow:
+                  type: string
+                  minLength: 1
+                  maxLength: 253
+                revision:
+                  type: integer
+                  minimum: 1
+                createdAt:
+                  type: string
+                  format: date-time
+                author:
+                  type: string
+                  maxLength: 256
+                message:
+                  type: string
+                  maxLength: 1024
+                source:
+                  type: string
+                  enum: [portal, external, rollback, import]
+                hash:
+                  type: string
+                  maxLength: 64
+                deleted:
+                  type: boolean
+                # The Flow's spec at this revision (absent for a deletion).
+                # Not validated against the current Flow schema, so revisions
+                # written by older GoFi versions stay readable.
+                definition:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true

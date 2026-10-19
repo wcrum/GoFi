@@ -15,6 +15,9 @@ sso:
 # Only listener Services named gofi-listener-* may use NodePort.
 nodePort:
   enabled: true
+  # Exemptions are cluster-wide objects: give each GoFi namespace its own name
+  # when sharding flows across namespaces (docs/deployment.md).
+  exemptionName: gofi-listener-nodeports
 # Add least-privilege data ingress/egress rules for your actual endpoints.
 # Use backend listener ports, not the allocated NodePort number.
 additionalNetworkAllow: []

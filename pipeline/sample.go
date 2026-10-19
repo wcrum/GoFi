@@ -15,7 +15,11 @@ import (
 // errors are recorded in meta["parseError"] (as on the live path) rather
 // than returned, so CEL expressions can be tested against malformed input.
 func ParseSample(ctx context.Context, def spec.FlowDefinition, raw []byte) (*message.Message, error) {
-	pr, err := parser.New(def.Parser)
+	def, err := def.Prepared()
+	if err != nil {
+		return nil, err
+	}
+	pr, err := parser.ForFlow(def)
 	if err != nil {
 		return nil, fmt.Errorf("parser: %w", err)
 	}

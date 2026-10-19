@@ -15,7 +15,7 @@ func TestDecodedTrafficUsesFieldsAndPreservesWirePayload(t *testing.T) {
 	raw := base64.StdEncoding.EncodeToString([]byte(`{"app":"payments","status":201}`))
 	def := spec.FlowDefinition{
 		Name: "decoded-app", Framing: spec.Framing{Mode: "line"},
-		Parser: spec.ParserCfg{Format: "json", Decoders: []spec.CodecStep{{Type: "base64"}}, ErrorPolicy: "drop"},
+		Decode: &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}}}, Parser: spec.ParserCfg{Format: "json", ErrorPolicy: "drop"},
 		Stages: []spec.StageSpec{
 			{ID: "app", Kind: "filter", Type: "regex", Field: "app", Expression: `^payments$`},
 			{ID: "status", Kind: "filter", Type: "cel", Expression: `fields["status"] >= 200 && fields["status"] < 300`},
@@ -47,7 +47,7 @@ func TestParseErrorPolicyLiveAndSimulation(t *testing.T) {
 		t.Run(policy, func(t *testing.T) {
 			def := spec.FlowDefinition{
 				Name: "malformed", Framing: spec.Framing{Mode: "line"},
-				Parser: spec.ParserCfg{Format: "json", Decoders: []spec.CodecStep{{Type: "base64"}}, ErrorPolicy: policy},
+				Decode: &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}}}, Parser: spec.ParserCfg{Format: "json", ErrorPolicy: policy},
 				Stages: []spec.StageSpec{{ID: "must-not-run-on-drop", Kind: "transform", TransformOp: "set", Field: "processed", ValueExpr: "true"}},
 				Sinks:  []spec.SinkCfg{{Type: "stdout"}}, DeadLetterSink: &spec.SinkCfg{Type: "stdout"},
 			}

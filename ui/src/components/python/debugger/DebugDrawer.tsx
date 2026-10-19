@@ -7,6 +7,7 @@ import { WorkerLogsPanel, type LogTarget } from '../WorkerLogsPanel'
 import { debugErrorMessage, debugFunction, type DebugInput, type DebugRecording } from './debug-api'
 import { PythonDebugger } from './PythonDebugger'
 import { PageLoading } from '../../PageLoading'
+import { t } from '../../../i18n'
 
 /** Records one traced execution of a function (saved worker, or unsaved
  * source in a short-lived worker) and opens the step debugger on it. */
@@ -33,16 +34,16 @@ export function DebugDrawer({ target, input, onClose }: { target: RunTarget; inp
   }, [target, input, readiness])
   useEffect(() => { void record() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <Drawer title={`Debug ${input.name}`} subtitle={<Stack gap={1} alignItems="center">
+  return <Drawer title={t('gofi.python.debugger.drawer-title', 'Debug {{name}}', { name: input.name })} subtitle={<Stack gap={1} alignItems="center">
     <Badge color="purple" icon="bug" text={input.kind} />
-    <Badge color={target.savedLibrary ? 'green' : 'darkgrey'} text={target.savedLibrary ? `Saved worker · ${target.savedLibrary}` : 'Unsaved · scratch worker'} />
-    <Text color="secondary" variant="bodySmall">Recorded in the isolated worker, then replayed here. Nothing is sent.</Text>
+    <Badge color={target.savedLibrary ? 'green' : 'darkgrey'} text={target.savedLibrary ? t('gofi.python.debugger.saved-worker-library', 'Saved worker · {{library}}', { library: target.savedLibrary }) : t('gofi.python.common.unsaved-scratch-worker', 'Unsaved · scratch worker')} />
+    <Text color="secondary" variant="bodySmall">{t('gofi.python.debugger.drawer-note', 'Recorded in the isolated worker, then replayed here. Nothing is sent.')}</Text>
   </Stack>} size="lg" onClose={onClose}>
     <Stack direction="column" gap={2}>
-      {error && <Alert severity="error" title="Debug session failed" bottomSpacing={0}>{error}</Alert>}
-      {!recording && busy && <PageLoading text="Recording execution..." />}
-      {recording && <PythonDebugger recording={recording} source={target.source} breakpointKey={breakpointKey} input={input} watches={watches} onWatchesChange={setWatches} onRerecord={() => void record()} rerecording={busy} title={`Debugger for ${input.name}`} />}
-      {logs && <WorkerLogsPanel compact height={120} title="Worker logs · debug run" target={logs.target} highlightInvocation={logs.runId} onState={readiness.onState} />}
+      {error && <Alert severity="error" title={t('gofi.python.debugger.session-failed', 'Debug session failed')} bottomSpacing={0}>{error}</Alert>}
+      {!recording && busy && <PageLoading text={t('gofi.python.debugger.recording-execution', 'Recording execution...')} />}
+      {recording && <PythonDebugger recording={recording} source={target.source} breakpointKey={breakpointKey} input={input} watches={watches} onWatchesChange={setWatches} onRerecord={() => void record()} rerecording={busy} title={t('gofi.python.debugger.debugger-for', 'Debugger for {{name}}', { name: input.name })} />}
+      {logs && <WorkerLogsPanel compact height={120} title={t('gofi.python.debugger.worker-logs-title', 'Worker logs · debug run')} target={logs.target} highlightInvocation={logs.runId} onState={readiness.onState} />}
     </Stack>
   </Drawer>
 }

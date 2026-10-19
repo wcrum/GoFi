@@ -1,0 +1,226 @@
+syntax = "proto3";
+
+package gofi.v1;
+
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+
+// AssistantService is GoFiBot: a chat assistant that answers questions about
+// this GoFi deployment and, through server-side tools, inspects and (when the
+// administrator allows it) creates flows, CEL expressions, and Python
+// function libraries. The model endpoint is configured by an administrator
+// (docs/assistant.md). Conversations live in controller memory.
+service AssistantService {
+  // The administrator's configuration, with the API key withheld.
+  rpc GetAssistantConfiguration(GetAssistantConfigurationRequest) returns (GetAssistantConfigurationResponse);
+  // Saves the configuration. An empty api_key keeps the stored one.
+  rpc ApplyAssistantConfiguration(ApplyAssistantConfigurationRequest) returns (ApplyAssistantConfigurationResponse);
+  // Sends one tiny request to the configured endpoint (or the request's
+  // unsaved configuration) and reports whether it answered.
+  rpc CheckAssistantConnection(CheckAssistantConnectionRequest) returns (CheckAssistantConnectionResponse);
+  // The tools the assistant may call, and which are enabled by the
+  // configuration's allow_changes.
+  rpc ListAssistantTools(ListAssistantToolsRequest) returns (ListAssistantToolsResponse);
+  // Sends one user message and streams the assistant's reply: text as it is
+  // generated, each tool call and its result, navigation requests, and a
+  // final done event. Leader-only in Kubernetes (its tools can change flows).
+  rpc Chat(ChatRequest) returns (stream AssistantEvent);
+  // Forgets a conversation's history.
+  rpc ResetConversation(ResetConversationRequest) returns (ResetConversationResponse);
+  // The conversations this controller still holds in memory, newest first.
+  rpc ListAssistantConversations(ListAssistantConversationsRequest) returns (ListAssistantConversationsResponse);
+  // One conversation's transcript, for reopening it in the chat panel.
+  rpc GetAssistantConversation(GetAssistantConversationRequest) returns (GetAssistantConversationResponse);
+  // Approves or rejects a change the assistant proposed (a proposal event),
+  // or a tool call waiting for approval (a tool_call event with
+  // needs_approval). Only an approval runs it; it is attributed to the
+  // approver.
+  rpc ConfirmAssistantAction(ConfirmAssistantActionRequest) returns (ConfirmAssistantActionResponse);
+}
+
+message AssistantConfiguration {
+  // Off by default: the chat control is hidden and Chat fails.
+  bool enabled = 1;
+  // The model endpoint. Empty uses the Anthropic API; set it for a gateway
+  // or proxy that speaks the Anthropic Messages API.
+  string base_url = 2;
+  // Model id; empty uses the server default.
+  string model = 3;
+  // Write-only: never returned by reads. Empty on apply keeps the stored key.
+  string api_key = 4;
+  // Read-only: a key is stored or supplied by the environment.
+  bool has_api_key = 5;
+  // Read-only: "stored", "environment", or "none".
+  string api_key_source = 6;
+  // When false the assistant can only read and validate; apply tools are
+  // not offered to the model and it proposes YAML for the user to apply.
+  bool allow_changes = 7;
+  // Extra operator instructions appended to the system prompt.
+  string instructions = 8;
+  // Tool calls per message before the assistant must answer (1-20).
+  int32 max_tool_steps = 9;
+  // Model effort: "low", "medium", "high"; empty uses the model default.
+  string effort = 10;
+  // Protocol the endpoint speaks: "anthropic" (Messages API, default) or
+  // "openai" (Chat Completions: Groq, vLLM, LiteLLM, Ollama, OpenRouter).
+  string provider = 11;
+  // "changes" (default): only apply tools wait, as proposals decided after
+  // the reply. "all": every tool call pauses the reply until the user
+  // approves or denies it (ConfirmAssistantAction with the call's id).
+  string tool_approval = 12;
+  // Python libraries may call this endpoint through gofi.llm (the
+  // controller's LLM proxy; the key never reaches a worker). One switch for
+  // the deployment; SandboxDefinition.ai is no longer consulted.
+  bool allow_functions = 13;
+}
+
+message GetAssistantConfigurationRequest {}
+message GetAssistantConfigurationResponse {
+  AssistantConfiguration configuration = 1;
+  // Where it is stored: "file:<path>" or "kubernetes:<namespace>/<secret>".
+  string backend = 2;
+  // The assistant is enabled, has a key, and the endpoint answered a probe
+  // recently (probes are cached for a few minutes). The portal shows the
+  // chat control only when this is true.
+  bool ready = 3;
+  // Why it is not ready, or the probed model when it is.
+  string ready_message = 4;
+  // GOFI_ASSISTANT_BASE_URL pins the endpoint: saves cannot change base_url
+  // and the controller only calls the pinned endpoint.
+  bool endpoint_locked = 5;
+  // GOFI_ASSISTANT_API_KEY(_FILE) supplies the key: saves cannot set one.
+  bool key_locked = 6;
+  // GOFI_ASSISTANT_ALLOW_FUNCTIONS pins allow_functions.
+  bool functions_locked = 7;
+}
+
+message ApplyAssistantConfigurationRequest {
+  AssistantConfiguration configuration = 1;
+  // Forget the stored API key (the environment's key, if any, still applies).
+  bool clear_api_key = 2;
+}
+message ApplyAssistantConfigurationResponse { AssistantConfiguration configuration = 1; }
+
+message CheckAssistantConnectionRequest {
+  // Optional unsaved values to test; an empty api_key uses the stored key.
+  AssistantConfiguration configuration = 1;
+}
+message CheckAssistantConnectionResponse {
+  bool ok = 1;
+  string model = 2;
+  string message = 3;
+  int64 latency_ms = 4;
+}
+
+message AssistantTool {
+  string name = 1;
+  string description = 2;
+  // Creates or changes flows, expressions, or libraries.
+  bool mutating = 3;
+  // Offered to the model under the current configuration.
+  bool enabled = 4;
+}
+message ListAssistantToolsRequest {}
+message ListAssistantToolsResponse { repeated AssistantTool tools = 1; }
+
+message ChatRequest {
+  // Empty starts a conversation; the first event carries the new id.
+  string conversation_id = 1;
+  string message = 2;
+  // What the user is looking at, e.g. "#/flows/telemetry", for context.
+  string page_context = 3;
+}
+
+message AssistantToolCall {
+  string id = 1;
+  string name = 2;
+  string input_json = 3;
+  // The reply is paused until ConfirmAssistantAction(proposal_id = id)
+  // approves or denies this call (tool_approval "all"); two minutes at most.
+  bool needs_approval = 4;
+}
+message AssistantToolResult {
+  string id = 1;
+  string name = 2;
+  string output = 3;
+  bool is_error = 4;
+}
+message AssistantNavigate { string href = 1; }
+// Points the user at one part of a flow while the assistant explains it; the
+// portal renders the flow's pipeline with that block highlighted.
+message AssistantHighlight {
+  string flow = 1;
+  // "source", "frame", "decode", "parse", "stage:<id>", "encode", or
+  // "sink:<id>" (a sink's id, or its index when it has none).
+  string block = 2;
+  // One sentence: what is wrong or worth looking at there.
+  string note = 3;
+}
+// A change the assistant wants to make. Nothing is applied until the user
+// approves it with ConfirmAssistantAction.
+message AssistantProposal {
+  string id = 1;
+  // The apply tool: apply_flow, apply_expression, or apply_library.
+  string name = 2;
+  string input_json = 3;
+  // One line: what would change.
+  string summary = 4;
+}
+message AssistantDone {
+  // "end_turn", "max_tokens", "max_tool_steps", or "refusal".
+  string stop_reason = 1;
+  int64 input_tokens = 2;
+  int64 output_tokens = 3;
+  int32 tool_steps = 4;
+}
+message AssistantEvent {
+  string conversation_id = 1;
+  oneof event {
+    string text_delta = 2;
+    AssistantToolCall tool_call = 3;
+    AssistantToolResult tool_result = 4;
+    AssistantNavigate navigate = 5;
+    AssistantDone done = 6;
+    AssistantProposal proposal = 7;
+    AssistantHighlight highlight = 8;
+  }
+}
+
+message ConfirmAssistantActionRequest {
+  string conversation_id = 1;
+  string proposal_id = 2;
+  bool approve = 3;
+}
+message ConfirmAssistantActionResponse {
+  // The tool's result (or the rejection note) as the model will see it.
+  string output = 1;
+  bool is_error = 2;
+}
+
+message ResetConversationRequest { string conversation_id = 1; }
+message ResetConversationResponse {}
+
+message AssistantConversationSummary {
+  string id = 1;
+  // The first user message, trimmed to one line.
+  string title = 2;
+  int64 updated_unix_ms = 3;
+  int32 messages = 4;
+  int32 pending_proposals = 5;
+}
+message ListAssistantConversationsRequest {}
+message ListAssistantConversationsResponse { repeated AssistantConversationSummary conversations = 1; }
+
+// One transcript entry: a user message, an assistant reply with the tool
+// calls it made, or the results of those calls.
+message AssistantTranscriptMessage {
+  string role = 1; // "user", "assistant", or "tool"
+  string text = 2;
+  repeated AssistantToolCall calls = 3;
+  repeated AssistantToolResult results = 4;
+}
+message GetAssistantConversationRequest { string conversation_id = 1; }
+message GetAssistantConversationResponse {
+  string conversation_id = 1;
+  repeated AssistantTranscriptMessage messages = 2;
+  repeated AssistantProposal pending_proposals = 3;
+}

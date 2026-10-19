@@ -15,14 +15,26 @@ type decodingParser struct {
 	max    int
 }
 
-func withDecoders(p Parser, cfg spec.ParserCfg) (Parser, error) {
-	if len(cfg.Decoders) == 0 {
-		return p, nil
+// ValidateDecode checks a decode step configuration.
+func ValidateDecode(cfg spec.DecodeCfg) error {
+	if cfg.MaxDecodedBytes < 0 {
+		return fmt.Errorf("decode: maxDecodedBytes must not be negative")
 	}
 	for _, step := range cfg.Decoders {
 		if err := step.Validate("decoder"); err != nil {
-			return nil, fmt.Errorf("parser: %w", err)
+			return fmt.Errorf("decode: %w", err)
 		}
+	}
+	return nil
+}
+
+// WithDecode runs cfg's decoders before p parses each frame.
+func WithDecode(p Parser, cfg spec.DecodeCfg) (Parser, error) {
+	if err := ValidateDecode(cfg); err != nil {
+		return nil, err
+	}
+	if len(cfg.Decoders) == 0 {
+		return p, nil
 	}
 	return &decodingParser{parser: p, steps: append([]spec.CodecStep(nil), cfg.Decoders...), max: cfg.MaxDecodedBytes}, nil
 }
@@ -33,7 +45,7 @@ func withDecoders(p Parser, cfg spec.ParserCfg) (Parser, error) {
 func (p *decodingParser) Parse(msg *message.Message) error {
 	decoded, err := codec.Decode(context.Background(), p.steps, msg.Raw, p.max, msg)
 	if err != nil {
-		return fmt.Errorf("parser: %w", err)
+		return fmt.Errorf("decode: %w", err)
 	}
 	parsed := *msg
 	parsed.Raw = decoded
@@ -44,12 +56,21 @@ func (p *decodingParser) Parse(msg *message.Message) error {
 	return err
 }
 
-// DecodeFrame applies cfg's decoder steps to raw exactly as the parser
-// would, returning the payload a Python parser receives.
-func DecodeFrame(cfg spec.ParserCfg, raw []byte) ([]byte, error) {
-	decoded, err := codec.Decode(context.Background(), cfg.Decoders, raw, cfg.MaxDecodedBytes, &message.Message{Raw: raw, Fields: map[string]any{}, Meta: map[string]string{}})
+// DecodeFrame applies cfg's decoder steps to raw exactly as the flow's
+// decode step would, returning the payload the parser receives.
+func DecodeFrame(cfg spec.DecodeCfg, raw []byte) ([]byte, error) {
+	return DecodeBytes(context.Background(), cfg.Decoders, cfg.MaxDecodedBytes, raw, &message.Message{Raw: raw, Fields: map[string]any{}, Meta: map[string]string{}})
+}
+
+// DecodeBytes runs decoder steps on data (msg is the message Python decoders
+// see). Each step's output is capped at max bytes (0 = 1 MiB).
+func DecodeBytes(ctx context.Context, steps []spec.CodecStep, max int, data []byte, msg *message.Message) ([]byte, error) {
+	if len(steps) == 0 {
+		return data, nil
+	}
+	decoded, err := codec.Decode(ctx, steps, data, max, msg)
 	if err != nil {
-		return nil, fmt.Errorf("parser: %w", err)
+		return nil, fmt.Errorf("decode: %w", err)
 	}
 	return decoded, nil
 }

@@ -82,9 +82,14 @@ func newLoki(cfg spec.SinkCfg, listenerName string) (*lokiSink, error) {
 	for k, v := range cfg.Headers {
 		headers[k] = v
 	}
-	return &lokiSink{endpoint: u.String(), labels: labels, bodyMode: cfg.BodyMode, headers: headers, auth: cfg.Auth, client: &http.Client{Timeout: 10 * time.Second}}, nil
+	return &lokiSink{endpoint: u.String(), labels: labels, bodyMode: cfg.BodyMode, headers: headers, auth: cfg.Auth, client: &http.Client{Timeout: 10 * time.Second, Transport: newTransport()}}, nil
 }
-func (s *lokiSink) Send(msg *message.Message) error {
+
+// lokiMaxLine bounds one log line, as Loki's default grpc_server_max_recv_msg_size does for a push.
+const lokiMaxLine = 2 << 20
+
+// value renders one message as a Loki (timestamp, line) pair.
+func (s *lokiSink) value(msg *message.Message) ([2]string, error) {
 	var line string
 	if msg.Payload != nil {
 		line = string(msg.Payload)
@@ -93,21 +98,50 @@ func (s *lokiSink) Send(msg *message.Message) error {
 	} else {
 		b, e := json.Marshal(map[string]any{"id": msg.ID, "fields": msg.Fields, "meta": msg.Meta})
 		if e != nil {
-			return fmt.Errorf("loki sink: encode log line: %w", e)
+			return [2]string{}, fmt.Errorf("loki sink: encode log line: %w", e)
 		}
 		line = string(b)
 	}
-	if len(line) > 2<<20 {
-		return fmt.Errorf("loki sink: log line exceeds 2 MiB")
+	if len(line) > lokiMaxLine {
+		return [2]string{}, fmt.Errorf("loki sink: log line exceeds 2 MiB")
 	}
 	timestamp := time.Now()
 	if parsed, e := time.Parse(time.RFC3339Nano, msg.Meta["ts"]); e == nil {
 		timestamp = parsed
 	}
-	payload, e := json.Marshal(lokiPush{Streams: []lokiStream{{Stream: s.labels, Values: [][2]string{{strconv.FormatInt(timestamp.UnixNano(), 10), line}}}}})
+	return [2]string{strconv.FormatInt(timestamp.UnixNano(), 10), line}, nil
+}
+
+func (s *lokiSink) Send(msg *message.Message) error { return s.SendBatch([]*message.Message{msg}) }
+
+// SendBatch pushes every message as one value of the sink's stream in a
+// single request. A message that cannot be rendered is skipped and reported
+// after the push, so one bad line does not hold back the batch.
+func (s *lokiSink) SendBatch(msgs []*message.Message) error {
+	values := make([][2]string, 0, len(msgs))
+	var bad error
+	for _, msg := range msgs {
+		v, e := s.value(msg)
+		if e != nil {
+			bad = e
+			continue
+		}
+		values = append(values, v)
+	}
+	if len(values) == 0 {
+		return bad
+	}
+	payload, e := json.Marshal(lokiPush{Streams: []lokiStream{{Stream: s.labels, Values: values}}})
 	if e != nil {
 		return e
 	}
+	if e := s.push(payload); e != nil {
+		return e
+	}
+	return bad
+}
+
+func (s *lokiSink) push(payload []byte) error {
 	req, e := http.NewRequest(http.MethodPost, s.endpoint, bytes.NewReader(payload))
 	if e != nil {
 		return fmt.Errorf("loki sink: invalid request")
@@ -136,12 +170,12 @@ func (s *lokiSink) Send(msg *message.Message) error {
 		if errors.As(e, &ue) {
 			return fmt.Errorf("loki sink: request failed: %w", ue.Err)
 		}
-		return fmt.Errorf("loki sink: request failed")
+		return transientError{fmt.Errorf("loki sink: request failed")}
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("loki sink: push rejected with HTTP %d", resp.StatusCode)
+		return fmt.Errorf("loki sink: push rejected with %w", NewStatusError(resp.StatusCode, nil))
 	}
 	return nil
 }

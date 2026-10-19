@@ -10,6 +10,7 @@ import { objectInput, runPython, type RunTarget } from './run'
 import { functionKey } from './RunPanel'
 import { DebugDrawer } from './debugger/DebugDrawer'
 import { StatusIndicator } from '../StatusIndicator'
+import { t, Trans } from '../../i18n'
 
 interface TestRun { status: 'pass' | 'fail' | 'recorded' | 'error'; reasons: string[]; result?: PythonRunResult }
 const RAW_KINDS: PythonFunctionKind[] = ['framer', 'decoder', 'parser', 'encoder']
@@ -36,7 +37,7 @@ export function TestsTab({ tests, onChange, target, readOnly, onJumpToLine, onHi
   const update = (index: number, test: FunctionTest) => { onChange(tests.map((item, position) => position === index ? test : item)); setRuns(previous => { const next = { ...previous }; delete next[index]; return next }) }
   const add = () => {
     const fn = discovered.find(item => item.kind === 'transformer') ?? discovered[0]
-    onChange([...tests, { name: `Test ${tests.length + 1}`, function: fn?.name ?? '', kind: fn?.kind ?? 'transformer', raw: '', fields: { sensor: 'alpha', temperature: 28 }, meta: {} }])
+    onChange([...tests, { name: t('gofi.python.tests.default-name', 'Test {{number}}', { number: tests.length + 1 }), function: fn?.name ?? '', kind: fn?.kind ?? 'transformer', raw: '', fields: { sensor: 'alpha', temperature: 28 }, meta: {} }])
   }
   async function runOne(index: number): Promise<TestRun> {
     const test = tests[index]
@@ -56,16 +57,16 @@ export function TestsTab({ tests, onChange, target, readOnly, onJumpToLine, onHi
   const summary = Object.values(runs)
   const passed = summary.filter(run => run.status === 'pass').length
   const failed = summary.filter(run => run.status === 'fail' || run.status === 'error').length
-  if (!tests.length) return <EmptyState variant="call-to-action" message="No saved tests" button={!readOnly ? <Button icon="plus" onClick={add}>Add test</Button> : undefined}>
-    Save sample inputs for this library's functions, optionally with the expected output, then run them all after each change. Use <b>Save as test</b> in the Run panel to capture a result.
+  if (!tests.length) return <EmptyState variant="call-to-action" message={t('gofi.python.tests.empty-title', 'No saved tests')} button={!readOnly ? <Button icon="plus" onClick={add}>{t('gofi.python.tests.add-test', 'Add test')}</Button> : undefined}>
+    <Trans i18nKey="gofi.python.tests.empty-body">Save sample inputs for this library's functions, optionally with the expected output, then run them all after each change. Use <b>Save as test</b> in the Run panel to capture a result.</Trans>
   </EmptyState>
   return <Stack direction="column" gap={2}>
     <Stack gap={1} alignItems="center" wrap="wrap">
-      <Button icon={running === 'all' ? 'spinner' : 'play'} disabled={running !== null} onClick={() => void runAll()}>Run all ({tests.length})</Button>
-      {!readOnly && <Button variant="secondary" icon="plus" onClick={add}>Add test</Button>}
-      <Checkbox label="Trace lines" description="Highlight executed lines in Source" value={trace} onChange={event => setTrace(event.currentTarget.checked)} />
-      {summary.length > 0 && <><StatusIndicator tone="success" text={`${passed} passed`} />{failed > 0 && <StatusIndicator tone="error" text={`${failed} failed`} />}</>}
-      <Text color="secondary" variant="bodySmall">{target.savedLibrary ? 'Runs against the saved worker.' : 'Runs the unsaved source in a temporary isolated worker.'} Save and launch to keep test changes.</Text>
+      <Button icon={running === 'all' ? 'spinner' : 'play'} disabled={running !== null} onClick={() => void runAll()}>{t('gofi.python.tests.run-all', 'Run all ({{count}})', { count: tests.length })}</Button>
+      {!readOnly && <Button variant="secondary" icon="plus" onClick={add}>{t('gofi.python.tests.add-test', 'Add test')}</Button>}
+      <Checkbox label={t('gofi.python.common.trace-lines', 'Trace lines')} description={t('gofi.python.tests.trace-lines-description', 'Highlight executed lines in Source')} value={trace} onChange={event => setTrace(event.currentTarget.checked)} />
+      {summary.length > 0 && <><StatusIndicator tone="success" text={t('gofi.python.tests.passed-count', '{{count}} passed', { count: passed })} />{failed > 0 && <StatusIndicator tone="error" text={t('gofi.python.tests.failed-count', '{{count}} failed', { count: failed })} />}</>}
+      <Text color="secondary" variant="bodySmall">{target.savedLibrary ? t('gofi.python.tests.runs-saved-note', 'Runs against the saved worker. Save and launch to keep test changes.') : t('gofi.python.tests.runs-unsaved-note', 'Runs the unsaved source in a temporary isolated worker. Save and launch to keep test changes.')}</Text>
     </Stack>
     {tests.map((test, index) => <TestCard key={index} test={test} run={runs[index]} running={running === index || running === 'all'} readOnly={readOnly}
       functions={discovered.map(fn => ({ value: functionKey(fn.kind, fn.name), label: fn.name, description: fn.kind }))}
@@ -79,32 +80,33 @@ function TestCard({ test, run, running, readOnly, functions, onChange, onRun, on
   const [open, setOpen] = useState(false)
   const takesRaw = RAW_KINDS.includes(test.kind)
   const expectation = test.expectDrop === true ? 'drop' : test.expectFields && Object.keys(test.expectFields).length ? 'fields' : test.expectDrop === false ? 'pass' : 'none'
-  const statusBadge = !run ? <Badge color="darkgrey" text="Not run" /> : run.status === 'pass' ? <Badge color="green" icon="check" text="Pass" /> : run.status === 'recorded' ? <Badge color="blue" text="Recorded" tooltip="No expectation set; the result is shown for review." /> : <Badge color="red" icon="exclamation-triangle" text={run.status === 'error' ? 'Error' : 'Fail'} />
+  const expectationText = expectation === 'none' ? t('gofi.python.tests.expectation-none', 'no expectation') : expectation === 'drop' ? t('gofi.python.tests.expectation-drop', 'expects drop') : expectation === 'pass' ? t('gofi.python.tests.expectation-pass', 'expects pass') : t('gofi.python.tests.expectation-fields', 'expects fields')
+  const statusBadge = !run ? <Badge color="darkgrey" text={t('gofi.python.tests.status-not-run', 'Not run')} /> : run.status === 'pass' ? <Badge color="green" icon="check" text={t('gofi.python.tests.status-pass', 'Pass')} /> : run.status === 'recorded' ? <Badge color="blue" text={t('gofi.python.tests.status-recorded', 'Recorded')} tooltip={t('gofi.python.tests.status-recorded-tooltip', 'No expectation set; the result is shown for review.')} /> : <Badge color="red" icon="exclamation-triangle" text={run.status === 'error' ? t('gofi.python.tests.status-error', 'Error') : t('gofi.python.tests.status-fail', 'Fail')} />
   return <Card noMargin isCompact>
-    <Card.Heading>{test.name || 'Untitled test'}</Card.Heading>
-    <Card.Meta>{[`${test.function || '—'} · ${test.kind}`, expectation === 'none' ? 'no expectation' : expectation === 'drop' ? 'expects drop' : expectation === 'pass' ? 'expects pass' : 'expects fields']}</Card.Meta>
+    <Card.Heading>{test.name || t('gofi.python.tests.untitled', 'Untitled test')}</Card.Heading>
+    <Card.Meta>{[`${test.function || '—'} · ${test.kind}`, expectationText]}</Card.Meta>
     <Card.Tags>{statusBadge}</Card.Tags>
     <Card.Actions>
-      <Button size="sm" icon={running ? 'spinner' : 'play'} disabled={running} onClick={onRun}>Run</Button>
-      <Button size="sm" variant="secondary" icon="bug" disabled={running} onClick={onDebug} tooltip="Record this test step by step and open the debugger">Debug</Button>
-      <Button size="sm" variant="secondary" fill="outline" icon={open ? 'angle-up' : 'angle-down'} onClick={() => setOpen(value => !value)}>{open ? 'Hide' : readOnly ? 'Details' : 'Edit'}</Button>
-      <Button size="sm" variant="secondary" fill="text" icon="arrow-right" onClick={onShowInSource} tooltip="Highlight where this test's input enters the source">Show in source</Button>
+      <Button size="sm" icon={running ? 'spinner' : 'play'} disabled={running} onClick={onRun}>{t('gofi.common.run', 'Run')}</Button>
+      <Button size="sm" variant="secondary" icon="bug" disabled={running} onClick={onDebug} tooltip={t('gofi.python.tests.debug-tooltip', 'Record this test step by step and open the debugger')}>{t('gofi.common.debug', 'Debug')}</Button>
+      <Button size="sm" variant="secondary" fill="outline" icon={open ? 'angle-up' : 'angle-down'} onClick={() => setOpen(value => !value)}>{open ? t('gofi.common.hide', 'Hide') : readOnly ? t('gofi.common.details', 'Details') : t('gofi.common.edit', 'Edit')}</Button>
+      <Button size="sm" variant="secondary" fill="text" icon="arrow-right" onClick={onShowInSource} tooltip={t('gofi.python.tests.show-in-source-tooltip', "Highlight where this test's input enters the source")}>{t('gofi.python.tests.show-in-source', 'Show in source')}</Button>
     </Card.Actions>
-    {!readOnly && <Card.SecondaryActions><IconButton name="trash-alt" tooltip="Delete test" onClick={onDelete} /></Card.SecondaryActions>}
+    {!readOnly && <Card.SecondaryActions><IconButton name="trash-alt" tooltip={t('gofi.python.tests.delete-test', 'Delete test')} onClick={onDelete} /></Card.SecondaryActions>}
     {(open || run) && <Card.Description>
       <div className={styles.body}>
         {open && <div className={styles.grid}>
-          <Field label="Name" noMargin><Input value={test.name} disabled={readOnly} onChange={event => onChange({ ...test, name: event.currentTarget.value })} /></Field>
-          <Field label="Function" noMargin><Combobox value={functionKey(test.kind, test.function)} options={functions.length ? functions : [{ value: functionKey(test.kind, test.function), label: test.function, description: test.kind }]} disabled={readOnly} onChange={option => { if (!option) return; const [kind, ...rest] = option.value.split(':'); onChange({ ...test, kind: kind as PythonFunctionKind, function: rest.join(':') }) }} /></Field>
-          {takesRaw ? <JsonOrText label="Raw input" text value={test.raw ?? ''} readOnly={readOnly} onChange={raw => onChange({ ...test, raw: raw as string })} />
-            : <JsonOrText label="Fields (JSON)" value={test.fields ?? {}} readOnly={readOnly} onChange={fields => onChange({ ...test, fields: fields as Record<string, unknown> })} />}
-          <JsonOrText label="Metadata (JSON)" value={test.meta ?? {}} readOnly={readOnly} onChange={meta => onChange({ ...test, meta: meta as Record<string, unknown> })} />
-          <JsonOrText label="Config (JSON)" value={test.config ?? {}} readOnly={readOnly} onChange={config => onChange({ ...test, config: Object.keys(config as object).length ? config as Record<string, unknown> : undefined })} />
-          <Field label="Expectation" noMargin>
+          <Field label={t('gofi.common.name', 'Name')} noMargin><Input value={test.name} disabled={readOnly} onChange={event => onChange({ ...test, name: event.currentTarget.value })} /></Field>
+          <Field label={t('gofi.common.function-header', 'Function')} noMargin><Combobox value={functionKey(test.kind, test.function)} options={functions.length ? functions : [{ value: functionKey(test.kind, test.function), label: test.function, description: test.kind }]} disabled={readOnly} onChange={option => { if (!option) return; const [kind, ...rest] = option.value.split(':'); onChange({ ...test, kind: kind as PythonFunctionKind, function: rest.join(':') }) }} /></Field>
+          {takesRaw ? <JsonOrText label={t('gofi.python.tests.raw-input', 'Raw input')} text value={test.raw ?? ''} readOnly={readOnly} onChange={raw => onChange({ ...test, raw: raw as string })} />
+            : <JsonOrText label={t('gofi.python.tests.fields-json', 'Fields (JSON)')} value={test.fields ?? {}} readOnly={readOnly} onChange={fields => onChange({ ...test, fields: fields as Record<string, unknown> })} />}
+          <JsonOrText label={t('gofi.python.tests.metadata-json', 'Metadata (JSON)')} value={test.meta ?? {}} readOnly={readOnly} onChange={meta => onChange({ ...test, meta: meta as Record<string, unknown> })} />
+          <JsonOrText label={t('gofi.python.tests.config-json', 'Config (JSON)')} value={test.config ?? {}} readOnly={readOnly} onChange={config => onChange({ ...test, config: Object.keys(config as object).length ? config as Record<string, unknown> : undefined })} />
+          <Field label={t('gofi.python.tests.expectation', 'Expectation')} noMargin>
             <RadioButtonGroup size="sm" disabled={readOnly} value={expectation} onChange={value => onChange({ ...test, expectDrop: value === 'drop' ? true : value === 'pass' || value === 'fields' ? false : undefined, expectFields: value === 'fields' ? (test.expectFields ?? run?.result?.fields ?? {}) : undefined })}
-              options={[{ value: 'none', label: 'Record' }, { value: 'pass', label: 'Passes' }, { value: 'fields', label: 'Fields' }, { value: 'drop', label: 'Drops' }]} />
+              options={[{ value: 'none', label: t('gofi.python.tests.option-record', 'Record') }, { value: 'pass', label: t('gofi.python.tests.option-passes', 'Passes') }, { value: 'fields', label: t('gofi.python.tests.option-fields', 'Fields') }, { value: 'drop', label: t('gofi.python.tests.option-drops', 'Drops') }]} />
           </Field>
-          {expectation === 'fields' && <JsonOrText label="Expected fields (subset match)" value={test.expectFields ?? {}} readOnly={readOnly} onChange={expectFields => onChange({ ...test, expectFields: expectFields as Record<string, unknown> })} />}
+          {expectation === 'fields' && <JsonOrText label={t('gofi.python.tests.expected-fields', 'Expected fields (subset match)')} value={test.expectFields ?? {}} readOnly={readOnly} onChange={expectFields => onChange({ ...test, expectFields: expectFields as Record<string, unknown> })} />}
         </div>}
         {run && run.reasons.length > 0 && <ul className={styles.reasons}>{run.reasons.map(reason => <li key={reason}><Text color="error" variant="bodySmall">{reason}</Text></li>)}</ul>}
         {run?.result && <RunResultView result={run.result} onJumpToLine={onJumpToLine} compact />}

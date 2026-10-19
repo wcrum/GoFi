@@ -8,9 +8,6 @@ package codec
 import (
 	"bytes"
 	"compress/bzip2"
-	"compress/flate"
-	"compress/gzip"
-	"compress/zlib"
 	"context"
 	"encoding/base32"
 	"encoding/base64"
@@ -24,7 +21,6 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/snappy"
-	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/wcrum/gofi/message"
 	"github.com/wcrum/gofi/spec"
@@ -83,12 +79,17 @@ func apply(ctx context.Context, kind string, steps []spec.CodecStep, data []byte
 		default:
 			out, err = encodeBuiltin(step.Type, out, max)
 		}
+		if err == nil && kind == "decoder" {
+			err = charge(msg, len(out))
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s %d (%s): %w", kind, i+1, label(step), err)
 		}
 	}
 	return out, nil
 }
+
+func errTooLarge(max int) error { return fmt.Errorf("decoded payload exceeds %d bytes", max) }
 
 func label(step spec.CodecStep) string {
 	if step.Type == "python" && step.Python != nil {
@@ -109,22 +110,20 @@ func encodeBuiltin(step string, data []byte, max int) ([]byte, error) {
 		out = []byte(hex.EncodeToString(data))
 	case "base32":
 		out = []byte(base32.StdEncoding.EncodeToString(data))
-	case "gzip", "zlib", "deflate", "zstd", "lz4", "brotli":
+	case "gzip", "zlib", "deflate":
+		var err error
+		if out, err = compressPooled(step, data); err != nil {
+			return nil, err
+		}
+	case "zstd":
+		var err error
+		if out, err = zstdCompress(data); err != nil {
+			return nil, err
+		}
+	case "lz4", "brotli":
 		var buf bytes.Buffer
 		var w io.WriteCloser
 		switch step {
-		case "gzip":
-			w = gzip.NewWriter(&buf)
-		case "zlib":
-			w = zlib.NewWriter(&buf)
-		case "deflate":
-			w, _ = flate.NewWriter(&buf, flate.DefaultCompression)
-		case "zstd":
-			encoder, err := zstd.NewWriter(&buf, zstd.WithEncoderConcurrency(1))
-			if err != nil {
-				return nil, err
-			}
-			w = encoder
 		case "lz4":
 			// Small blocks keep frames within any reader's block limit.
 			writer := lz4.NewWriter(&buf)
@@ -180,25 +179,22 @@ func decodeBuiltin(step string, data []byte, max int) ([]byte, error) {
 		reader = base32.NewDecoder(encoding, bytes.NewReader(data))
 	case "hex":
 		reader = hex.NewDecoder(bytes.NewReader(data))
-	case "deflate":
+	case "deflate", "gzip", "zlib":
 		release := acquireDecompressor()
 		defer release()
-		r := flate.NewReader(bytes.NewReader(data))
+		r, put, err := pooledReader(step, data)
+		if err != nil {
+			return nil, err
+		}
+		defer put()
 		reader, closer = r, r
 	case "zstd":
 		release := acquireDecompressor()
 		defer release()
-		// Cap the window too: a frame may declare one far larger than the
-		// output limit, and the decoder would allocate it up front.
-		window := min(uint64(max), zstd.MaxWindowSize)
-		if window < zstd.MinWindowSize {
-			window = zstd.MinWindowSize
-		}
-		r, err := zstd.NewReader(bytes.NewReader(data), zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true), zstd.WithDecoderMaxWindow(window), zstd.WithDecoderMaxMemory(uint64(max)+1))
-		if err != nil {
-			return nil, err
-		}
-		reader, closer = r, zstdCloser{r}
+		// The decoder's window and memory are capped at the output limit (a
+		// frame may declare a window far larger than it), and decoders are
+		// pooled per limit (zstdDecompress).
+		return zstdDecompress(data, max)
 	case "snappy":
 		// The block header states the decoded length: refuse before allocating.
 		n, err := snappy.DecodedLen(data)
@@ -233,22 +229,6 @@ func decodeBuiltin(step string, data []byte, max int) ([]byte, error) {
 		release := acquireDecompressor()
 		defer release()
 		reader = bzip2.NewReader(bytes.NewReader(data))
-	case "gzip":
-		release := acquireDecompressor()
-		defer release()
-		r, err := gzip.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, err
-		}
-		reader, closer = r, r
-	case "zlib":
-		release := acquireDecompressor()
-		defer release()
-		r, err := zlib.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, err
-		}
-		reader, closer = r, r
 	case "url":
 		// Query decoding never expands input. Limit the input first so a
 		// deliberately oversized frame cannot allocate an unbounded string.
@@ -282,11 +262,6 @@ func decodeBuiltin(step string, data []byte, max int) ([]byte, error) {
 	}
 	return out, nil
 }
-
-// zstdCloser adapts zstd.Decoder.Close, which returns nothing.
-type zstdCloser struct{ d *zstd.Decoder }
-
-func (c zstdCloser) Close() error { c.d.Close(); return nil }
 
 // decompressors bounds concurrent decompressions: each holds megabytes of
 // decoder state (bzip2 about 3.6 MB) however small its input, so a burst of

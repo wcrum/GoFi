@@ -14,6 +14,15 @@ and rejection attribution. The portal uses one ConnectRPC `WatchTraffic` stream
 for the overview, including flows added after it opens.
 Slow viewers can miss events; the stream is a live view, not a durable audit log.
 
+A guided tutorial opens in a side panel on a browser's first visit: what a
+flow is, the menu, a first flow with a one-click example, how to send a test
+frame in this deployment (host port, Docker published port, or Kubernetes
+exposure), and where to watch traffic, problems, and metrics. Reopen it from
+**New › Tutorial** in the top bar or by adding `?tutorial=1` to the address
+(`#/flows?tutorial=1`); it resumes at the step it was closed on. The browser
+remembers it under the `localStorage` key `gofi.tutorial.v1`; remove that key
+to see the first-visit behaviour again.
+
 ## Receive → decode → filter → deliver
 
 For a local walkthrough, start the receiver in another terminal:
@@ -34,9 +43,10 @@ spec:
   source:
     listen: {network: tcp, port: 7000}
   framing: {mode: line}
+  decode:
+    decoders: [base64]
   parser:
     format: json
-    decoders: [base64]
     errorPolicy: drop
   stages:
     - id: application
@@ -86,22 +96,52 @@ settings and bind host ports directly.
 
 ## Decode application formats
 
-Framing happens before decoding. Decoders run in listed order on each complete
-frame, then the selected parser runs. For example, `[base64, gzip]` expects
+The pipeline order is source → framing → decode → parser → stages → sinks.
+Framing happens before decoding. The decoders in `spec.decode.decoders` run in
+listed order on each complete frame, then the selected parser runs. For example, `[base64, gzip]` expects
 base64 text wrapping a compressed payload. Use line framing for newline-separated
 base64; binary payloads generally need raw or length-prefix framing.
 
 Supported decoders are `base64`, `base64url`, `base32`, `hex`, `url`, `gzip`, `zlib`, `deflate`, `zstd`, `snappy` (block format), `lz4` (frame format), `brotli`, and `bzip2`. Every one but `bzip2` also works as an encoder. Decompressed output is capped at the step's byte limit.
 Base64 accepts padded and unpadded input. URL query decoding converts `+` to a
-space. `maxDecodedBytes` caps each step at 1 MiB by default. Invalid encoding,
+space. `decode.maxDecodedBytes` caps each step at 1 MiB by default. Invalid encoding,
 checksum failures, and oversized results become parse errors.
 
 JSON flattens nested keys into dotted field names. XML extracts supported
-attributes and child text; `format: none` places decoded text in `fields.raw`.
+attributes and child text; `format: none` (or its synonym `text`, the name the
+parse stage uses) places the decoded frame as a string in `fields.raw`;
+`format: python` calls a `@gofi.parser` function.
 Built-in decoders preserve the incoming frame bytes: CEL `raw` and a raw sink
 still see those bytes. Python decoders (and built-in codecs) in
-`parser.decoders` transform the bytes passed to the parser; a Python transformer
-can replace them later.
+`decode.decoders` transform the bytes passed to the parser; a Python transformer
+can replace them later. Flows written with the older `parser.decoders` and
+`parser.maxDecodedBytes` still load; GoFi reads and saves them as `decode`.
+
+## Parse more than once
+
+Data is often layered: a syslog line wraps JSON, and a JSON field holds
+base64-gzip JSON. After the flow's parser, add a stage of kind `parse` for each
+inner layer. `from` is a CEL expression yielding the string or bytes to parse
+(`raw` or empty for the frame), `decoders` are optional, `format` is `json`,
+`xml`, `text`, or `python`, and `into` places the result under one field:
+
+```yaml
+stages:
+  - id: message
+    kind: parse
+    parse: {from: 'fields["message"]', format: json}
+  - id: blob
+    kind: parse
+    parse: {from: 'fields["blob"]', decoders: [base64, gzip], format: json, into: payload}
+```
+
+A parse error passes the message on unchanged (`onError: continue`, the
+default) or rejects it (`onError: drop`). See
+[Flows](flows.md#parse-stages) for merge and replace semantics and the full
+layered example.
+
+Python steps that name only a `function` use the flow's default library,
+`spec.python.library`.
 
 Built-in parsers default to `errorPolicy: continue`, recording `meta.parseError`
 and continuing. Custom Python parsers fail closed by default; explicitly choose

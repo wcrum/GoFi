@@ -29,7 +29,7 @@ jobs:
       - name: Install and verify portal
         run: |
           npm --prefix ui ci
-          npm --prefix ui test
+          npm --prefix ui run verify
           npm --prefix ui run build
       - name: Compile protobuf contract
         run: ui/node_modules/.bin/buf build
@@ -46,6 +46,14 @@ jobs:
           go test -race ./...
           go vet ./...
           go build -trimpath -o "$RUNNER_TEMP/gofi" .
+      - name: Edge binary builds (static, cross, heavy integrations excluded)
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go vet -tags gofi_nosql,gofi_nokafka,gofi_nos3 ./source/ .
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -tags gofi_nosql,gofi_nokafka,gofi_nos3 -o "$RUNNER_TEMP/gofi-edge-arm64" .
+          GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -tags gofi_nosql,gofi_nokafka,gofi_nos3 -o "$RUNNER_TEMP/gofi-edge-armv7" .
+          ls -l "$RUNNER_TEMP"/gofi*
       - name: Python worker contract and tests
         run: |
           python3 -m venv "$RUNNER_TEMP/gofi-python"
@@ -70,3 +78,102 @@ jobs:
         env:
           GOFI_DOCKER_INTEGRATION: "1"
         run: go test ./sandbox -run '^TestDockerIsolatedWorker$' -count=1
+  integration:
+    name: Integration (flow file + envtest kube-apiserver)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOWORK: "off"
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download envtest binaries (kube-apiserver, etcd)
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+          echo "KUBEBUILDER_ASSETS=$("$RUNNER_TEMP/bin/setup-envtest" use -p path --bin-dir "$RUNNER_TEMP/envtest")" >> "$GITHUB_ENV"
+      - name: Controller convergence, idempotence, restart, corruption, history
+        env:
+          CI: "true"
+        run: |
+          mkdir -p testenv/reports
+          go test -tags integration -count=1 -timeout 25m -v ./tests/integration/...
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-integration
+          path: testenv/reports/
+  benchmarks:
+    name: Data-plane benchmarks vs main (allocs/op regression gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    if: github.event_name == 'pull_request'
+    env:
+      GOWORK: "off"
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Benchmark head
+        run: scripts/bench/run.sh "$RUNNER_TEMP/new.txt"
+      - name: Benchmark base (${{ github.base_ref }})
+        run: |
+          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
+          (cd "$RUNNER_TEMP/base" && "$GITHUB_WORKSPACE/scripts/bench/run.sh" "$RUNNER_TEMP/old.txt")
+      - name: Compare (benchstat table; fail on >20% allocs/op regression)
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/perf/cmd/benchstat@latest
+          "$RUNNER_TEMP/bin/benchstat" "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/new.txt" | tee "$RUNNER_TEMP/benchstat.txt"
+          python3 scripts/bench/compare.py --max-regress 20 "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/new.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmarks
+          path: |
+            ${{ runner.temp }}/old.txt
+            ${{ runner.temp }}/new.txt
+            ${{ runner.temp }}/benchstat.txt
+  ui-e2e:
+    name: Portal smoke (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOWORK: "off"
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.0"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install portal dependencies and Chromium
+        run: |
+          npm --prefix ui ci
+          ui/node_modules/.bin/playwright-core install --with-deps chromium
+      - name: Build the controller
+        run: CGO_ENABLED=0 go build -trimpath -o bin/gofi-e2e .
+      - name: Smoke every page, flow lifecycle, live traffic, reconnect
+        env:
+          GOFI_UI_E2E_OWN_BACKEND: "1"
+          GOFI_BINARY: ${{ github.workspace }}/bin/gofi-e2e
+        run: |
+          mkdir -p testenv/reports
+          node ui/e2e/run.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-ui
+          path: testenv/reports/

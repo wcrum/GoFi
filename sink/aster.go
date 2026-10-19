@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wcrum/gofi/message"
@@ -25,6 +26,14 @@ type asterSink struct {
 	url      string
 	bodyMode string
 	client   *http.Client
+
+	// tokenCache holds the last token read from TokenFile. Each send stats
+	// the file (one cheap syscall) and re-reads it only when its modification
+	// time changed, so an atomically replaced mount rotates at once without
+	// an open+read per message.
+	tokenMu      sync.Mutex
+	tokenCache   string
+	tokenModTime time.Time
 }
 
 // JSON byte slices use base64, as required by protobuf JSON. uint64 values
@@ -124,7 +133,7 @@ func configureAster(cfg spec.SinkCfg) (*asterSink, error) {
 		client: &http.Client{
 			Timeout: time.Duration(a.TimeoutSeconds) * time.Second,
 			// Dedicated local traffic never uses environment-configured proxies.
-			Transport: &http.Transport{Proxy: nil},
+			Transport: func() *http.Transport { t := newTransport(); t.Proxy = nil; return t }(),
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return fmt.Errorf("aster sink: agent redirects are forbidden")
 			},
@@ -137,19 +146,47 @@ func configureAster(cfg spec.SinkCfg) (*asterSink, error) {
 }
 
 func (s *asterSink) token() (string, error) {
-	token := s.cfg.Token
-	if s.cfg.TokenFile != "" {
-		file, err := os.Open(s.cfg.TokenFile)
-		if err != nil {
-			return "", fmt.Errorf("aster sink: token file unavailable")
-		}
-		defer file.Close()
-		data, err := io.ReadAll(io.LimitReader(file, 258))
-		if err != nil || len(data) > 257 {
-			return "", fmt.Errorf("aster sink: invalid token file")
-		}
-		token = strings.TrimSpace(string(data))
+	if s.cfg.TokenFile == "" {
+		return s.validToken(s.cfg.Token)
 	}
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+	if s.tokenCache != "" {
+		if info, err := os.Stat(s.cfg.TokenFile); err == nil && info.ModTime().Equal(s.tokenModTime) {
+			return s.tokenCache, nil
+		}
+	}
+	token, modTime, err := s.readTokenFile()
+	if err != nil {
+		if s.tokenCache != "" {
+			return s.tokenCache, nil // keep the last good token through a rotation in progress
+		}
+		return "", err
+	}
+	s.tokenCache, s.tokenModTime = token, modTime
+	return token, nil
+}
+
+// readTokenFile reads and validates the token file.
+func (s *asterSink) readTokenFile() (string, time.Time, error) {
+	file, err := os.Open(s.cfg.TokenFile)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("aster sink: token file unavailable")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("aster sink: token file unavailable")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, 258))
+	if err != nil || len(data) > 257 {
+		return "", time.Time{}, fmt.Errorf("aster sink: invalid token file")
+	}
+	token, err := s.validToken(strings.TrimSpace(string(data)))
+	return token, info.ModTime(), err
+}
+
+func (s *asterSink) validToken(token string) (string, error) {
 	if token == "" || len(token) > 256 || strings.ContainsAny(token, " \t\r\n") {
 		return "", fmt.Errorf("aster sink: a valid bearer token is required")
 	}
@@ -191,7 +228,7 @@ func (s *asterSink) Send(msg *message.Message) error {
 	if err != nil {
 		return fmt.Errorf("aster sink: request encoding failed")
 	}
-	token, err := s.token() // read each time so an atomically replaced mount can rotate
+	token, err := s.token() // cached; re-read when the mounted file changes
 	if err != nil {
 		return err
 	}
@@ -205,13 +242,14 @@ func (s *asterSink) Send(msg *message.Message) error {
 	req.Header.Set("Connect-Timeout-Ms", fmt.Sprint(s.cfg.TimeoutSeconds*1000))
 	response, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("aster sink: agent request failed; publication outcome may be unknown")
+		return transientError{fmt.Errorf("aster sink: agent request failed; publication outcome may be unknown")}
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		// The response may contain confidential remote diagnostics. Expose
 		// only status, never raw body, bearer credentials, or request values.
-		return fmt.Errorf("aster sink: agent rejected publication (HTTP %d)", response.StatusCode)
+		// The operation key makes a retry idempotent at the agent.
+		return fmt.Errorf("aster sink: agent rejected publication (%w)", NewStatusError(response.StatusCode, nil))
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
 	if err != nil || len(data) > 64*1024 {

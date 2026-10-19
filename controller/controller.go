@@ -11,11 +11,13 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wcrum/gofi/desired"
 	"github.com/wcrum/gofi/driver"
 	"github.com/wcrum/gofi/expressions"
+	"github.com/wcrum/gofi/observability"
 	"github.com/wcrum/gofi/spec"
 )
 
@@ -23,9 +25,12 @@ import (
 type Controller struct {
 	mu      sync.RWMutex
 	desired map[string]spec.FlowDefinition
-	drv     driver.Driver
-	store   desired.Store
-	expr    *expressions.Manager
+	// revision increases on every change to desired or invalid, so readers
+	// (ListFlows) can serve a cached snapshot while it is unchanged.
+	revision atomic.Uint64
+	drv      driver.Driver
+	store    desired.Store
+	expr     *expressions.Manager
 	// Serialize mutations and reconciliation so a stale reconcile cannot
 	// overwrite an API edit or re-create a resource after its deletion.
 	syncMu      sync.Mutex
@@ -37,8 +42,67 @@ type Controller struct {
 	// do not run, but stay listed so the portal can show, fix, or delete them.
 	// If an earlier valid version exists, that version keeps running.
 	invalid        map[string]invalidFlow
-	lastSkipped    string // guarded by syncMu
-	lastFlowSetErr string // guarded by syncMu
+	lastSkipped    string     // guarded by syncMu
+	lastFlowSetErr string     // guarded by reconcileMu
+	ops            operations // restarts and run state (operations.go)
+	// Reconciliation state (reconcile.go): reconcileMu serializes driver
+	// work (full passes and single-flow items) without holding syncMu, so
+	// API edits never wait on the API server; queue carries flows named by
+	// informer events; resync is the full-pass period; passive makes a
+	// follower replica observe without acting; lastFlowSetHash skips the
+	// flow-set reconcile while the flow set is unchanged.
+	reconcileMu     sync.Mutex
+	queue           flowQueue
+	resync          time.Duration
+	passive         atomic.Bool
+	lastFlowSetHash string // guarded by reconcileMu
+	// ready is what /readyz reports in binary and Docker modes (Ready).
+	ready readiness
+}
+
+// readiness tracks the milestones a readiness probe cares about: desired
+// state loaded, the first full reconcile pass completed, and whether the
+// runtime driver answered the last time it was asked.
+type readiness struct {
+	storeLoaded atomic.Bool
+	firstPass   atomic.Bool
+	mu          sync.Mutex
+	driverErr   string
+}
+
+// Ready reports whether this controller should be considered ready to serve:
+// its store (when it has one) has loaded, its first full reconcile pass has
+// completed (so the flows it declares have been started or their failures
+// reported), and the runtime driver answered the last List (a Docker daemon
+// that stopped answering makes the controller not ready until it is back).
+// reason explains a false answer.
+func (c *Controller) Ready() (ok bool, reason string) {
+	c.syncMu.Lock()
+	hasStore := c.store != nil
+	c.syncMu.Unlock()
+	if hasStore && !c.ready.storeLoaded.Load() {
+		return false, "desired state not loaded"
+	}
+	if !c.ready.firstPass.Load() {
+		return false, "first reconcile pass not completed"
+	}
+	c.ready.mu.Lock()
+	defer c.ready.mu.Unlock()
+	if c.ready.driverErr != "" {
+		return false, "runtime driver unreachable: " + c.ready.driverErr
+	}
+	return true, ""
+}
+
+// noteDriverList records the outcome of a driver List for Ready.
+func (c *Controller) noteDriverList(err error) {
+	c.ready.mu.Lock()
+	defer c.ready.mu.Unlock()
+	if err == nil {
+		c.ready.driverErr = ""
+		return
+	}
+	c.ready.driverErr = err.Error()
 }
 
 type invalidFlow struct {
@@ -60,6 +124,7 @@ func (c *Controller) WithStore(ctx context.Context, store desired.Store) error {
 		slog.Warn("controller: skipped invalid flows", "error", err)
 	}
 	c.store = store
+	c.ready.storeLoaded.Store(true)
 	c.trigger()
 	return nil
 }
@@ -110,12 +175,17 @@ func (c *Controller) replaceDesired(ctx context.Context, defs []spec.FlowDefinit
 	c.mu.Lock()
 	c.desired = next
 	c.invalid = invalid
+	c.revision.Add(1)
 	c.mu.Unlock()
 	inlineChanged()
-	for name, def := range old {
-		if updated, ok := next[name]; ok && !equivalentDefinitions(def, updated) {
-			if err := c.drv.Delete(ctx, name); err != nil {
-				slog.Warn("controller: delete changed flow", "name", name, "error", err)
+	// A driver that can Replace keeps the old runtime serving until the new
+	// one runs (the reconcile does it); a follower replica acts on nothing.
+	if _, replaces := c.drv.(driver.Replacer); !replaces && !c.passive.Load() {
+		for name, def := range old {
+			if updated, ok := next[name]; ok && !equivalentRuntimes(def, updated) {
+				if err := c.drv.Delete(ctx, name); err != nil {
+					slog.Warn("controller: delete changed flow", "name", name, "error", err)
+				}
 			}
 		}
 	}
@@ -158,10 +228,12 @@ func (c *Controller) Add(def spec.FlowDefinition) error {
 	previous, exists := c.desired[def.Name]
 	c.desired[def.Name] = def
 	delete(c.invalid, def.Name)
+	c.revision.Add(1)
 	c.mu.Unlock()
 
-	if exists && !equivalentDefinitions(previous, def) {
-		// For updates, delete the old instance first so the driver re-creates it.
+	if _, replaces := c.drv.(driver.Replacer); exists && !replaces && !equivalentRuntimes(previous, def) {
+		// For updates, delete the old instance first so the driver re-creates
+		// it. A Replacer instead starts the new runtime beside the old one.
 		if err := c.drv.Delete(context.Background(), def.Name); err != nil {
 			slog.Warn("controller: delete before update", "name", def.Name, "error", err)
 		}
@@ -247,10 +319,16 @@ func (c *Controller) Remove(name string) error {
 	delete(c.desired, name)
 	delete(c.startErrors, name)
 	delete(c.invalid, name)
+	c.revision.Add(1)
 	c.mu.Unlock()
 	c.trigger()
 	return nil
 }
+
+// Revision identifies the current set of stored definitions; it changes on
+// every save, delete, and store reload. It starts at 1 so a client's zero
+// never matches.
+func (c *Controller) Revision() uint64 { return c.revision.Load() + 1 }
 
 // Get returns the stored definition for a named flow, or false. For a flow
 // whose stored definition is invalid, that (not running) definition is returned.
@@ -324,6 +402,9 @@ func (c *Controller) recordStart(name string, err error) {
 		delete(c.startErrors, name)
 		return
 	}
+	if c.startErrors[name] != err.Error() {
+		observability.Report(name, observability.SeverityError, observability.ComponentRuntime, "start failed: "+err.Error())
+	}
 	if c.startErrors == nil {
 		c.startErrors = map[string]string{}
 	}
@@ -351,138 +432,19 @@ func (c *Controller) trigger() {
 // container/Pod that died on its own (OOM, node reschedule, manual
 // docker kill / kubectl delete) — Create sets RestartPolicy "no"/Never
 // specifically so this loop, not the platform, is what makes crashes
-// visible and recovers from them.
+// visible and recovers from them. With informers (Kubernetes) events drive
+// reconciliation and the period is longer (SetResyncInterval).
 const resyncInterval = 30 * time.Second
 
-// Run processes reconcile events until ctx is cancelled.
-func (c *Controller) Run(ctx context.Context) {
-	c.trigger()
-	ticker := time.NewTicker(resyncInterval)
-	defer ticker.Stop()
+// Run processes reconcile events until ctx is cancelled: full passes on
+// triggers and on the resync tick, and single flows from the work queue.
+// See reconcile.go.
+func (c *Controller) Run(ctx context.Context) { c.run(ctx) }
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-c.reconcileCh:
-			c.sync(ctx)
-		case <-ticker.C:
-			c.sync(ctx)
-		}
-	}
-}
-
+// sync is one full reconcile pass: refresh the snapshot, then make the
+// runtime match it, flow-set objects included.
 func (c *Controller) sync(ctx context.Context) {
-	c.syncMu.Lock()
-	defer c.syncMu.Unlock()
-	freshSnapshot := true
-	lib := c.refreshLibrary(ctx)
-	if c.store != nil {
-		defs, err := c.store.Load(ctx)
-		if err != nil {
-			freshSnapshot = false
-			slog.Warn("controller: desired state load failed", "error", err)
-		} else if err = c.replaceDesired(ctx, defs); err != nil && err.Error() != c.lastSkipped {
-			// Invalid flows were skipped; the rest of the snapshot applied.
-			// Log once per change, not on every resync.
-			c.lastSkipped = err.Error()
-			slog.Warn("controller: skipped invalid flows", "error", err)
-		} else if err == nil {
-			c.lastSkipped = ""
-		}
-	}
-	c.mu.RLock()
-	desired := make(map[string]spec.FlowDefinition, len(c.desired))
-	for k, v := range c.desired {
-		desired[k] = cloneDefinition(v)
-	}
-	c.mu.RUnlock()
-
-	actual, err := c.drv.List(ctx)
-	if err != nil {
-		slog.Warn("controller: list error", "error", err)
-		return
-	}
-
-	actualSet := make(map[string]spec.FlowDefinition, len(actual))
-	for _, d := range actual {
-		actualSet[d.Name] = d
-	}
-
-	for name, def := range desired {
-		// Runtimes receive library-resolved definitions, so a library edit
-		// shows up as drift and recreates the listeners that follow it.
-		resolved, err := expressions.Resolve(def, lib)
-		if err != nil {
-			slog.Error("controller: CEL library reference unresolved; keeping current runtime", "name", name, "error", err)
-			continue
-		}
-		def = resolved
-		current, running := actualSet[name]
-		bindingsDrifted := false
-		if checker, ok := c.drv.(driver.PythonBindingsChecker); ok && running && def.UsesPython() {
-			matches, err := checker.PythonBindingsCurrent(ctx, def)
-			if err != nil {
-				// A starting/unavailable worker is not evidence that the current
-				// listener is stale. Preserve it until fresh bindings are known.
-				slog.Warn("controller: Python bindings unavailable", "name", name, "error", err)
-			} else {
-				bindingsDrifted = !matches
-			}
-		}
-		if running && (!equivalentDefinitions(current, def) || bindingsDrifted) {
-			if !freshSnapshot {
-				continue
-			} // Keep uncertain live state until storage recovers.
-			if err := c.drv.Delete(ctx, name); err != nil {
-				slog.Error("controller: delete drifted flow failed", "name", name, "error", err)
-				continue
-			}
-			running = false
-		}
-		if !running {
-			err := c.drv.Create(ctx, def)
-			c.recordStart(name, err)
-			if err != nil {
-				slog.Error("controller: create failed", "name", name, "error", err)
-			} else {
-				slog.Info("controller: flow started", "name", name, "port", def.Source.Listening().Port)
-			}
-		}
-	}
-
-	for _, d := range actual {
-		if !freshSnapshot {
-			break
-		}
-		if _, want := desired[d.Name]; !want {
-			if err := c.drv.Delete(ctx, d.Name); err != nil {
-				slog.Error("controller: delete failed", "name", d.Name, "error", err)
-			} else {
-				slog.Info("controller: flow stopped", "name", d.Name)
-			}
-		}
-	}
-
-	// Objects derived from the whole flow set (UDS network allows, Gateway
-	// listeners) are rebuilt only from a complete, fresh snapshot.
-	if reconciler, ok := c.drv.(driver.FlowSetReconciler); ok && freshSnapshot {
-		defs := make([]spec.FlowDefinition, 0, len(desired))
-		for _, def := range desired {
-			defs = append(defs, def)
-		}
-		err := reconciler.ReconcileFlowSet(ctx, defs)
-		message := ""
-		if err != nil {
-			message = err.Error()
-		}
-		if message != c.lastFlowSetErr {
-			c.lastFlowSetErr = message
-			if err != nil {
-				slog.Error("controller: flow-set reconcile failed", "error", err)
-			}
-		}
-	}
+	c.reconcileAll(ctx, c.snapshot(ctx), true)
 }
 
 // Compare the serialized contract so omitted empty slices/maps are equivalent

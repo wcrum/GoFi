@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/wcrum/gofi/clusterinfo"
 	"github.com/wcrum/gofi/spec"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -27,11 +30,18 @@ const (
 	annotationOwnedAnnotations = "gofi.wcrum.dev/annotations"
 	metallbPoolAnnotation      = "metallb.io/address-pool"
 	metallbIPsAnnotation       = "metallb.io/loadBalancerIPs"
+
+	// routeDiscoveryTTL is how long a discovery answer (which Gateway API
+	// version serves a route kind, or that none does) is reused. Discovery
+	// used to run twice per flow per sync.
+	routeDiscoveryTTL = 5 * time.Minute
 )
 
 // applyExposure sets the Service fields an exposure chooses. Gateway exposure
 // is a ClusterIP Service behind a GoFi-managed TCPRoute or UDPRoute.
-func applyExposure(svc *corev1.Service, cfg *spec.ServiceExposure) {
+// lbDefaults are the chart's annotations for every LoadBalancer Service
+// (GOFI_LB_ANNOTATIONS); the flow's own annotations win.
+func applyExposure(svc *corev1.Service, cfg *spec.ServiceExposure, lbDefaults map[string]string) {
 	if cfg.Type == "Gateway" {
 		svc.Spec.Type = corev1.ServiceTypeClusterIP
 		svc.Spec.Ports[0].NodePort = 0
@@ -40,6 +50,11 @@ func applyExposure(svc *corev1.Service, cfg *spec.ServiceExposure) {
 		svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicy(cfg.ExternalTrafficPolicy)
 	}
 	annotations := map[string]string{}
+	if cfg.Type == "LoadBalancer" {
+		for k, v := range lbDefaults {
+			annotations[k] = v
+		}
+	}
 	for k, v := range cfg.Annotations {
 		annotations[k] = v
 	}
@@ -60,6 +75,7 @@ func applyExposure(svc *corev1.Service, cfg *spec.ServiceExposure) {
 		for k := range annotations {
 			keys = append(keys, k)
 		}
+		sort.Strings(keys) // a stable list, so an unchanged Service compares equal
 		annotations[annotationOwnedAnnotations] = strings.Join(keys, ",")
 		svc.Annotations = annotations
 	}
@@ -81,6 +97,9 @@ func updateExposure(current, desired *corev1.Service) {
 			delete(current.Annotations, key)
 		}
 		delete(current.Annotations, annotationOwnedAnnotations)
+		if len(current.Annotations) == 0 {
+			current.Annotations = nil
+		}
 	}
 	for k, v := range desired.Annotations {
 		if current.Annotations == nil {
@@ -90,9 +109,32 @@ func updateExposure(current, desired *corev1.Service) {
 	}
 }
 
+// routeDiscovery is one cached discovery answer.
+type routeDiscovery struct {
+	gvr     schema.GroupVersionResource
+	err     error
+	expires time.Time
+}
+
 // routeGVR finds the served version of a Gateway API route kind (TCPRoute and
-// UDPRoute moved from v1alpha2 to v1).
+// UDPRoute moved from v1alpha2 to v1). Answers are cached for
+// routeDiscoveryTTL; before, every flow ran discovery on every sync.
 func (k *Kube) routeGVR(resource string) (schema.GroupVersionResource, error) {
+	k.routeMu.Lock()
+	defer k.routeMu.Unlock()
+	if cached, ok := k.routeGVRs[resource]; ok && time.Now().Before(cached.expires) {
+		return cached.gvr, cached.err
+	}
+	answer := routeDiscovery{expires: time.Now().Add(routeDiscoveryTTL)}
+	answer.gvr, answer.err = k.discoverRoute(resource)
+	if k.routeGVRs == nil {
+		k.routeGVRs = map[string]routeDiscovery{}
+	}
+	k.routeGVRs[resource] = answer
+	return answer.gvr, answer.err
+}
+
+func (k *Kube) discoverRoute(resource string) (schema.GroupVersionResource, error) {
 	for _, version := range []string{"v1", "v1alpha2"} {
 		list, err := k.cs.Discovery().ServerResourcesForGroupVersion(gatewayGroup + "/" + version)
 		if err != nil {
@@ -107,8 +149,30 @@ func (k *Kube) routeGVR(resource string) (schema.GroupVersionResource, error) {
 	return schema.GroupVersionResource{}, fmt.Errorf("this cluster does not serve %s (install the Gateway API experimental channel, or an implementation such as Envoy Gateway)", resource)
 }
 
+// getRoute reads a route: from the dynamic informer cache when the driver
+// runs with informers, otherwise from the API.
+func (k *Kube) getRoute(ctx context.Context, gvr schema.GroupVersionResource, name string) (*unstructured.Unstructured, error) {
+	if k.informers != nil {
+		lister, err := k.informers.Lister(ctx, gvr)
+		if err == nil {
+			obj, err := lister.Get(name)
+			if err != nil {
+				return nil, err
+			}
+			route, ok := obj.(*unstructured.Unstructured)
+			if !ok {
+				return nil, fmt.Errorf("unexpected %T in %s cache", obj, gvr)
+			}
+			return route, nil
+		}
+	}
+	ctx, cancel := apiCall(ctx)
+	defer cancel()
+	return k.dyn.Resource(gvr).Namespace(k.namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
 func routeKind(network string) (kind, resource string) {
-	if network == "udp" {
+	if transportOf(network) == corev1.ProtocolUDP { // udp and quic
 		return "UDPRoute", "udproutes"
 	}
 	return "TCPRoute", "tcproutes"
@@ -127,7 +191,7 @@ func GatewayListenerName(namespace, flow string) string {
 
 var gatewaysGVR = schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gateways"}
 
-func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinition, pod *corev1.Pod) error {
+func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinition) error {
 	listen := def.Source.Listen
 	if listen == nil || listen.Service == nil || listen.Service.Type != "Gateway" || listen.Service.Gateway == nil {
 		return k.deleteGatewayRoute(ctx, def.Name)
@@ -156,46 +220,75 @@ func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinitio
 			port = listen.Port
 		}
 		listener = GatewayListenerName(k.namespace, def.Name)
-		if err := k.ensureGatewayListener(ctx, gw.Namespace, gw.Name, listener, strings.ToUpper(listenNetwork(listen)), kind, port); err != nil {
+		if err := k.ensureGatewayListener(ctx, gw.Namespace, gw.Name, listener, string(transportOf(listen.Network)), kind, port); err != nil {
 			return err
 		}
 		managed = gw.Namespace + "/" + gw.Name + "/" + listener
 	}
+	name := podName(def.Name)
+	metadata := map[string]any{"name": name, "namespace": k.namespace,
+		"labels": map[string]any{kubeLabelManaged: "true", kubeLabelListener: def.Name}}
+	if owner := k.ownerOf(def.Name); len(owner) > 0 {
+		metadata["ownerReferences"] = []any{map[string]any{"apiVersion": owner[0].APIVersion, "kind": owner[0].Kind, "name": owner[0].Name, "uid": string(owner[0].UID)}}
+	}
 	route := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": gvr.Group + "/" + gvr.Version, "kind": kind,
-		"metadata": map[string]any{"name": pod.Name, "namespace": k.namespace,
-			"labels":          map[string]any{kubeLabelManaged: "true", kubeLabelListener: def.Name},
-			"ownerReferences": []any{map[string]any{"apiVersion": "v1", "kind": "Pod", "name": pod.Name, "uid": string(pod.UID)}}},
+		"metadata": metadata,
 		"spec": map[string]any{
 			"parentRefs": []any{map[string]any{"group": gatewayGroup, "kind": "Gateway", "namespace": gw.Namespace, "name": gw.Name, "sectionName": listener}},
-			"rules":      []any{map[string]any{"backendRefs": []any{map[string]any{"name": pod.Name, "port": int64(servicePort)}}}},
+			"rules":      []any{map[string]any{"backendRefs": []any{map[string]any{"name": name, "port": int64(servicePort)}}}},
 		},
 	}}
 	if managed != "" {
 		route.SetAnnotations(map[string]string{annotationManagedListener: managed})
 	}
 	routes := k.dyn.Resource(gvr).Namespace(k.namespace)
-	current, err := routes.Get(ctx, pod.Name, metav1.GetOptions{})
+	current, err := k.getRoute(ctx, gvr, name)
 	if apierrors.IsNotFound(err) {
-		_, err = routes.Create(ctx, route, metav1.CreateOptions{})
+		createCtx, cancel := apiCall(ctx)
+		defer cancel()
+		_, err = routes.Create(createCtx, route, metav1.CreateOptions{})
 		return err
 	}
 	if err != nil {
 		return err
 	}
 	if current.GetLabels()[kubeLabelManaged] != "true" {
-		return fmt.Errorf("%s %q exists and is not managed by GoFi", kind, pod.Name)
+		return fmt.Errorf("%s %q exists and is not managed by GoFi", kind, name)
+	}
+	if routeEqual(current, route) {
+		return nil
 	}
 	route.SetResourceVersion(current.GetResourceVersion())
-	_, err = routes.Update(ctx, route, metav1.UpdateOptions{})
+	updateCtx, cancel := apiCall(ctx)
+	defer cancel()
+	_, err = routes.Update(updateCtx, route, metav1.UpdateOptions{})
 	return err
 }
 
-func listenNetwork(listen *spec.ListenSource) string {
-	if listen.Network == "" {
-		return "tcp"
+// routeEqual compares the parts of a route GoFi writes (the server adds
+// status and defaulted fields GoFi must not fight over).
+func routeEqual(current, desired *unstructured.Unstructured) bool {
+	currentSpec, _, _ := unstructured.NestedMap(current.Object, "spec")
+	desiredSpec, _, _ := unstructured.NestedMap(desired.Object, "spec")
+	if normalizeJSON([]any{currentSpec}) != normalizeJSON([]any{desiredSpec}) {
+		return false
 	}
-	return listen.Network
+	if !apiequality.Semantic.DeepEqual(current.GetLabels(), desired.GetLabels()) {
+		return false
+	}
+	if current.GetAnnotations()[annotationManagedListener] != desired.GetAnnotations()[annotationManagedListener] {
+		return false
+	}
+	return ownerNames(current.GetOwnerReferences()) == ownerNames(desired.GetOwnerReferences())
+}
+
+func ownerNames(refs []metav1.OwnerReference) string {
+	parts := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		parts = append(parts, ref.Kind+"/"+ref.Name+"/"+string(ref.UID))
+	}
+	return strings.Join(parts, ",")
 }
 
 // ensureGatewayListener adds (or updates) a gofi-* listener on a Gateway.
@@ -204,7 +297,9 @@ func listenNetwork(listen *spec.ListenSource) string {
 func (k *Kube) ensureGatewayListener(ctx context.Context, namespace, name, listener, protocol, routeKind string, port int) error {
 	gateways := k.dyn.Resource(gatewaysGVR).Namespace(namespace)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		gw, err := gateways.Get(ctx, name, metav1.GetOptions{})
+		getCtx, cancel := apiCall(ctx)
+		gw, err := gateways.Get(getCtx, name, metav1.GetOptions{})
+		cancel()
 		if err != nil {
 			return fmt.Errorf("Gateway %s/%s: %w", namespace, name, err)
 		}
@@ -215,12 +310,16 @@ func (k *Kube) ensureGatewayListener(ctx context.Context, namespace, name, liste
 				"kinds":      []any{map[string]any{"group": gatewayGroup, "kind": routeKind}},
 			}}
 		index := -1
+		mine := 0
 		for i, raw := range listeners {
 			existing, _ := raw.(map[string]any)
 			existingName := fmt.Sprint(existing["name"])
 			if existingName == listener {
 				index = i
 				continue
+			}
+			if strings.HasPrefix(existingName, clusterinfo.ListenerPrefix) {
+				mine++
 			}
 			existingPort, _ := existing["port"].(int64)
 			if existingPort == int64(port) && strings.EqualFold(fmt.Sprint(existing["protocol"]), protocol) {
@@ -233,12 +332,19 @@ func (k *Kube) ensureGatewayListener(ctx context.Context, namespace, name, liste
 			}
 			listeners[index] = desired
 		} else {
+			// Implementations cap a Gateway's listeners; refusing here reports a
+			// Problem on this flow instead of breaking the Gateway for all.
+			if k.gatewayMaxListeners > 0 && mine >= k.gatewayMaxListeners {
+				return fmt.Errorf("Gateway %s/%s already carries %d GoFi listeners (chart gateway.maxListeners); expose this flow through another Gateway or a LoadBalancer Service", namespace, name, mine)
+			}
 			listeners = append(listeners, desired)
 		}
 		if err := unstructured.SetNestedSlice(gw.Object, listeners, "spec", "listeners"); err != nil {
 			return err
 		}
-		_, err = gateways.Update(ctx, gw, metav1.UpdateOptions{})
+		updateCtx, cancel := apiCall(ctx)
+		defer cancel()
+		_, err = gateways.Update(updateCtx, gw, metav1.UpdateOptions{})
 		return err
 	})
 }
@@ -251,7 +357,9 @@ func (k *Kube) removeGatewayListener(ctx context.Context, managed string) error 
 	}
 	gateways := k.dyn.Resource(gatewaysGVR).Namespace(parts[0])
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		gw, err := gateways.Get(ctx, parts[1], metav1.GetOptions{})
+		getCtx, cancel := apiCall(ctx)
+		gw, err := gateways.Get(getCtx, parts[1], metav1.GetOptions{})
+		cancel()
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
@@ -271,7 +379,9 @@ func (k *Kube) removeGatewayListener(ctx context.Context, managed string) error 
 		if err := unstructured.SetNestedSlice(gw.Object, kept, "spec", "listeners"); err != nil {
 			return err
 		}
-		_, err = gateways.Update(ctx, gw, metav1.UpdateOptions{})
+		updateCtx, cancel := apiCall(ctx)
+		defer cancel()
+		_, err = gateways.Update(updateCtx, gw, metav1.UpdateOptions{})
 		return err
 	})
 }
@@ -287,7 +397,7 @@ func (k *Kube) deleteGatewayRoute(ctx context.Context, name string) error {
 			continue
 		}
 		routes := k.dyn.Resource(gvr).Namespace(k.namespace)
-		route, err := routes.Get(ctx, podName(name), metav1.GetOptions{})
+		route, err := k.getRoute(ctx, gvr, podName(name))
 		if apierrors.IsNotFound(err) {
 			continue
 		}
@@ -302,7 +412,10 @@ func (k *Kube) deleteGatewayRoute(ctx context.Context, name string) error {
 				return fmt.Errorf("remove Gateway listener %s: %w", managed, err)
 			}
 		}
-		if err := routes.Delete(ctx, route.GetName(), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		deleteCtx, cancel := apiCall(ctx)
+		err = routes.Delete(deleteCtx, route.GetName(), metav1.DeleteOptions{})
+		cancel()
+		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}

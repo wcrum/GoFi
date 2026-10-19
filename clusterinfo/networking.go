@@ -8,7 +8,6 @@ import (
 
 	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,7 +52,7 @@ func (c *Client) Networking(ctx context.Context, namespace string, flows FlowLab
 	namespaces := map[string]bool{}
 	for _, src := range sources {
 		version := c.versionFor(src.group, src.resource)
-		items, err := c.list(ctx, versions, src.group, src.resource, namespace)
+		items, err := c.list(ctx, versions, src.group, src.resource, namespace, &out.Warnings)
 		if err != nil {
 			out.Warnings = append(out.Warnings, warning(src.kind+" ("+src.group+")", err))
 			continue
@@ -70,11 +69,11 @@ func (c *Client) Networking(ctx context.Context, namespace string, flows FlowLab
 	if serviceNamespace == "" && !c.Opts.ClusterWide {
 		serviceNamespace = c.Opts.Namespace
 	}
-	services, err := c.CS.CoreV1().Services(serviceNamespace).List(ctx, metav1.ListOptions{Limit: 500})
+	services, err := c.listServices(ctx, serviceNamespace, &out.Warnings)
 	if err != nil {
 		out.Warnings = append(out.Warnings, warning("Services", err))
 	} else {
-		for _, svc := range services.Items {
+		for _, svc := range services {
 			if svc.Spec.Type != corev1.ServiceTypeLoadBalancer && svc.Spec.Type != corev1.ServiceTypeNodePort {
 				continue
 			}

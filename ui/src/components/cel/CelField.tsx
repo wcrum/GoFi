@@ -8,6 +8,8 @@ import { paths, to } from '../../router'
 import { CelEditor } from './CelEditor'
 import { LibraryPicker } from './LibraryPicker'
 import { useExpressions } from './useExpressions'
+import { CelCode } from './CelCode'
+import { t } from '../../i18n'
 
 export interface CelFieldProps {
   value: string
@@ -34,6 +36,9 @@ export function CelField({ value, onChange, resultType, disabled, placeholder, f
   const entry = libraryRef ? expressions.find(e => e.name === libraryRef.name) : undefined
   const pinned = !!libraryRef?.generation
   const linkedText = !entry ? undefined : !pinned || libraryRef?.generation === entry.generation ? entry.expression : entry.pinnedRevisions?.find(r => r.generation === libraryRef?.generation)?.expression
+  const linkedStatus = entry ? t('gofi.cel.field.generation-not-retained', 'Generation {{generation}} is no longer retained.', { generation: libraryRef!.generation })
+    : expressions.length ? t('gofi.cel.field.entry-missing', 'This library entry does not exist.')
+    : t('gofi.cel.field.loading-entry', 'Loading library entry...')
 
   return <div className={styles.field}>
     {linked ? <div className={styles.linked}>
@@ -41,25 +46,25 @@ export function CelField({ value, onChange, resultType, disabled, placeholder, f
         <Stack gap={1} alignItems="center">
           <Icon name="link" />
           <TextLink href={to(paths.expressions(libraryRef!.name))} inline={false} weight="medium">{libraryRef!.name}</TextLink>
-          {pinned ? <Tooltip content="Pinned: later library edits do not reach this stage."><span><Badge color="orange" text={`pinned · gen ${libraryRef!.generation}`} icon="lock" /></span></Tooltip>
-            : <Tooltip content="Follows the latest generation: library edits reload this flow."><span><Badge color="green" text={`latest${entry ? ` · gen ${entry.generation}` : ''}`} icon="sync" /></span></Tooltip>}
+          {pinned ? <Tooltip content={t('gofi.cel.field.pinned-tooltip', 'Pinned: later library edits do not reach this stage.')}><span><Badge color="orange" text={t('gofi.cel.field.pinned-generation', 'pinned · gen {{generation}}', { generation: libraryRef!.generation })} icon="lock" /></span></Tooltip>
+            : <Tooltip content={t('gofi.cel.field.latest-tooltip', 'Follows the latest generation: library edits reload this flow.')}><span><Badge color="green" text={entry ? t('gofi.cel.field.latest-generation', 'latest · gen {{generation}}', { generation: entry.generation }) : t('gofi.cel.field.latest', 'latest')} icon="sync" /></span></Tooltip>}
         </Stack>
         {!disabled && <Stack gap={0.5}>
-          {pinned ? <Button size="sm" variant="secondary" fill="text" onClick={() => onLibraryRefChange!({ name: libraryRef!.name })}>Follow latest</Button>
-            : <Button size="sm" variant="secondary" fill="text" disabled={!entry} onClick={() => entry && onLibraryRefChange!({ name: entry.name, generation: entry.generation })}>Pin</Button>}
-          <Button size="sm" variant="secondary" fill="text" icon="times" tooltip="Copy the current text into this stage and stop following the library" onClick={() => { onLibraryRefChange!(undefined); if (linkedText) onChange(linkedText) }}>Unlink</Button>
+          {pinned ? <Button size="sm" variant="secondary" fill="text" onClick={() => onLibraryRefChange!({ name: libraryRef!.name })}>{t('gofi.cel.field.follow-latest', 'Follow latest')}</Button>
+            : <Button size="sm" variant="secondary" fill="text" disabled={!entry} onClick={() => entry && onLibraryRefChange!({ name: entry.name, generation: entry.generation })}>{t('gofi.cel.field.pin', 'Pin')}</Button>}
+          <Button size="sm" variant="secondary" fill="text" icon="times" tooltip={t('gofi.cel.field.unlink-tooltip', 'Copy the current text into this stage and stop following the library')} onClick={() => { onLibraryRefChange!(undefined); if (linkedText) onChange(linkedText) }}>{t('gofi.cel.field.unlink', 'Unlink')}</Button>
         </Stack>}
       </Stack>
-      {linkedText !== undefined ? <code className={styles.code}>{linkedText}</code>
-        : <Text color={entry || !expressions.length ? 'secondary' : 'error'} variant="bodySmall">{entry ? `Generation ${libraryRef!.generation} is no longer retained.` : expressions.length ? 'This library entry does not exist.' : 'Loading library entry...'}</Text>}
+      {linkedText !== undefined ? <CelCode className={styles.code} expression={linkedText} />
+        : <Text color={entry || !expressions.length ? 'secondary' : 'error'} variant="bodySmall">{linkedStatus}</Text>}
     </div> : <>
       <CelEditor value={value} onChange={onChange} resultType={resultType} disabled={disabled} placeholder={placeholder} fieldNames={fieldNames} aria-label={ariaLabel} />
-      {linkable && libraryRef && value && <Alert severity="info" title={`The typed expression overrides linked "${libraryRef.name}"`} bottomSpacing={0} topSpacing={1}>
-        <Stack gap={1}><Button size="sm" variant="secondary" onClick={() => onChange('')}>Use library entry</Button><Button size="sm" variant="secondary" fill="text" onClick={() => onLibraryRefChange!(undefined)}>Remove link</Button></Stack>
+      {linkable && libraryRef && value && <Alert severity="info" title={t('gofi.cel.field.override-title', 'The typed expression overrides linked "{{name}}"', { name: libraryRef.name })} bottomSpacing={0} topSpacing={1}>
+        <Stack gap={1}><Button size="sm" variant="secondary" onClick={() => onChange('')}>{t('gofi.cel.field.use-library-entry', 'Use library entry')}</Button><Button size="sm" variant="secondary" fill="text" onClick={() => onLibraryRefChange!(undefined)}>{t('gofi.cel.field.remove-link', 'Remove link')}</Button></Stack>
       </Alert>}
     </>}
     {linkable && !disabled && <div className={styles.actions}>
-      <Button size="sm" variant="secondary" fill="text" icon="book-open" onClick={() => setPicking(true)}>{linked ? 'Change' : 'Library'}</Button>
+      <Button size="sm" variant="secondary" fill="text" icon="book-open" onClick={() => setPicking(true)}>{linked ? t('gofi.cel.field.change', 'Change') : t('gofi.cel.field.library', 'Library')}</Button>
     </div>}
     {linkable && <LibraryPicker isOpen={picking} resultType={resultType} onDismiss={() => setPicking(false)}
       onLink={e => { onChange(''); onLibraryRefChange!({ name: e.name }); setPicking(false) }}

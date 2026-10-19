@@ -3,12 +3,13 @@ import { createConnectTransport } from '@connectrpc/connect-web'
 import { fromJson, toJson, type JsonValue, type JsonObject } from '@bufbuild/protobuf'
 import { timestampDate } from '@bufbuild/protobuf/wkt'
 import { jsonValue } from './rpc-model'
+import { t } from './i18n'
 import {
   SandboxService, SandboxDefinitionSchema, SandboxStatusSchema, LibraryFunctionSchema,
   DescribePythonEnvironmentResponseSchema, type RunFunctionResponse,
 } from './gen/gofi/v1/sandbox_pb'
 
-export type PythonFunctionKind = 'framer' | 'decoder' | 'parser' | 'transformer' | 'encoder' | 'sink'
+export type PythonFunctionKind = 'fetcher' | 'streamer' | 'framer' | 'decoder' | 'parser' | 'transformer' | 'encoder' | 'sink'
 export interface EgressRule { cidr?: string; port?: number; protocol?: string; namespace?: string; podSelector?: Record<string, string>; description?: string }
 /** A saved sample input. `raw` is UTF-8 text in the UI and bytes on the wire. */
 export interface FunctionTest {
@@ -22,11 +23,13 @@ export interface SandboxDefinition {
   /** Empty for user libraries; "flow:<flow name>" for controller-managed inline libraries. */
   managedBy?: string
   egress?: EgressRule[]
+  /** Functions may call the deployment's AI endpoint (Administration › AI assistant). */
+  ai?: boolean
 }
 export interface SandboxStatus { name: string; phase: string; error?: string }
 export interface FunctionParam { name: string; type?: string; default?: unknown; required?: boolean; description?: string }
 /** managedBy is "flow:<name>" for a library GoFi generates from that flow's inline Python. */
-export interface LibraryFunction { library: string; name: string; kind: PythonFunctionKind; description: string; params: FunctionParam[]; managedBy?: string }
+export interface LibraryFunction { library: string; name: string; kind: PythonFunctionKind; description: string; params: FunctionParam[]; managedBy?: string; /** @gofi.fetcher(every=...) */ every?: string }
 export interface SourceDiagnostic { line: number; column: number; code: string; message: string }
 export interface SourceValidation { valid: boolean; diagnostics: SourceDiagnostic[] }
 export interface PythonRunResult {
@@ -68,7 +71,7 @@ export interface PythonEnvironment {
   maxMemoryMib: number
 }
 
-const client = createClient(SandboxService, createConnectTransport({ baseUrl: window.location.origin }))
+const client = createClient(SandboxService, createConnectTransport({ baseUrl: window.location.origin, useBinaryFormat: true }))
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
 const toBase64 = (bytes: Uint8Array) => { let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary) }
@@ -78,8 +81,12 @@ const textFromBase64 = (value?: string) => { if (!value) return ''; try { return
 /** True when the server does not implement an RPC yet (older controller). */
 export function isUnimplemented(error: unknown): boolean { return ConnectError.from(error).code === Code.Unimplemented }
 
+/** Whether this controller's schema carries the `ai` flag (older generated
+ * code does not; sending it would be rejected as an unknown field). */
+const SCHEMA_HAS_AI = 'ai' in SandboxDefinitionSchema.field
 function definitionToJson(sandbox: SandboxDefinition): JsonValue {
-  const json = { ...sandbox, tests: (sandbox.tests ?? []).map(test => ({ ...test, raw: test.raw ? toBase64(encoder.encode(test.raw)) : undefined })) }
+  const { ai, ...rest } = sandbox
+  const json = { ...rest, ...(SCHEMA_HAS_AI && ai !== undefined ? { ai } : {}), tests: (sandbox.tests ?? []).map(test => ({ ...test, raw: test.raw ? toBase64(encoder.encode(test.raw)) : undefined })) }
   // fromJson rejects explicit undefined (e.g. bytes `raw`), so drop those keys.
   return JSON.parse(JSON.stringify(json)) as JsonValue
 }
@@ -94,7 +101,7 @@ export async function listSandboxes(): Promise<{ sandboxes: SandboxDefinition[];
 }
 export async function applySandbox(sandbox: SandboxDefinition): Promise<{ sandbox: SandboxDefinition; status?: SandboxStatus }> {
   const response = await client.applySandbox({ sandbox: fromJson(SandboxDefinitionSchema, jsonValue(definitionToJson(sandbox))) })
-  if (!response.sandbox) throw new Error('GoFi returned no Python library')
+  if (!response.sandbox) throw new Error(t('gofi.python.sandbox-api.no-library-returned', 'GoFi returned no Python library'))
   return { sandbox: definitionFromJson(toJson(SandboxDefinitionSchema, response.sandbox)), status: response.status ? toJson(SandboxStatusSchema, response.status) as unknown as SandboxStatus : undefined }
 }
 export async function deleteSandbox(name: string): Promise<void> { await client.deleteSandbox({ name }) }
@@ -166,7 +173,7 @@ export function watchWorkerLogs(target: { library?: string; runId?: string; tail
       } catch (error) {
         if (abort.signal.aborted) return
         const code = ConnectError.from(error).code
-        if (code === Code.Unimplemented) { onState('unavailable', 'This GoFi controller cannot stream worker logs yet.'); return }
+        if (code === Code.Unimplemented) { onState('unavailable', t('gofi.python.sandbox-api.logs-unsupported', 'This GoFi controller cannot stream worker logs yet.')); return }
         if (code === Code.PermissionDenied || code === Code.Unauthenticated) { onState('unavailable', ConnectError.from(error).rawMessage); return }
         if (target.runId && code === Code.NotFound) { onState('ended', ConnectError.from(error).rawMessage); return }
         onState('reconnecting', ConnectError.from(error).rawMessage)

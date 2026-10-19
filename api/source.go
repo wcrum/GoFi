@@ -171,7 +171,7 @@ func (h *sandboxHandler) RunSource(ctx context.Context, req *connect.Request[gof
 	if proto.Size(req.Msg) > maxPythonSampleBytes+maxPythonSourceBytes {
 		return nil, rpcError(connect.CodeInvalidArgument, errors.New("function sample exceeds 1 MiB"))
 	}
-	definition, err := sandbox.Normalize(sandbox.Definition{Name: "run-check", SourceCode: req.Msg.Source, TimeoutSeconds: int(req.Msg.TimeoutSeconds), MemoryMiB: int(req.Msg.MemoryMib)})
+	definition, err := sandbox.Normalize(sandbox.Definition{Name: "run-check", SourceCode: req.Msg.Source, TimeoutSeconds: int(req.Msg.TimeoutSeconds), MemoryMiB: int(req.Msg.MemoryMib), AI: req.Msg.Ai})
 	if err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}

@@ -4,17 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
 	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
-	"github.com/wcrum/gofi/gen/gofi/v1/gofiv1connect"
 	"github.com/wcrum/gofi/sandbox"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type sandboxHandler struct{ manager *sandbox.Supervisor }
+type sandboxHandler struct {
+	manager *sandbox.Supervisor
+	// functions caches each worker's function list per binding (functions.go).
+	functions *functionCache
+}
+
+func newSandboxHandler(manager *sandbox.Supervisor) *sandboxHandler {
+	return &sandboxHandler{manager: manager, functions: newFunctionCache()}
+}
 
 func (h *sandboxHandler) ListSandboxes(_ context.Context, _ *connect.Request[gofiv1.ListSandboxesRequest]) (*connect.Response[gofiv1.ListSandboxesResponse], error) {
 	out := &gofiv1.ListSandboxesResponse{}
@@ -85,33 +91,28 @@ func (h *sandboxHandler) DeleteSandbox(ctx context.Context, req *connect.Request
 	}
 	return connect.NewResponse(&gofiv1.DeleteSandboxResponse{}), nil
 }
+
+// ListFunctions answers from the Supervisor-level cache: a worker is asked
+// again only when its binding changed (a restart or a new digest hands out a
+// new endpoint/token) or its entry aged past functionTTL. Workers are asked
+// concurrently, so one slow worker does not serialize the others.
 func (h *sandboxHandler) ListFunctions(ctx context.Context, req *connect.Request[gofiv1.ListLibraryFunctionsRequest]) (*connect.Response[gofiv1.ListLibraryFunctionsResponse], error) {
 	bindings, err := h.manager.Bindings(ctx)
 	if err != nil {
 		return nil, rpcError(connect.CodeUnavailable, err)
 	}
-	out := &gofiv1.ListLibraryFunctionsResponse{}
-	transport := &http.Transport{Proxy: nil}
-	defer transport.CloseIdleConnections()
+	var libraries []sandbox.Definition
 	for _, d := range h.manager.List() {
 		if req.Msg.Library != "" && req.Msg.Library != d.Name {
 			continue
 		}
-		binding, ready := bindings[d.Name]
-		if !ready {
-			continue
+		if _, ready := bindings[d.Name]; ready {
+			libraries = append(libraries, d)
 		}
-		callCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		call := connect.NewRequest(&gofiv1.WorkerListFunctionsRequest{})
-		call.Header().Set("Authorization", "Bearer "+binding.Token)
-		res, err := gofiv1connect.NewWorkerServiceClient(&http.Client{Transport: transport}, binding.Endpoint, connect.WithReadMaxBytes(1<<20)).ListFunctions(callCtx, call)
-		cancel()
-		if err != nil {
-			continue
-		}
-		for _, f := range res.Msg.Functions {
-			out.Functions = append(out.Functions, &gofiv1.LibraryFunction{Library: d.Name, Name: f.Name, Kind: f.Kind, Description: f.Description, Params: f.Params, ManagedBy: d.ManagedBy})
-		}
+	}
+	out := &gofiv1.ListLibraryFunctionsResponse{}
+	for _, item := range h.functions.list(ctx, libraries, bindings) {
+		out.Functions = append(out.Functions, item)
 	}
 	return connect.NewResponse(out), nil
 }

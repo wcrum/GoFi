@@ -1,4 +1,5 @@
 import { isUnimplemented, runPythonFunction, runPythonSource, type PythonFunctionKind, type PythonRunResult } from '../../sandbox-api'
+import { t } from '../../i18n/index.ts'
 
 export interface RunTarget {
   /** Current editor source. */
@@ -23,7 +24,7 @@ export async function runPython(target: RunTarget, input: RunInput): Promise<Run
   try {
     return { result: await runPythonSource({ ...input, source: target.source, timeoutSeconds: target.timeoutSeconds, memoryMib: target.memoryMib }), mode: 'unsaved' }
   } catch (error) {
-    if (isUnimplemented(error)) throw new Error('This GoFi controller cannot run unsaved source yet. Save and launch the library, then run it.')
+    if (isUnimplemented(error)) throw new Error(t('gofi.python.run.unsaved-unsupported', 'This GoFi controller cannot run unsaved source yet. Save and launch the library, then run it.'))
     throw error
   }
 }
@@ -32,6 +33,6 @@ export async function runPython(target: RunTarget, input: RunInput): Promise<Run
 export function objectInput(value: string, label: string): Record<string, unknown> {
   if (!value.trim()) return {}
   const parsed: unknown = JSON.parse(value)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${label} must be a JSON object`)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(t('gofi.python.run.must-be-json-object', '{{label}} must be a JSON object', { label }))
   return parsed as Record<string, unknown>
 }

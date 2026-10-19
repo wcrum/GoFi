@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { insertTemplate, configWithDefaults, coerceParam, missingParams, evaluateTest, suggestLibraryName, promoteInlineSource, FUNCTION_TEMPLATES, DEFAULT_LIBRARY } from './python-templates.ts'
+import { insertTemplate, configWithDefaults, coerceParam, missingParams, evaluateTest, suggestLibraryName, promoteInlineSource, FUNCTION_TEMPLATES, TEMPLATE_GROUPS, DEFAULT_LIBRARY } from './python-templates.ts'
 
 test('insertTemplate adds import gofi only when missing', () => {
   const added = insertTemplate('', FUNCTION_TEMPLATES[0].source)
@@ -12,7 +12,7 @@ test('insertTemplate adds import gofi only when missing', () => {
 
 test('templates cover every step decorator and never the removed ingress hook', () => {
   const all = FUNCTION_TEMPLATES.map((template) => template.source).join('\n') + DEFAULT_LIBRARY
-  for (const kind of ['framer', 'decoder', 'parser', 'transformer', 'encoder', 'sink']) assert.match(all, new RegExp(`@gofi\\.${kind}\\b`))
+  for (const kind of ['fetcher', 'streamer', 'framer', 'decoder', 'parser', 'transformer', 'encoder', 'sink']) assert.match(all, new RegExp(`@gofi\\.${kind}\\b`))
   assert.doesNotMatch(all, /@gofi\.(ingress|port|listener)\b/)
 })
 
@@ -110,4 +110,34 @@ test('highlight helpers: input preview, line ranges, unwrapping inline lines', a
   assert.deepEqual(lineRanges([]), [])
   // A 3-line wrapper above a 4-line snippet: wrapper and out-of-range lines drop.
   assert.deepEqual(unwrapLines([1, 3, 4, 5, 7, 8], 3, 4), [1, 2, 4])
+})
+
+test('AI templates: wizard ids and keyword names, gofi.llm only, no provider, endpoint, or key', async () => {
+  const { discoverFunctions } = await import('./python-templates.ts')
+  const ai = FUNCTION_TEMPLATES.filter((template) => template.id.startsWith('ai-'))
+  assert.deepEqual(ai.map((template) => template.id), ['ai-classify', 'ai-enrich', 'ai-extract', 'ai-sink'])
+  for (const template of ai) {
+    assert.match(template.label, /^AI /)
+    assert.match(template.source, /gofi\.llm\.(classify|chat|extract)\(/, template.id)
+    assert.match(template.source, /^# Needs "Functions may use the AI endpoint" on under Administration › AI assistant; GoFi supplies the endpoint and egress\.$/m, template.id)
+    assert.doesNotMatch(template.source, /api_key|base_url|provider|langchain_|egress:|https?:\/\//, `${template.id} names no provider, endpoint, or key`)
+    assert.doesNotMatch(template.source, /[`]|\$\{/, `${template.id} is a plain template literal`)
+    assert.equal(discoverFunctions(insertTemplate('', template.source)).length, 1, template.id)
+  }
+  const found = discoverFunctions(ai.map((template) => template.source).join('\n'))
+  assert.deepEqual(found.map((fn) => `${fn.kind}:${fn.name}`), ['transformer:ai_classify', 'transformer:ai_enrich', 'transformer:ai_extract', 'sink:ai_notify'])
+  // The new-function wizard prefills these keyword parameters by name.
+  assert.match(ai[0].source, /\*, labels: list = \[.*\], drop: list = \[.*\], instructions: str = /)
+  assert.match(ai[1].source, /\*, prompt: str = ".*\{fields\}.*", output_key: str = "summary"\)/)
+  assert.match(ai[2].source, /\*, prompt: str = "Extract .*\{fields\}", output_key: str = "extracted"\)/)
+  assert.match(ai[2].source, /class Extracted\(BaseModel\):\n    \"\"\"[^\n]*\"\"\"\n\n    vendor: str \| None = None\n/, 'the wizard rewrites the model fields')
+  assert.match(ai[2].source, /gofi\.llm\.extract\(.*, Extracted\)/)
+  assert.match(ai[3].source, /\*, prompt: str = ".*\{fields\}.*"\) -> None/)
+})
+
+test('every template belongs to exactly one picker group', () => {
+  const grouped = TEMPLATE_GROUPS.flatMap(group => group.ids)
+  assert.deepEqual([...grouped].sort(), FUNCTION_TEMPLATES.map(template => template.id).sort())
+  assert.equal(new Set(grouped).size, grouped.length)
+  for (const group of TEMPLATE_GROUPS) assert.ok(group.label)
 })

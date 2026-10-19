@@ -44,6 +44,7 @@ message DebugFunctionRequest {
  int32 max_steps = 10;      // default 5000, max 20000
  string run_id = 11;        // correlates WatchWorkerLogs lines
  int32 timeout_seconds = 12;
+ bool ai = 13;              // deprecated: ignored (AssistantConfiguration.allow_functions decides)
 }
 message DebugRecording {
  repeated DebugStep steps = 1;
@@ -113,6 +114,11 @@ message SandboxDefinition {
  string managed_by=6;
  // Outbound destinations this library may reach. Empty = no egress (default).
  repeated EgressRule egress=7;
+ // Deprecated: ignored. Whether libraries may use the deployment's AI
+ // endpoint through gofi.llm is one switch under Administration › AI
+ // assistant (AssistantConfiguration.allow_functions); GoFi supplies the
+ // endpoint, model, key, and egress rules to every worker while it is on.
+ bool ai=8;
 }
 // EgressRule allows outbound traffic from a library's worker. Kubernetes
 // enforces each rule with NetworkPolicy (cidr and/or namespace+pod_selector;
@@ -138,7 +144,12 @@ message FunctionTest {
  google.protobuf.Struct expect_fields=8;
  optional bool expect_drop=9;
 }
-message SandboxStatus { string name=1; string phase=2; string error=3; }
+message SandboxStatus {
+ string name=1; string phase=2; string error=3;
+ // Whether the deployment currently provides an AI endpoint to libraries
+ // with `ai` set (explains an unavailable gofi.llm).
+ bool ai_available=4;
+}
 message ListSandboxesRequest {}
 message ListSandboxesResponse { repeated SandboxDefinition sandboxes=1; repeated SandboxStatus statuses=2; }
 message GetSandboxRequest { string name=1; }
@@ -160,6 +171,8 @@ message LibraryFunction {
  // "flow:<name>" when the library is generated from a flow's inline Python;
  // such functions belong to that flow and are not offered to others.
  string managed_by=7;
+ // @gofi.fetcher(every=...): the default poll interval (Go duration).
+ string every=8;
 }
 message FunctionParam {
  string name=1;
@@ -174,7 +187,14 @@ message ListLibraryFunctionsResponse { repeated LibraryFunction functions=1; }
 service WorkerService {
  rpc ListFunctions(WorkerListFunctionsRequest) returns (WorkerListFunctionsResponse);
  rpc Invoke(WorkerInvokeRequest) returns (WorkerInvokeResponse);
- rpc Listen(WorkerListenRequest) returns (stream WorkerListenResponse);
+ // Fetch calls one @gofi.fetcher poll under the library's deadline and
+ // returns the frames it produced (Flow source.python, docs/flows.md).
+ rpc Fetch(WorkerSourceRequest) returns (WorkerFetchResponse);
+ // Stream runs one @gofi.streamer until it ends, fails, or the caller
+ // cancels. The first message (started = true) carries no frames; later
+ // messages carry frames. The worker produces at most a small window of
+ // messages ahead of the caller (bounded backpressure).
+ rpc Stream(WorkerSourceRequest) returns (stream WorkerStreamResponse);
  rpc FormatSource(WorkerFormatSourceRequest) returns (WorkerFormatSourceResponse);
  rpc ValidateSource(WorkerValidateSourceRequest) returns (WorkerValidateSourceResponse);
  rpc DescribeEnvironment(DescribePythonEnvironmentRequest) returns (DescribePythonEnvironmentResponse);
@@ -191,7 +211,11 @@ message WorkerDebugRequest {
  int32 max_steps = 8;
  string invocation_id = 9;
 }
-message WorkerFunction { string name=1; string kind=2; string description=3; reserved 4; reserved "ingress"; repeated FunctionParam params=5; }
+message WorkerFunction {
+ string name=1; string kind=2; string description=3; reserved 4; reserved "ingress"; repeated FunctionParam params=5;
+ // @gofi.fetcher(every=...): the default poll interval (Go duration).
+ string every=6;
+}
 message WorkerListFunctionsRequest {}
 message WorkerListFunctionsResponse { repeated WorkerFunction functions=1; }
 message WorkerInvokeRequest { string name=1; string kind=2; bytes raw=3; google.protobuf.Struct fields=4; google.protobuf.Struct meta=5; google.protobuf.Struct config=6; string invocation_id=7; bool trace_lines=8; }
@@ -214,8 +238,38 @@ message WorkerInvokeResponse {
  repeated int32 executed_lines=10;
  string invocation_id=11;
 }
-message WorkerListenRequest { string name=1; }
-message WorkerListenResponse { bytes raw=1; google.protobuf.Struct fields=2; google.protobuf.Struct meta=3; }
+// A Python flow source call: the function, its configuration, and the state
+// the previous call (or stream) left in ctx.state.
+message WorkerSourceRequest {
+ string name = 1;
+ google.protobuf.Struct config = 2;
+ string flow = 3;
+ google.protobuf.Struct state = 4;
+ string invocation_id = 5;
+}
+// One frame a fetcher returned or a streamer yielded, with optional metadata
+// from gofi.Frame(data, meta=...).
+message SourceFrame { bytes data = 1; map<string, string> meta = 2; }
+message WorkerFetchResponse {
+ repeated SourceFrame frames = 1;
+ // ctx.state after the call; send it back with the next call.
+ google.protobuf.Struct state = 2;
+ string stdout = 3;
+ string stderr = 4;
+ int64 duration_us = 5;
+ // A user-code exception (the RPC still succeeds, like Invoke).
+ string error = 6;
+ SourceDiagnostic error_location = 7;
+ string invocation_id = 8;
+}
+message WorkerStreamResponse {
+ repeated SourceFrame frames = 1;
+ // Set when ctx.state changed since the previous message.
+ google.protobuf.Struct state = 2;
+ // The first message: the streamer process started.
+ bool started = 3;
+ string invocation_id = 4;
+}
 
 // Formatting and validation run only in the private tooling worker. They never
 // import or execute the submitted source in the controller or tooling worker.
@@ -272,6 +326,8 @@ message RunSourceRequest {
  // Names the short-lived worker so WatchWorkerLogs(run_id) can attach to it.
  string run_id = 10;
  bool trace_lines = 11;
+ // Run with the deployment's AI endpoint, as a library with `ai` set would.
+ bool ai = 12;
 }
 message DescribePythonEnvironmentRequest {}
 message PythonPackage { string name = 1; string version = 2; string summary = 3; }
@@ -283,4 +339,7 @@ message DescribePythonEnvironmentResponse {
  string network_policy = 4;
  int32 max_timeout_seconds = 5;
  int32 max_memory_mib = 6;
+ // Whether the deployment provides an AI endpoint (gofi.llm) to libraries
+ // that opt in with SandboxDefinition.ai.
+ bool ai_available = 7;
 }

@@ -1,0 +1,37 @@
+#!/sbin/openrc-run
+# OpenRC service for GoFi on Alpine/busybox hosts. Environment comes from
+# /etc/gofi/gofi.env (see gofi.env.example); state lives in /var/lib/gofi.
+# supervise-daemon restarts the process after a crash with a short backoff.
+
+name="gofi"
+description="GoFi data flow engine"
+command="/usr/local/bin/gofi"
+command_user="gofi:gofi"
+directory="/var/lib/gofi"
+supervisor="supervise-daemon"
+respawn_delay=3
+respawn_max=0
+output_logger="logger -t gofi -p daemon.info"
+error_logger="logger -t gofi -p daemon.err"
+rc_ulimit="-n 8192"
+# SIGTERM drains flows (GOFI_DRAIN_TIMEOUT, default 20s) before exit.
+retry="TERM/30/KILL/5"
+
+depend() {
+	need localmount
+	use net logger
+	after firewall
+}
+
+start_pre() {
+	checkpath --directory --owner "$command_user" --mode 0750 /var/lib/gofi
+	if [ -r /etc/gofi/gofi.env ]; then
+		set -a
+		. /etc/gofi/gofi.env
+		set +a
+	fi
+	# No cgroup delegation here: tell GoFi its budget explicitly.
+	: "${GOFI_PROFILE:=edge}"
+	: "${GOFI_MEMORY_LIMIT:=192Mi}"
+	export GOFI_PROFILE GOFI_MEMORY_LIMIT
+}

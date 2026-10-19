@@ -1,0 +1,92 @@
+suite: network policies
+templates:
+  - templates/networkpolicy.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: renders nothing unless enabled
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: blocks the metadata service for the controller and listeners only
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - documentSelector:
+          path: metadata.name
+          value: gofi-controller-block-metadata
+        equal:
+          path: spec.egress[0].to[0].ipBlock
+          value:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+      - documentSelector:
+          path: metadata.name
+          value: gofi-controller-block-metadata
+        equal:
+          path: spec.policyTypes
+          value: [Egress]
+      - documentSelector:
+          path: metadata.name
+          value: gofi-listeners-block-metadata
+        equal:
+          path: spec.podSelector.matchLabels["gofi.io/managed-by"]
+          value: "true"
+      - documentSelector:
+          path: metadata.name
+          value: gofi-listeners-block-metadata
+        equal:
+          path: spec.egress[0].to[1].ipBlock.except[0]
+          value: fd00:ec2::254/128
+  - it: restricts the relay port to the controller and scrapers
+    set:
+      networkPolicy.enabled: true
+      networkPolicy.relay.extraFrom:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+    documentSelector:
+      path: metadata.name
+      value: gofi-listeners-relay
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress]
+      - contains:
+          path: spec.ingress[0].ports
+          content:
+            protocol: TCP
+            port: 1
+            endPort: 9090
+      - contains:
+          path: spec.ingress[0].ports
+          content:
+            protocol: TCP
+            port: 9092
+            endPort: 65535
+      - notExists:
+          path: spec.ingress[0].from
+      - equal:
+          path: spec.ingress[1].ports
+          value:
+            - protocol: TCP
+              port: 9091
+      - equal:
+          path: spec.ingress[1].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: controller
+      - equal:
+          path: spec.ingress[1].from[1].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: monitoring
+      - equal:
+          path: spec.ingress[1].from[2].ipBlock.cidr
+          value: 10.0.0.0/8
+  - it: can render only the relay policy
+    set:
+      networkPolicy.enabled: true
+      networkPolicy.blockMetadata.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1

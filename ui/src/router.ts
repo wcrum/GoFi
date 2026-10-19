@@ -3,22 +3,25 @@ import { useLocation } from 'react-router-dom-v5-compat'
 // Hash routes keep every page linkable without server-side route handling;
 // the Go server only serves index.html and static assets. react-router's
 // HashRouter (the same package @grafana/ui links bind to) owns the location.
-export type FlowTab = 'flow' | 'traffic' | 'connectivity' | 'resource' | 'edit'
+export type FlowTab = 'flow' | 'traffic' | 'problems' | 'connectivity' | 'resource' | 'edit'
 export type ClusterTab = 'overview' | 'networking'
+export type AdministrationSection = 'overview' | 'assistant'
 export type Route =
   | { page: 'home' }
   | { page: 'flows' }
   | { page: 'flow-new' }
   | { page: 'flow'; name: string; tab: FlowTab }
   | { page: 'explore'; flow: string }
-  | { page: 'libraries' }
+  | { page: 'function-new' }
+  /** `name` selects that library in the editor. */
+  | { page: 'libraries'; name?: string }
   | { page: 'expressions'; name: string }
   | { page: 'endpoints' }
-  | { page: 'configuration' }
   | { page: 'cluster'; tab: ClusterTab }
+  | { page: 'administration'; section: AdministrationSection }
   | { page: 'not-found'; path: string }
 
-const FLOW_TABS: FlowTab[] = ['flow', 'traffic', 'connectivity', 'resource', 'edit']
+const FLOW_TABS: FlowTab[] = ['flow', 'traffic', 'problems', 'connectivity', 'resource', 'edit']
 
 export function parseRoute(hash: string): Route {
   const [rawPath, rawQuery = ''] = hash.replace(/^#/, '').split('?')
@@ -30,13 +33,17 @@ export function parseRoute(hash: string): Route {
       if (parts.length === 1) return { page: 'flows' }
       if (parts[1] === 'new' && parts.length === 2) return { page: 'flow-new' }
       if (parts.length === 2) return { page: 'flow', name: parts[1], tab: 'flow' }
+      // History merged into Resource; old /history links (and their ?rev=) still resolve.
+      if (parts.length === 3 && parts[2] === 'history') return { page: 'flow', name: parts[1], tab: 'resource' }
       if (parts.length === 3 && FLOW_TABS.includes(parts[2] as FlowTab)) return { page: 'flow', name: parts[1], tab: parts[2] as FlowTab }
       break
     case 'explore':
       if (parts.length === 1) return { page: 'explore', flow: query.get('flow') ?? '' }
       break
-    case 'libraries':
-      if (parts.length === 1) return { page: 'libraries' }
+    case 'functions':
+    case 'libraries': // former path, kept for links
+      if (parts.length === 1) return query.get('name') ? { page: 'libraries', name: query.get('name')! } : { page: 'libraries' }
+      if (parts[1] === 'new' && parts.length === 2) return { page: 'function-new' }
       break
     case 'cel':
       if (parts.length === 1) return { page: 'expressions', name: query.get('name') ?? '' }
@@ -48,8 +55,9 @@ export function parseRoute(hash: string): Route {
       if (parts.length === 1) return { page: 'cluster', tab: 'overview' }
       if (parts.length === 2 && parts[1] === 'networking') return { page: 'cluster', tab: 'networking' }
       break
-    case 'admin':
-      if (parts[1] === 'configuration' && parts.length === 2) return { page: 'configuration' }
+    case 'administration':
+      if (parts.length === 1) return { page: 'administration', section: 'overview' }
+      if (parts.length === 2 && parts[1] === 'assistant') return { page: 'administration', section: 'assistant' }
       break
   }
   return { page: 'not-found', path: rawPath }
@@ -61,12 +69,15 @@ export const paths = {
   flows: () => '#/flows',
   newFlow: () => '#/flows/new',
   flow: (name: string, tab: FlowTab = 'flow') => `#/flows/${encodeURIComponent(name)}${tab === 'flow' ? '' : `/${tab}`}`,
+  /** The Resource tab, optionally comparing revision rev with the flow. */
+  flowRevision: (name: string, rev?: number) => `#/flows/${encodeURIComponent(name)}/resource${rev ? `?rev=${rev}` : ''}`,
   explore: (flow = '') => `#/explore${flow ? `?flow=${encodeURIComponent(flow)}` : ''}`,
-  libraries: () => '#/libraries',
+  libraries: (name = '') => `#/functions${name ? `?name=${encodeURIComponent(name)}` : ''}`,
+  newFunction: () => '#/functions/new',
   expressions: (name = '') => `#/cel${name ? `?name=${encodeURIComponent(name)}` : ''}`,
   endpoints: () => '#/connections/endpoints',
-  configuration: () => '#/admin/configuration',
   cluster: (tab: ClusterTab = 'overview') => tab === 'overview' ? '#/cluster' : `#/cluster/${tab}`,
+  administration: (section: AdministrationSection = 'overview') => section === 'overview' ? '#/administration' : `#/administration/${section}`,
 }
 
 export function navigate(href: string, options: { replace?: boolean } = {}) {
@@ -76,6 +87,13 @@ export function navigate(href: string, options: { replace?: boolean } = {}) {
 
 /** Router path for @grafana/ui TextLink/Link, which resolve through react-router. */
 export const to = (href: string) => href.replace(/^#/, '')
+
+/** The ?rev= revision number of the current location, if any. */
+export function useRevisionParam(): number | undefined {
+  const { search } = useLocation()
+  const rev = Number(new URLSearchParams(search).get('rev'))
+  return Number.isInteger(rev) && rev > 0 ? rev : undefined
+}
 
 export function useRoute(): Route {
   const location = useLocation()

@@ -1,0 +1,27 @@
+# Production overlay for a plain (non-UDS) multi-node cluster. Pair with
+# digest pins (image.digest, sandboxImage.digest) from your release process.
+image:
+  pullPolicy: IfNotPresent
+# HA controller: two replicas, Lease leader election, rolling updates, PDB,
+# spread across nodes.
+replicaCount: 2
+leaderElection:
+  enabled: true
+podAntiAffinity: soft
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: gofi
+        app.kubernetes.io/component: controller
+# One release per cluster creates the PriorityClasses; others reference them.
+priorityClasses:
+  create: true
+# Block the cloud metadata service and keep the :9091 relay to the controller
+# and Prometheus (needs an enforcing CNI).
+networkPolicy:
+  enabled: true
+alerting:
+  enabled: true

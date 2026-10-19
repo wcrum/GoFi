@@ -108,3 +108,32 @@ func TestZenohRESTRejectsInvalidKeysAndOriginsWithoutNetwork(t *testing.T) {
 		t.Fatalf("invalid routing predicate accepted: %v", err)
 	}
 }
+
+func TestZenohRESTDeleteRemovesKeyWithoutBody(t *testing.T) {
+	received := make(chan capturedRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/demo/key" {
+			t.Errorf("unexpected key URL: %s", r.URL)
+		}
+		data, _ := io.ReadAll(r.Body)
+		received <- capturedRequest{method: r.Method, header: r.Header.Clone(), body: data}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	sk, err := New(spec.SinkCfg{Type: "zenoh", URL: server.URL, Subject: "demo/key", Method: "delete"}, "route")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sk.Close()
+	if err := sk.Send(&message.Message{Raw: []byte("ignored"), Payload: []byte("ignored too")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-received; got.method != http.MethodDelete || len(got.body) != 0 {
+		t.Fatalf("incorrect Zenoh REST delete: %+v", got)
+	}
+	for _, key := range []string{"demo/*", "demo/**", "@/router/local"} {
+		if err := Validate(spec.SinkCfg{Type: "zenoh", URL: "http://router:8000", Subject: key, Method: "DELETE"}); err == nil {
+			t.Fatalf("delete accepted non-concrete key %q", key)
+		}
+	}
+}

@@ -161,3 +161,18 @@ class WorkerDebugTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SecretMaskingTest(unittest.TestCase):
+    def test_secret_named_locals_and_watches_are_redacted(self):
+        from gofi import debugger
+        self.assertEqual(debugger.variable("api_key", "sk-live-secret")["repr"], "'***'")
+        self.assertEqual(debugger.variable("apiKey", "x")["repr"], "'***'")
+        self.assertEqual(debugger.variable("password", {"nested": "x"})["repr"], "'***'")
+        self.assertNotIn("children", debugger.variable("token", ["a"]))
+        self.assertEqual(debugger.variable("model", "gpt")["repr"], "'gpt'")
+        self.assertEqual(debugger.variable("api_key", "")["repr"], "''")
+        import types
+        frame = types.SimpleNamespace(f_globals={}, f_locals={"api_key": "sk-live-secret"})
+        self.assertEqual(debugger.Recorder.watch("api_key", frame)["repr"], "'***'")
+        self.assertEqual(debugger.Recorder.watch(" api_key ", frame)["repr"], "'***'")

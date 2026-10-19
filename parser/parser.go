@@ -13,11 +13,22 @@ type Parser interface {
 	Parse(msg *message.Message) error
 }
 
-// New returns a Parser for the given config.
-func New(cfg spec.ParserCfg) (Parser, error) {
-	if cfg.MaxDecodedBytes < 0 {
-		return nil, fmt.Errorf("parser: maxDecodedBytes must not be negative")
+// ForFlow returns the parser a flow runs on each frame: its decode step
+// (decode.decoders), then its parser.
+func ForFlow(def spec.FlowDefinition) (Parser, error) {
+	if err := def.Normalize(); err != nil {
+		return nil, err
 	}
+	p, err := New(def.Parser)
+	if err != nil {
+		return nil, err
+	}
+	return WithDecode(p, def.DecodeSteps())
+}
+
+// New returns a Parser for the given config. It does not decode: see
+// ForFlow and WithDecode for the flow's decode step.
+func New(cfg spec.ParserCfg) (Parser, error) {
 	if cfg.ErrorPolicy != "" && cfg.ErrorPolicy != "continue" && cfg.ErrorPolicy != "drop" {
 		return nil, fmt.Errorf("parser: unknown errorPolicy %q", cfg.ErrorPolicy)
 	}
@@ -32,10 +43,12 @@ func New(cfg spec.ParserCfg) (Parser, error) {
 		p = &xmlParser{}
 	case "json":
 		p = &jsonParser{}
-	case "none", "":
+	case "none", "text", "":
+		// text is the parse stage's name for the same thing: the decoded
+		// frame as a string in fields.raw.
 		p = &passthroughParser{}
 	default:
 		return nil, fmt.Errorf("parser: unknown format %q", cfg.Format)
 	}
-	return withDecoders(p, cfg)
+	return p, nil
 }

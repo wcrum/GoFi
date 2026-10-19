@@ -7,7 +7,14 @@ import { useGoFi } from '../state'
 import { ThemePicker } from '../theme/ThemePicker'
 import { StatusIndicator } from '../components/StatusIndicator'
 import { GoFiMark } from '../components/GoFiMark'
+import { FaRobot } from 'react-icons/fa'
 import { SearchCommand } from './SearchModal'
+import { ProblemsBadge } from '../components/operations/ProblemsBadge'
+import { AssistantDrawer } from '../components/assistant/AssistantDrawer'
+import { ASSISTANT_OPEN_EVENT, useAssistantReadiness } from '../components/assistant/useAssistantReadiness'
+import { TutorialPanel } from '../components/tutorial/TutorialPanel'
+import { useTutorial } from '../components/tutorial/useTutorial'
+import { t } from '../i18n'
 
 export interface NavNode { id: string; text: string; icon?: IconName; href: string; children?: NavNode[] }
 interface Crumb { text: string; href: string }
@@ -20,48 +27,81 @@ function modeIcon(mode: string): IconName {
   return mode === 'kubernetes' ? 'kubernetes' : mode === 'docker' || mode === 'compose' ? 'docker' : 'monitor'
 }
 
-const modeTooltip = (mode: { mode: string; driverKind?: string }) => `Deployment mode: ${mode.mode} · driver: ${mode.driverKind || 'unknown'}`
+const modeTooltip = (mode: { mode: string; driverKind?: string }) => t('gofi.shell.chrome.mode-tooltip', 'Deployment mode: {{mode}} · driver: {{driver}}', { mode: mode.mode, driver: mode.driverKind || t('gofi.shell.chrome.driver-unknown', 'unknown') })
+
+/** Labels of the main menu and breadcrumbs, resolved at render time. */
+const navLabels = () => ({
+  home: t('gofi.shell.nav.home', 'Home'),
+  flows: t('gofi.shell.nav.flows', 'Flows'),
+  explore: t('gofi.shell.nav.explore', 'Explore'),
+  libraries: t('gofi.shell.nav.functions', 'Functions'),
+  expressions: t('gofi.shell.nav.cel-library', 'CEL library'),
+  connections: t('gofi.shell.nav.connections', 'Connections'),
+  endpoints: t('gofi.shell.nav.endpoints', 'Endpoints'),
+  cluster: t('gofi.shell.nav.cluster', 'Cluster'),
+  overview: t('gofi.shell.nav.cluster-overview', 'Overview'),
+  networking: t('gofi.shell.nav.cluster-networking', 'Networking'),
+  administration: t('gofi.shell.nav.administration', 'Administration'),
+  administrationOverview: t('gofi.shell.nav.administration-overview', 'Overview'),
+  assistant: t('gofi.shell.nav.administration-assistant', 'AI assistant'),
+})
 
 /** The main menu. Cluster pages exist only with the Kubernetes driver. */
 function navTree(flows: string[], kubernetes: boolean): NavNode[] {
+  const labels = navLabels()
   return [
-    { id: 'home', text: 'Home', icon: 'home-alt', href: paths.home() },
-    { id: 'flows', text: 'Flows', icon: 'exchange-alt', href: paths.flows(), children: flows.map(name => ({ id: `flow:${name}`, text: name, href: paths.flow(name) })) },
-    { id: 'explore', text: 'Explore', icon: 'compass', href: paths.explore() },
-    { id: 'libraries', text: 'Python libraries', icon: 'brackets-curly', href: paths.libraries() },
-    { id: 'expressions', text: 'CEL library', icon: 'book-open', href: paths.expressions() },
-    { id: 'connections', text: 'Connections', icon: 'adjust-circle', href: paths.endpoints(), children: [{ id: 'endpoints', text: 'Endpoints', href: paths.endpoints() }] },
-    ...kubernetes ? [{ id: 'cluster', text: 'Cluster', icon: 'cloud', href: paths.cluster(), children: [{ id: 'cluster:overview', text: 'Overview', href: paths.cluster() }, { id: 'cluster:networking', text: 'Networking', href: paths.cluster('networking') }] } satisfies NavNode] : [],
-    { id: 'admin', text: 'Administration', icon: 'cog', href: paths.configuration(), children: [{ id: 'configuration', text: 'Configuration', href: paths.configuration() }] },
+    { id: 'home', text: labels.home, icon: 'home-alt', href: paths.home() },
+    { id: 'flows', text: labels.flows, icon: 'exchange-alt', href: paths.flows(), children: flows.map(name => ({ id: `flow:${name}`, text: name, href: paths.flow(name) })) },
+    { id: 'explore', text: labels.explore, icon: 'compass', href: paths.explore() },
+    { id: 'libraries', text: labels.libraries, icon: 'brackets-curly', href: paths.libraries() },
+    { id: 'expressions', text: labels.expressions, icon: 'book-open', href: paths.expressions() },
+    { id: 'connections', text: labels.connections, icon: 'adjust-circle', href: paths.endpoints(), children: [{ id: 'endpoints', text: labels.endpoints, href: paths.endpoints() }] },
+    ...kubernetes ? [{ id: 'cluster', text: labels.cluster, icon: 'cloud', href: paths.cluster(), children: [{ id: 'cluster:overview', text: labels.overview, href: paths.cluster() }, { id: 'cluster:networking', text: labels.networking, href: paths.cluster('networking') }] } satisfies NavNode] : [],
+    { id: 'administration', text: labels.administration, icon: 'cog', href: paths.administration(), children: [{ id: 'administration:overview', text: labels.administrationOverview, href: paths.administration() }, { id: 'administration:assistant', text: labels.assistant, href: paths.administration('assistant') }] },
   ]
 }
 function activeId(route: Route): string {
   switch (route.page) {
     case 'flow': return `flow:${route.name}`
     case 'flow-new': return 'flows'
+    case 'function-new': return 'libraries'
     case 'cluster': return `cluster:${route.tab}`
+    case 'administration': return `administration:${route.section}`
     case 'not-found': return ''
     default: return route.page
   }
 }
 function breadcrumbs(route: Route): Crumb[] {
-  const home = { text: 'Home', href: paths.home() }
-  const flows = { text: 'Flows', href: paths.flows() }
+  const labels = navLabels()
+  const home = { text: labels.home, href: paths.home() }
+  const flows = { text: labels.flows, href: paths.flows() }
   switch (route.page) {
     case 'home': return [home]
     case 'flows': return [home, flows]
-    case 'flow-new': return [home, flows, { text: 'New flow', href: paths.newFlow() }]
+    case 'flow-new': return [home, flows, { text: t('gofi.shell.breadcrumbs.new-flow', 'New flow'), href: paths.newFlow() }]
     case 'flow': {
-      const tabs = { flow: 'Flow', traffic: 'Live traffic', connectivity: 'Connectivity', resource: 'Resource', edit: 'Edit' }
+      const tabs = {
+        flow: t('gofi.shell.breadcrumbs.flow-tab-flow', 'Flow'),
+        traffic: t('gofi.shell.breadcrumbs.flow-tab-traffic', 'Live traffic'),
+        problems: t('gofi.shell.breadcrumbs.flow-tab-problems', 'Problems'),
+        connectivity: t('gofi.shell.breadcrumbs.flow-tab-connectivity', 'Connectivity'),
+        resource: t('gofi.shell.breadcrumbs.flow-tab-resource', 'Resource'),
+        history: t('gofi.shell.breadcrumbs.flow-tab-history', 'History'),
+        edit: t('gofi.shell.breadcrumbs.flow-tab-edit', 'Edit'),
+      }
       return [home, flows, { text: route.name, href: paths.flow(route.name) }, { text: tabs[route.tab], href: paths.flow(route.name, route.tab) }]
     }
-    case 'explore': return [home, { text: 'Explore', href: paths.explore() }]
-    case 'libraries': return [home, { text: 'Python libraries', href: paths.libraries() }]
-    case 'expressions': return route.name ? [home, { text: 'CEL library', href: paths.expressions() }, { text: route.name, href: paths.expressions(route.name) }] : [home, { text: 'CEL library', href: paths.expressions() }]
-    case 'endpoints': return [home, { text: 'Connections', href: paths.endpoints() }, { text: 'Endpoints', href: paths.endpoints() }]
-    case 'configuration': return [home, { text: 'Administration', href: paths.configuration() }, { text: 'Configuration', href: paths.configuration() }]
-    case 'cluster': return route.tab === 'overview' ? [home, { text: 'Cluster', href: paths.cluster() }] : [home, { text: 'Cluster', href: paths.cluster() }, { text: 'Networking', href: paths.cluster('networking') }]
-    case 'not-found': return [home, { text: 'Page not found', href: `#${route.path}` }]
+    case 'explore': return [home, { text: labels.explore, href: paths.explore() }]
+    case 'libraries': return [home, { text: labels.libraries, href: paths.libraries() }]
+    case 'function-new': return [home, { text: labels.libraries, href: paths.libraries() }, { text: t('gofi.shell.breadcrumbs.new-function', 'New function'), href: paths.newFunction() }]
+    case 'expressions': return route.name ? [home, { text: labels.expressions, href: paths.expressions() }, { text: route.name, href: paths.expressions(route.name) }] : [home, { text: labels.expressions, href: paths.expressions() }]
+    case 'endpoints': return [home, { text: labels.connections, href: paths.endpoints() }, { text: labels.endpoints, href: paths.endpoints() }]
+    case 'cluster': return route.tab === 'overview' ? [home, { text: labels.cluster, href: paths.cluster() }] : [home, { text: labels.cluster, href: paths.cluster() }, { text: labels.networking, href: paths.cluster('networking') }]
+    case 'administration': {
+      const administration = { text: labels.administration, href: paths.administration() }
+      return route.section === 'overview' ? [home, administration] : [home, administration, { text: labels.assistant, href: paths.administration('assistant') }]
+    }
+    case 'not-found': return [home, { text: t('gofi.shell.breadcrumbs.not-found', 'Page not found'), href: `#${route.path}` }]
   }
 }
 
@@ -82,6 +122,18 @@ export function AppChrome({ route, children }: { route: Route; children: ReactNo
     setCompactPref(next)
     try { localStorage.setItem(COMPACT_KEY, String(next)) } catch { /* storage unavailable */ }
   }
+  // GoFiBot: the control appears only once the controller reports a working model endpoint.
+  const assistant = useAssistantReadiness()
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  useEffect(() => { if (!assistant.ready) setAssistantOpen(false) }, [assistant.ready])
+  // Pages hand over to GoFiBot (the new-function wizard): open the panel; the panel sends the message.
+  useEffect(() => {
+    const onOpen = () => setAssistantOpen(true)
+    window.addEventListener(ASSISTANT_OPEN_EVENT, onOpen)
+    return () => window.removeEventListener(ASSISTANT_OPEN_EVENT, onOpen)
+  }, [])
+  // The first-visit tutorial (docked like GoFiBot; see components/tutorial).
+  const tutorial = useTutorial()
   const kubernetes = mode?.driverKind === 'kubernetes'
   const tree = useMemo(() => navTree(flows.map(flow => flow.name), kubernetes), [flows, kubernetes])
   const crumbs = breadcrumbs(route)
@@ -94,46 +146,56 @@ export function AppChrome({ route, children }: { route: Route; children: ReactNo
     try { localStorage.setItem(MENU_KEY, String(next)) } catch { /* storage unavailable */ }
   }
   const newMenu = <Menu>
-    <Menu.Item label="New flow" icon="exchange-alt" onClick={() => navigate(paths.newFlow())} />
-    <Menu.Item label="New Python library" icon="brackets-curly" onClick={() => navigate(paths.libraries())} />
-    <Menu.Item label="New CEL expression" icon="book-open" onClick={() => navigate(paths.expressions('new'))} />
+    <Menu.Item label={t('gofi.shell.chrome.new-flow', 'New flow')} icon="exchange-alt" onClick={() => navigate(paths.newFlow())} />
+    <Menu.Item label={t('gofi.shell.chrome.new-function-library', 'New function library')} icon="brackets-curly" onClick={() => navigate(paths.newFunction())} />
+    <Menu.Item label={t('gofi.shell.chrome.new-cel-expression', 'New CEL expression')} icon="book-open" onClick={() => navigate(paths.expressions('new'))} />
+    <Menu.Divider />
+    <Menu.Item label={t('gofi.shell.chrome.tutorial', 'Tutorial')} icon="book" onClick={tutorial.start} />
   </Menu>
 
   return <div className={styles.root}>
     <header className={styles.topBar}>
-      <ToolbarButton narrow variant="default" icon="bars" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen(value => !value)} />
-      <a href={paths.home()} className={styles.logo} aria-label="GoFi home"><GoFiMark /><span className={styles.wordmark}>GoFi</span></a>
-      <nav aria-label="Breadcrumbs" className={styles.breadcrumbs}>
+      <ToolbarButton narrow variant="default" icon="bars" aria-label={open ? t('gofi.shell.chrome.close-menu', 'Close menu') : t('gofi.shell.chrome.open-menu', 'Open menu')} aria-expanded={open} onClick={() => setOpen(value => !value)} />
+      <a href={paths.home()} className={styles.logo} aria-label={t('gofi.shell.chrome.gofi-home', 'GoFi home')}><GoFiMark /><span className={styles.wordmark}>GoFi</span></a>
+      <nav aria-label={t('gofi.shell.chrome.breadcrumbs', 'Breadcrumbs')} className={styles.breadcrumbs}>
         <ol>{crumbs.map((crumb, index) => <li key={crumb.href + index}>
           {index > 0 && <Icon name="angle-right" className={styles.separator} />}
           {index === crumbs.length - 1 ? <span aria-current="page">{crumb.text}</span> : <a href={crumb.href}>{crumb.text}</a>}
         </li>)}</ol>
       </nav>
-      <SearchCommand tree={tree} />
       <Stack gap={1} alignItems="center">
-        {error && <StatusIndicator tone="error" text="API unavailable" tooltip={error} />}
-        <IconButton name="sync" size="md" tooltip="Refresh flows" onClick={() => void reload()} />
+        <SearchCommand tree={tree} />
+        <ProblemsBadge />
+        {error && <StatusIndicator tone="error" text={t('gofi.shell.chrome.api-unavailable', 'API unavailable')} tooltip={error} hideTextNarrow />}
+        {/* Flows poll every 5 s anyway; on phones the breadcrumb needs the room more than the manual refresh. */}
+        <ToolbarButton icon="sync" aria-label={t('gofi.shell.chrome.refresh-flows', 'Refresh flows')} tooltip={t('gofi.shell.chrome.refresh-flows', 'Refresh flows')} onClick={() => void reload()} className={styles.hideNarrow} />
+        {/* Icon only, like its neighbours; the tooltip names the model. */}
+        {assistant.ready && <ToolbarButton icon={<FaRobot size={16} aria-hidden />} aria-label={t('gofi.shell.chrome.ask-gofibot', 'Ask GoFiBot')} tooltip={t('gofi.shell.chrome.ask-gofibot-model', 'GoFiBot · {{model}}', { model: assistant.message })} aria-expanded={assistantOpen} onClick={() => setAssistantOpen(value => !value)} />}
         <ThemePicker />
-        <Dropdown overlay={newMenu} placement="bottom-end"><ToolbarButton icon="plus" isOpen={false} aria-label="New">New</ToolbarButton></Dropdown>
+        <Dropdown overlay={newMenu} placement="bottom-end"><ToolbarButton icon="plus" isOpen={false} aria-label={t('gofi.common.new', 'New')}>{t('gofi.common.new', 'New')}</ToolbarButton></Dropdown>
       </Stack>
     </header>
     <div className={styles.body}>
       {open && !docked && <div className={styles.backdrop} onClick={() => setOpen(false)} />}
-      {open && <aside className={cx(styles.menu, !docked && styles.menuOverlay, compact && styles.menuCompact)} aria-label="Main menu">
+      {open && <aside className={cx(styles.menu, !docked && styles.menuOverlay, compact && styles.menuCompact)} aria-label={t('gofi.shell.chrome.main-menu', 'Main menu')}>
         <nav className={styles.menuItems}><ul>{tree.map(node => compact
           ? <RailItem key={node.id} node={node} activeId={current} />
           : <MegaMenuItem key={node.id} node={node} activeId={current} />)}</ul></nav>
         <div className={cx(styles.menuFooter, compact && styles.menuFooterCompact)}>
           {/* Deployment mode, bottom-left like Grafana's edition/version. */}
           {mode && <span className={cx(styles.modeBadge, compact && styles.modeBadgeCompact)}>{compact
-            ? <Tooltip content={modeTooltip(mode)} placement="right"><span className={styles.modeIcon} aria-label={`Deployment mode: ${mode.mode}`}><Icon name={modeIcon(mode.mode)} size="lg" /></span></Tooltip>
+            ? <Tooltip content={modeTooltip(mode)} placement="right"><span className={styles.modeIcon} aria-label={t('gofi.shell.chrome.mode-label', 'Deployment mode: {{mode}}', { mode: mode.mode })}><Icon name={modeIcon(mode.mode)} size="lg" /></span></Tooltip>
             : <Badge color="blue" icon={modeIcon(mode.mode)} text={mode.mode} tooltip={modeTooltip(mode)} />}</span>}
-          {docked && <IconButton name={compact ? 'arrow-to-right' : 'arrow-from-right'} size={compact ? 'lg' : 'md'} tooltip={compact ? 'Expand menu' : 'Collapse to icons'} onClick={toggleCompact} className={styles.hideNarrow} />}
-          {!compact && <IconButton name="columns" tooltip={docked ? 'Undock menu' : 'Dock menu'} onClick={toggleDock} className={styles.hideNarrow} />}
-          {!docked && <IconButton name="times" aria-label="Close menu" onClick={() => setOpen(false)} />}
+          {docked && <IconButton name={compact ? 'arrow-to-right' : 'arrow-from-right'} size={compact ? 'lg' : 'md'} tooltip={compact ? t('gofi.shell.chrome.expand-menu', 'Expand menu') : t('gofi.shell.chrome.collapse-to-icons', 'Collapse to icons')} onClick={toggleCompact} className={styles.hideNarrow} />}
+          {!compact && <IconButton name="columns" tooltip={docked ? t('gofi.shell.chrome.undock-menu', 'Undock menu') : t('gofi.shell.chrome.dock-menu', 'Dock menu')} onClick={toggleDock} className={styles.hideNarrow} />}
+          {!docked && <IconButton name="times" aria-label={t('gofi.shell.chrome.close-menu', 'Close menu')} onClick={() => setOpen(false)} />}
         </div>
       </aside>}
-      <main className={styles.main}>{children}</main>
+      {/* Always mounted (the page is its child) so the transcript survives closing and the page never remounts. */}
+      <AssistantDrawer open={assistantOpen && assistant.ready} onClose={() => setAssistantOpen(false)}>
+        <main className={styles.main}>{children}</main>
+      </AssistantDrawer>
+      <TutorialPanel tutorial={tutorial} onOpenAssistant={assistant.ready ? () => setAssistantOpen(true) : undefined} />
     </div>
   </div>
 }
@@ -150,7 +212,7 @@ function MegaMenuItem({ node, activeId, level = 0 }: { node: NavNode; activeId: 
         {node.icon && <Icon name={node.icon} />}
         <span className={styles.itemText}>{node.text}</span>
       </a>
-      {node.children && node.children.length > 0 && <IconButton name={expanded ? 'angle-down' : 'angle-right'} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.text}`} onClick={() => setExpanded(value => !value)} />}
+      {node.children && node.children.length > 0 && <IconButton name={expanded ? 'angle-down' : 'angle-right'} aria-label={expanded ? t('gofi.shell.chrome.collapse-section', 'Collapse {{section}}', { section: node.text }) : t('gofi.shell.chrome.expand-section', 'Expand {{section}}', { section: node.text })} onClick={() => setExpanded(value => !value)} />}
     </div>
     {expanded && node.children && node.children.length > 0 && <ul>{node.children.map(child => <MegaMenuItem key={child.id} node={child} activeId={activeId} level={level + 1} />)}</ul>}
   </li>
@@ -182,7 +244,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flex: 1, minWidth: 0, overflow: 'hidden',
     ol: { display: 'flex', alignItems: 'center', listStyle: 'none', margin: 0, padding: 0, whiteSpace: 'nowrap' },
     li: { display: 'flex', alignItems: 'center', minWidth: 0, fontSize: theme.typography.bodySmall.fontSize },
+    // Narrow screens show only the current page; its separator goes with the hidden crumbs.
     'li:not(:last-child)': { [theme.breakpoints.down('md')]: { display: 'none' } },
+    'li:last-child > :not(span):not(a)': { [theme.breakpoints.down('md')]: { display: 'none' } },
     a: { color: theme.colors.text.secondary, '&:hover': { color: theme.colors.text.primary, textDecoration: 'underline' } },
     span: { color: theme.colors.text.primary, overflow: 'hidden', textOverflow: 'ellipsis' },
   }),

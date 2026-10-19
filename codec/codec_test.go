@@ -67,8 +67,8 @@ func TestPythonStepsUseTheInstalledRunner(t *testing.T) {
 }
 
 func TestCodecStepJSONShorthandAndValidation(t *testing.T) {
-	var cfg spec.ParserCfg
-	if err := json.Unmarshal([]byte(`{"format":"json","decoders":["base64",{"type":"python","python":{"library":"l","function":"f"}}]}`), &cfg); err != nil {
+	var cfg spec.DecodeCfg
+	if err := json.Unmarshal([]byte(`{"decoders":["base64",{"type":"python","python":{"library":"l","function":"f"}}]}`), &cfg); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Decoders[0].Type != "base64" || cfg.Decoders[1].Python.Function != "f" {

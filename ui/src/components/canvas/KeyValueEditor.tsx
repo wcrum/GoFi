@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, IconButton, Input, Stack, Text } from '@grafana/ui'
+import { t } from '../../i18n'
 
 interface KeyValueEditorProps {
   value: Record<string, string>
@@ -77,25 +78,25 @@ export function KeyValueEditor({ value, onChange, keyPlaceholder, valuePlacehold
           <Input
             disabled={disabled}
             value={entry.key}
-            aria-label="Key"
+            aria-label={t('gofi.canvas.key-value-editor.key', 'Key')}
             onChange={(e) => commit(entries.map((en) => (en.id === entry.id ? { ...en, key: e.currentTarget.value } : en)))}
-            placeholder={keyPlaceholder ?? 'Key'}
+            placeholder={keyPlaceholder ?? t('gofi.canvas.key-value-editor.key', 'Key')}
           />
           <Input
             disabled={disabled}
             value={entry.value}
-            aria-label="Value"
+            aria-label={t('gofi.canvas.key-value-editor.value', 'Value')}
             onChange={(e) => commit(entries.map((en) => (en.id === entry.id ? { ...en, value: e.currentTarget.value } : en)))}
-            placeholder={valuePlaceholder ?? 'Value'}
+            placeholder={valuePlaceholder ?? t('gofi.canvas.key-value-editor.value', 'Value')}
           />
-          {!disabled && <IconButton name="times" tooltip="Remove entry" onClick={() => commit(entries.filter((en) => en.id !== entry.id))} />}
+          {!disabled && <IconButton name="times" tooltip={t('gofi.canvas.key-value-editor.remove-entry', 'Remove entry')} onClick={() => commit(entries.filter((en) => en.id !== entry.id))} />}
         </Stack>
       ))}
-      {entries.length === 0 && disabled && <Text color="disabled" variant="bodySmall">None</Text>}
+      {entries.length === 0 && disabled && <Text color="disabled" variant="bodySmall">{t('gofi.common.none', 'None')}</Text>}
       {!disabled && (
         <div>
           <Button type="button" variant="secondary" size="sm" icon="plus" onClick={() => commit([...entries, { id: makeId(), key: '', value: '' }])}>
-            Add
+            {t('gofi.common.add', 'Add')}
           </Button>
         </div>
       )}

@@ -1,10 +1,23 @@
 image:
   repository: ghcr.io/wcrum/gofi
   tag: "0.2.0"
+  # Pin by digest for production (takes precedence over tag when set):
+  # digest: "sha256:..."
+  digest: ""
+  # IfNotPresent for production. Dev installs that rebuild one tag use
+  # values/dev-values.yaml (Always); it also applies to listener and worker Pods.
   pullPolicy: IfNotPresent
 sandboxImage:
   repository: ghcr.io/wcrum/gofi-python
   tag: "0.2.0"
+  digest: ""
+# Image for the private tooling worker (ruff format/validate). Empty uses
+# sandboxImage. python/Dockerfile builds a slim `worker` target (no ruff) and a
+# `tooling` target; point sandboxImage at the slim image and this at tooling.
+toolingImage:
+  repository: ""
+  tag: ""
+  digest: ""
 
 # Read-only cluster discovery (Cluster page, exposure and destination
 # pickers, cross-namespace selector destinations). Grants get/list on Pods,
@@ -16,6 +29,21 @@ discovery:
 # Gateway exposure may add a gofi-* listener to a Gateway in another namespace.
 gateway:
   manageListeners: true
+  # Listeners GoFi may hold on one Gateway (implementations cap a Gateway at
+  # ~64 listeners). Flows beyond this report a Problem instead of breaking the
+  # Gateway; shard flows across Gateways or namespaces (docs/deployment.md).
+  maxListeners: 64
+
+# Defaults for every flow Service of type LoadBalancer.
+exposure:
+  loadBalancer:
+    # Do not also allocate a NodePort for every LoadBalancer Service (saves
+    # the 30000-32767 range at scale; MetalLB and most cloud LBs do not need it).
+    allocateNodePorts: false
+    # Annotations added to every LoadBalancer Service (a flow's own
+    # annotations win). e.g. share one MetalLB address between flows:
+    #   metallb.io/allow-shared-ip: gofi
+    annotations: {}
 
 # On UDS Core, keep a GoFi-managed Package (gofi-flows) with the ingress and
 # egress allows each flow's exposure and destinations need.
@@ -24,13 +52,107 @@ uds:
   # ConfigMap holding the Package base (the uds-gofi-config chart renders it).
   packageBaseConfigMap: gofi-uds-package
 
+# Flow revision history (docs/versioning.md): every change to a flow is kept
+# as a FlowRevision resource in this namespace.
+history:
+  enabled: true
+  # Revisions kept per flow; older ones are deleted.
+  limit: 50
+  # How long a deleted flow's history is kept (Go duration).
+  deletedRetention: 720h
+
 # NodePort range flow Services may request. Leave empty for the Kubernetes
 # default (30000-32767); set it to match a cluster started with a different
 # --service-node-port-range, e.g. "1-65535".
 nodePortRange: ""
 
-# Exactly one active controller; persistent resources do not provide leader election.
+# Controller replicas. More than one requires leaderElection.enabled: the
+# standbys serve the UI/API read paths and take over the reconcile loop when
+# the Lease holder goes away.
 replicaCount: 1
+leaderElection:
+  enabled: false
+  # Lease name (defaults to the release's fullname) in the release namespace.
+  leaseName: ""
+  leaseDuration: 15s
+  renewDeadline: 10s
+  retryPeriod: 2s
+# Deployment strategy. RollingUpdate (surge 1, unavailable 0) when leader
+# election is on; Recreate otherwise so two unelected controllers never overlap.
+strategy:
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+# Rendered only when replicaCount > 1 (a PDB on a single replica blocks drains).
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # Set instead of minAvailable to use maxUnavailable.
+  maxUnavailable: null
+# Spread controller replicas across nodes: "soft" (preferred), "hard"
+# (required), or "" to disable. Ignored when .affinity is set.
+podAntiAffinity: soft
+topologySpreadConstraints: []
+# e.g.
+#  - maxSkew: 1
+#    topologyKey: topology.kubernetes.io/zone
+#    whenUnsatisfiable: ScheduleAnyway
+#    labelSelector:
+#      matchLabels:
+#        app.kubernetes.io/component: controller
+
+# PriorityClasses (cluster-scoped; create them from exactly one release per
+# cluster). The controller uses controlPlane, listener and worker Pods dataPlane.
+priorityClasses:
+  create: false
+  controlPlane:
+    name: gofi-control-plane
+    value: 1000000
+    description: GoFi controller (flow reconciliation and portal)
+  dataPlane:
+    name: gofi-dataplane
+    value: 100000
+    description: GoFi flow runtimes and Python workers
+# Explicit controller priorityClassName; empty uses priorityClasses.controlPlane
+# when priorityClasses.create is true.
+priorityClassName: ""
+terminationGracePeriodSeconds: 30
+
+# Controller probes. /healthz is liveness only; /readyz reports ready once
+# the informer caches have synced and the flow store has loaded (standbys
+# answer ready too: they serve reads).
+probes:
+  startup:
+    enabled: true
+    path: /readyz
+    periodSeconds: 2
+    failureThreshold: 60
+  liveness:
+    enabled: true
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    path: /readyz
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+# client-go rate limits for the controller's Kubernetes client. Raise with the
+# flow count (each reconcile lists Pods/Services and patches per flow).
+kubeClient:
+  qps: 20
+  burst: 50
+# Go runtime sizing from the container's limits (GOMEMLIMIT = goMemLimitRatio
+# of limits.memory, GOMAXPROCS = limits.cpu rounded up). Skipped when the
+# corresponding limit is unset.
+goRuntime:
+  setMemLimit: true
+  goMemLimitRatio: 0.9
+  setMaxProcs: true
+
 service:
   type: ClusterIP
   port: 9090
@@ -38,6 +160,16 @@ service:
   annotations: {}
   loadBalancerIP: ""
   loadBalancerSourceRanges: []
+  # Only for type LoadBalancer.
+  allocateLoadBalancerNodePorts: false
+
+# The AI proxy Python libraries with AI on call (docs/python.md, "AI and
+# LangChain integrations"): its own container and Service port, never the
+# portal API, so a worker's egress reaches the proxy alone. maxOutputTokens
+# caps max_tokens on every forwarded request.
+llmProxy:
+  port: 9091
+  maxOutputTokens: 8192
 serviceAccount:
   create: true
   name: ""
@@ -59,11 +191,24 @@ resources:
   requests:
     cpu: 50m
     memory: 64Mi
+    ephemeral-storage: 64Mi
   limits:
     cpu: 500m
     memory: 512Mi
-# Additional controller environment; chart-owned runtime variables are reserved.
+    ephemeral-storage: 256Mi
+# Runtime profile for the controller and every listener Pod: "" (the binary's
+# default), edge, default, or large. Passed as GOFI_PROFILE; it presets every
+# GOFI_* tunable in docs/configuration.md, and individual variables in `env`
+# or listenerPods.extraEnv override the preset.
+profile: ""
+# Additional controller environment (e.g. GOFI_WATCH_MAX_STREAMS,
+# GOFI_HUB_IDLE_GRACE, GOFI_SINK_RETRIES for in-process flows); chart-owned
+# runtime variables are reserved. GoFiBot (docs/assistant.md) can read its API
+# key from a mounted file instead of the gofi-assistant Secret, for example:
+#   - name: GOFI_ASSISTANT_API_KEY_FILE
+#     value: /var/run/secrets/gofi-assistant/api-key
 env: []
+
 # Applied independently to every listener Pod. Supply sidecar images explicitly.
 # Use per-Pod ephemeral volumes for state, not a shared ReadWriteOnce claim.
 listenerPodTemplate:
@@ -71,6 +216,166 @@ listenerPodTemplate:
   volumes: []
   volumeMounts: []
   env: []
+# Defaults for every flow runtime (listener) Pod the controller creates.
+# Passed to the controller as GOFI_LISTENER_* environment (see README).
+listenerPods:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+      ephemeral-storage: 32Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+      ephemeral-storage: 128Mi
+  # Empty uses priorityClasses.dataPlane when priorityClasses.create is true.
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  # Overrides the derived preStop + drainTimeout + margin grace period when set.
+  terminationGracePeriodSeconds: null
+  # Environment added to every listener container (EnvVar objects): the GOFI_*
+  # data-plane tunables of docs/configuration.md (GOFI_MAX_CONNECTIONS,
+  # GOFI_SINK_QUEUE_DEPTH, GOFI_SINK_SPOOL_DIR, GOFI_MAX_DECODED_BYTES_PER_MESSAGE,
+  # ...) and GOFI_TAP_MAX_BYTES. Driver-set names (FLOW_SPEC, GOFI_K8S_NAMESPACE,
+  # GOMEMLIMIT) keep their values. Passed as GOFI_LISTENER_ENV.
+  extraEnv: []
+  # Probes on the runtime's relay port (9091, /healthz).
+  probes:
+    startup:
+      enabled: true
+      periodSeconds: 2
+      failureThreshold: 30
+    readiness:
+      enabled: true
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+# Defaults for Python worker Pods (Sandbox libraries). Memory comes from each
+# Sandbox's memoryMib; these set the rest. Passed as GOFI_WORKER_* environment.
+workers:
+  resources:
+    requests:
+      cpu: 50m
+      ephemeral-storage: 32Mi
+    limits:
+      cpu: "1"
+      ephemeral-storage: 128Mi
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  terminationGracePeriodSeconds: 10
+  # Environment added to every worker container (EnvVar objects); the worker's
+  # own source, token, and timeout variables keep their values. Passed as
+  # GOFI_WORKER_ENV.
+  extraEnv: []
+  probes:
+    startup:
+      enabled: true
+      periodSeconds: 1
+      failureThreshold: 60
+    readiness:
+      enabled: true
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+  # Worker Pods per library (needs the controller to run workers as
+  # Deployments behind their Service; bare Pods stay at 1).
+  replicas: 1
+  # Rendered only when replicas > 1 (worker Deployments).
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+  # HorizontalPodAutoscalers for shared libraries' worker Deployments
+  # (gofi-python-<library>). Needs workers.replicas > 1 semantics on the Go side.
+  autoscaling:
+    enabled: false
+    libraries: []
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+# How long a stopping flow runtime may take to finish frames already received
+# and flush its destinations before it is stopped hard. Listener Pods get a
+# 3s preStop delay plus this plus a margin as terminationGracePeriodSeconds.
+drainTimeout: 20s
+
+# NetworkPolicies rendered by the chart (needs an enforcing CNI). On UDS Core
+# the Package already default-denies everything not allowed, so keep
+# blockMetadata off there: its allow-all-except rule would widen egress.
+networkPolicy:
+  enabled: false
+  # Egress from the controller and listener Pods to anywhere except the cloud
+  # metadata service (link-local). Not applied to Python workers: they already
+  # have a deny-all egress policy per library.
+  blockMetadata:
+    enabled: true
+    # The metadata address only; 169.254.0.0/16 also covers link-local DNS and
+    # NTP resolvers (AWS 169.254.169.253/123), so widen deliberately.
+    cidrs:
+      - 169.254.169.254/32
+    ipv6Cidrs:
+      - fd00:ec2::254/128
+  # Ingress to listener Pods: data ports from anywhere, the :9091 relay
+  # (taps, metrics) only from the controller and the namespaces below.
+  relay:
+    enabled: true
+    # Namespace selectors allowed to scrape :9091 (e.g. Prometheus).
+    scraperNamespaceSelectors:
+      - matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    # Extra `from` peers for :9091 (NetworkPolicyPeer objects).
+    extraFrom: []
+# Optional PrometheusRule alerts (needs the Prometheus Operator CRDs and a
+# scrape of the controller and listener Pods' "metrics" port). See
+# docs/observability.md.
+alerting:
+  enabled: false
+  # Labels on the PrometheusRule object (e.g. the Prometheus ruleSelector's).
+  ruleLabels: {}
+  # Labels added to every alert (e.g. severity routing, team).
+  labels: {}
+  # runbook_url annotation prefix; the lower-cased alert name is appended as
+  # the anchor (docs/deployment.md "Runbooks" has one heading per alert).
+  runbookBaseUrl: "https://github.com/wcrum/GoFi/blob/main/docs/deployment.md#"
+  # How long a condition must hold before an alert fires.
+  for: 5m
+  sourceErrorsPerSecond: 0.1
+  sinkFailureRatio: 0.05
+  parseErrorRatio: 0.1
+  restartsPerHour: 3
+  # GoFiFlowNoTraffic fires only for the flows listed here (opt in per flow):
+  # no frame received for noTrafficMinutes.
+  noTrafficFlows: []
+  noTrafficMinutes: 15
+  tapDropsPerSecond: 1
+  # Controller alerts (GoFiControllerNoLeader, GoFiControllerReconcileStale,
+  # GoFiControllerWatchErrors, GoFiControllerAPIThrottled, GoFiPodRestarts).
+  controller:
+    enabled: true
+    reconcileStaleSeconds: 300
+    watchErrorsPerMinute: 1
+    apiThrottleP99Seconds: 1
+    podRestartsPerHour: 3
+  # Live-stream hub alerts (GoFiLiveViewersDropping, GoFiStreamCapReached,
+  # GoFiRelayReconnectStorm); see docs/observability.md "Alerting".
+  streaming:
+    enabled: true
+    viewerDropsPerSecond: 10
+    relayReconnectsPerSecond: 1
 # Flows to declare at install time (kind Flow; see docs/flows.md): name plus
 # source/framing/parser/stages/sinks. Helm owns these resources; kubectl-managed
 # Flows may be applied separately.

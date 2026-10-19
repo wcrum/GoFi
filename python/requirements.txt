@@ -1,7 +1,6 @@
 connectrpc==0.12.1
 protobuf==7.36.2
 uvicorn==0.54.0
-ruff==0.17.1
 # Curated, compute-only decoders available to user libraries. Pinned to
 # versions with prebuilt wheels for the worker's Python (no compiler).
 cbor2==6.1.5
@@ -9,3 +8,16 @@ construct==2.10.70
 crc==8.0.0
 msgpack==1.2.3
 PyYAML==6.0.3
+# Data validation for typed parsers and transformers (pydantic-core ships
+# cp314 manylinux wheels for amd64 and arm64).
+pydantic==2.14.1
+# AI / LangChain integrations (docs/python.md#ai-and-langchain-integrations).
+# langchain-core, langchain-openai and langchain-anthropic are pure Python;
+# their compiled transitive dependencies all ship cp314 manylinux wheels for
+# amd64 and arm64 (verified on PyPI 2026-10-18): jiter, orjson, pydantic-core,
+# regex, tiktoken, uuid-utils, xxhash, zstandard. The openai SDK pulls
+# tiktoken; nothing in the closure needs a compiler. These packages make
+# network calls, but only where the library's egress rules allow.
+langchain-core==1.6.12
+langchain-openai==1.7.2
+langchain-anthropic==1.7.6

@@ -1,0 +1,82 @@
+# GoFi on a constrained host (ARM SBC, vehicle gateway, sensor hub).
+# Install: /etc/systemd/system/gofi.service, binary at /usr/local/bin/gofi,
+# environment in /etc/gofi/gofi.env (see gofi.env.example), state under
+# /var/lib/gofi (flows, history, sink spool). `systemctl enable --now gofi`.
+[Unit]
+Description=GoFi data flow engine
+Documentation=https://github.com/wcrum/gofi
+# Start even when the uplink is down: sources listen locally and sinks retry.
+After=network.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=gofi
+Group=gofi
+EnvironmentFile=-/etc/gofi/gofi.env
+ExecStart=/usr/local/bin/gofi
+WorkingDirectory=/var/lib/gofi
+# Keep restarting forever with a short pause; the process is cheap to start
+# and a crash loop is better than a silent outage on an unattended box.
+Restart=always
+RestartSec=3
+# SIGTERM starts a drain (GOFI_DRAIN_TIMEOUT, default 20s); give it time.
+TimeoutStopSec=30
+KillMode=mixed
+# Journald: text logs are cheaper to read with journalctl than JSON.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gofi
+
+# ---- Resource bounds ------------------------------------------------------
+# MemoryMax is read by GoFi (cgroup memory.max) to set GOMEMLIMIT at
+# GOFI_GOMEMLIMIT_FRACTION, so the GC backs off before the kernel kills us.
+MemoryMax=192M
+MemoryHigh=160M
+CPUQuota=100%
+TasksMax=512
+LimitNOFILE=8192
+# Many idle TCP peers on one core are fine; swap is usually absent on flash.
+MemorySwapMax=0
+OOMPolicy=continue
+
+# ---- Hardening ---------------------------------------------------------
+# State directory is created with the service user as owner (0750).
+StateDirectory=gofi
+StateDirectoryMode=0750
+ConfigurationDirectory=gofi
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gofi
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=true
+RemoveIPC=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+# Allow binding low ports (e.g. syslog 514) without root; drop the line if
+# every flow listens above 1024.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Python sandboxes run as subprocesses of this service in the in-process
+# driver, so UMask/NoNewPrivileges apply to them too.
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

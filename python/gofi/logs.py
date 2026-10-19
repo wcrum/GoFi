@@ -91,3 +91,23 @@ class Tee(io.TextIOBase):
         if self.pending:
             self.echo.line(self.stream, self.pending)
             self.pending = ""
+
+
+class RateEcho(Echo):
+    """Echo budget for long-lived streamers: MAX_ECHO_LINES / MAX_ECHO_BYTES
+    per minute instead of per invocation."""
+
+    WINDOW = 60.0
+
+    def __init__(self, invocation_id, function, kind):
+        super().__init__(invocation_id, function, kind)
+        import time
+        self._clock = time.monotonic
+        self._window_start = self._clock()
+
+    def line(self, stream, text):
+        if self._clock() - self._window_start >= self.WINDOW:
+            self._window_start = self._clock()
+            self.lines = self.size = 0
+            self.truncated = False
+        super().line(stream, text)

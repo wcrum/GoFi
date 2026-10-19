@@ -1,0 +1,72 @@
+suite: values overlays
+templates:
+  - templates/deployment.yaml
+  - templates/poddisruptionbudget.yaml
+  - templates/priorityclasses.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: UDS package values never pull Always
+    values:
+      - ../../../values/common-values.yaml
+      - ../../../values/upstream-values.yaml
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_IMAGE_PULL_POLICY
+            value: IfNotPresent
+      - equal:
+          path: metadata.name
+          value: gofi
+  - it: UDS package values render no chart NetworkPolicies
+    values:
+      - ../../../values/common-values.yaml
+      - ../../../values/upstream-values.yaml
+    template: templates/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: production values run an HA controller with policies and classes
+    values:
+      - ../../../values/production-values.yaml
+    asserts:
+      - template: templates/deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+      - template: templates/deployment.yaml
+        equal:
+          path: spec.replicas
+          value: 2
+      - template: templates/deployment.yaml
+        equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+      - template: templates/deployment.yaml
+        equal:
+          path: spec.template.spec.priorityClassName
+          value: gofi-control-plane
+      - template: templates/poddisruptionbudget.yaml
+        hasDocuments:
+          count: 1
+      - template: templates/priorityclasses.yaml
+        hasDocuments:
+          count: 2
+      - template: templates/networkpolicy.yaml
+        hasDocuments:
+          count: 3
+  - it: only the dev overlay pulls Always
+    values:
+      - ../../../values/dev-values.yaml
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always

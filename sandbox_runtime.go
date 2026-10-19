@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/wcrum/gofi/assistant"
 	"github.com/wcrum/gofi/controller"
 	"github.com/wcrum/gofi/deploymode"
 	"github.com/wcrum/gofi/functionrpc"
@@ -18,14 +22,21 @@ import (
 	"github.com/wcrum/gofi/spec"
 )
 
-func startSandboxes(ctx context.Context, ctrl *controller.Controller, mode deploymode.Mode) *sandbox.Supervisor {
+// startSandboxes starts the Python library supervisor and, with it, the AI
+// proxy listener (llm_runtime.go) that AI libraries call; the returned
+// server is nil when no proxy could be started.
+func startSandboxes(ctx context.Context, ctrl *controller.Controller, mode deploymode.Mode, bot *assistant.Manager) (*sandbox.Supervisor, *http.Server) {
 	var backend sandbox.Backend
 	var store sandbox.Store
 	var err error
 	if ctrl.DriverKind() == "kubernetes" {
 		backend, err = sandbox.NewKubernetes(k8sNamespace(), os.Getenv("GOFI_SANDBOX_IMAGE"))
 		if err == nil {
-			store, err = sandbox.NewKubernetesStore(k8sNamespace())
+			var kubeStore *sandbox.KubernetesStore
+			if kubeStore, err = sandbox.NewKubernetesStore(k8sNamespace()); err == nil {
+				kubeStore.Lister = kubeRuntime.lister(sandbox.SandboxGVR)
+				store = kubeStore
+			}
 		}
 	} else {
 		backend, err = sandbox.NewDocker(sandbox.DockerConfig{Image: os.Getenv("GOFI_SANDBOX_IMAGE"), Network: os.Getenv("GOFI_SANDBOX_NETWORK"), InContainer: mode == deploymode.ModeCompose || mode == deploymode.ModeDocker})
@@ -37,9 +48,14 @@ func startSandboxes(ctx context.Context, ctrl *controller.Controller, mode deplo
 	}
 	if err != nil {
 		slog.Error("Python sandbox initialization failed", "error", err)
-		return nil
+		return nil, nil
 	}
 	manager := sandbox.New(backend, store)
+	// The proxy listens before the first reconcile, so AI workers start
+	// once with their environment instead of restarting when it appears.
+	proxyUp := new(atomic.Bool)
+	manager.AIEnvironment = aiEnvironment(bot, backend, listenPort(envOrDefault("GOFI_LLM_PROXY_ADDR", ":9091"), 9091), proxyUp)
+	llmServer := startLLMProxy(ctx, manager, bot, backend, proxyUp)
 	functionrpc.SetResolver(func(ctx context.Context) (map[string]functionrpc.Binding, error) {
 		bindings, err := manager.Bindings(ctx)
 		out := map[string]functionrpc.Binding{}
@@ -86,7 +102,67 @@ func startSandboxes(ctx context.Context, ctrl *controller.Controller, mode deplo
 			}
 		}
 	}()
-	return manager
+	return manager, llmServer
+}
+
+// aiEnvironment supplies the deployment's AI endpoint to libraries that opt
+// in with `ai`: when the assistant (Administration) is enabled and has a
+// key and the AI proxy listener is up, the proxy's address, the provider,
+// and the model, plus the egress rules a worker needs to reach the proxy
+// port. The model key never leaves the controller; the worker calls the
+// proxy with its own token. The address is cached for a minute (the
+// supervisor asks on every reconcile).
+func aiEnvironment(bot *assistant.Manager, backend sandbox.Backend, proxyPort int, proxyUp *atomic.Bool) sandbox.AIEnvironment {
+	reach, ok := backend.(sandbox.ControllerReach)
+	if bot == nil || !ok {
+		return nil
+	}
+	var mu sync.Mutex
+	var cachedAddr string
+	var cachedRules []sandbox.EgressRule
+	var cachedErr error
+	var cachedAt time.Time
+	resolve := func() (string, []sandbox.EgressRule, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(cachedAt) < time.Minute && (cachedAddr != "" || cachedErr != nil) {
+			return cachedAddr, cachedRules, cachedErr
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		addr, rules, err := reach.ControllerAddress(ctx, proxyPort)
+		if err != nil && (cachedErr == nil || cachedErr.Error() != err.Error()) {
+			slog.Warn("AI libraries cannot reach the controller's AI proxy", "error", err)
+		}
+		cachedAddr, cachedRules, cachedErr, cachedAt = addr, rules, err, time.Now()
+		return addr, rules, err
+	}
+	return func() (map[string]string, []sandbox.EgressRule, bool) {
+		if !proxyUp.Load() {
+			return nil, nil, false
+		}
+		c, err := bot.Get(context.Background())
+		if err != nil {
+			return nil, nil, false
+		}
+		c = assistant.Effective(c)
+		if !c.Enabled || !c.AllowFunctions {
+			return nil, nil, false
+		}
+		if key, _ := assistant.Key(c); key == "" {
+			return nil, nil, false
+		}
+		addr, rules, err := resolve()
+		if err != nil {
+			return nil, nil, false
+		}
+		env := map[string]string{
+			sandbox.AIEnvProxyURL: "http://" + addr,
+			sandbox.AIEnvProvider: c.ProviderOrDefault(),
+			sandbox.AIEnvModel:    c.ModelOrDefault(),
+		}
+		return env, rules, true
+	}
 }
 
 func toFunctionBinding(b sandbox.Binding) functionrpc.Binding {
@@ -117,6 +193,9 @@ func runInline(ctx context.Context, manager *sandbox.Supervisor, ref *spec.Pytho
 // validateInline statically checks every inline stage (parsed and linted in
 // the tooling worker, never executed). Diagnostics use snippet line numbers.
 func validateInline(ctx context.Context, manager *sandbox.Supervisor, def spec.FlowDefinition) error {
+	if err := validatePythonSource(ctx, manager, def.Source.Python); err != nil {
+		return err
+	}
 	total := 0
 	for _, stage := range def.InlineStages() {
 		total += len(stage.Python.InlineSource)
@@ -145,6 +224,16 @@ func syncManagedLibraries(ctx context.Context, ctrl *controller.Controller, mana
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
+		if manager.Passive() {
+			// A standby replica leaves managed libraries to the leader.
+			select {
+			case <-ctx.Done():
+				return
+			case <-wake:
+			case <-ticker.C:
+			}
+			continue
+		}
 		want := map[string]sandbox.Definition{}
 		for _, def := range ctrl.List() {
 			if lib, ok := sandbox.InlineLibrary(def); ok {
@@ -187,4 +276,49 @@ func syncManagedLibraries(ctx context.Context, ctrl *controller.Controller, mana
 		case <-ticker.C:
 		}
 	}
+}
+
+// validatePythonSource checks a source.python reference against the
+// library's registry: the library must exist, and when its worker is ready
+// the function must be a @gofi.fetcher or @gofi.streamer. A library that is
+// still starting is accepted; the flow runtime retries until it is ready.
+func validatePythonSource(ctx context.Context, manager *sandbox.Supervisor, src *spec.PythonSource) error {
+	if src == nil {
+		return nil
+	}
+	lib, ok := manager.Get(src.Library)
+	if !ok {
+		return fmt.Errorf("source.python: Python library %q does not exist", src.Library)
+	}
+	if lib.Managed() {
+		return fmt.Errorf("source.python: library %q is generated from a flow's inline stages; use a saved library", src.Library)
+	}
+	bindings, _ := manager.Bindings(ctx)
+	binding, ready := bindings[src.Library]
+	if !ready {
+		return nil
+	}
+	functions, err := functionrpc.ListFunctions(ctx, toFunctionBinding(binding))
+	if err != nil {
+		slog.Warn("Python source function not verified: library worker unreachable", "library", src.Library, "error", err)
+		return nil
+	}
+	return checkSourceFunction(src, functions)
+}
+
+func checkSourceFunction(src *spec.PythonSource, functions []*gofiv1.WorkerFunction) error {
+	var kinds []string
+	for _, f := range functions {
+		if f.Name != src.Function {
+			continue
+		}
+		if spec.CheckSourceKind(src.Library, src.Function, f.Kind) == nil {
+			return nil
+		}
+		kinds = append(kinds, f.Kind)
+	}
+	if len(kinds) > 0 {
+		return spec.CheckSourceKind(src.Library, src.Function, kinds[0])
+	}
+	return fmt.Errorf("source.python: library %q has no @gofi.fetcher or @gofi.streamer named %q", src.Library, src.Function)
 }

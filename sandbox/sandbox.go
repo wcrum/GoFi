@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -33,9 +35,25 @@ type Definition struct {
 	ManagedBy string `json:"managedBy,omitempty"`
 	// Egress lists permitted outbound destinations; empty means no egress.
 	Egress []EgressRule `json:"egress,omitempty"`
+	// AI lets the library use the deployment's AI endpoint through gofi.llm.
+	// The worker calls the controller's LLM proxy with its own token; the
+	// supervisor supplies the proxy address, provider, and model
+	// (AIEnvironment) and the egress to reach the controller. The model key
+	// never enters the worker.
+	// Deprecated: ignored since the switch moved to Administration › AI
+	// assistant (assistant.Configuration.AllowFunctions); kept so stored
+	// definitions and manifests still load.
+	AI bool `json:"ai,omitempty"`
+	// Env is the environment the supervisor resolved for this definition
+	// (the GOFI_LLM_* variables of an AI library). Never stored; a change
+	// restarts the worker.
+	Env map[string]string `json:"-"`
 	// Scratch marks a short-lived RunSource worker: source is loaded per
 	// invocation so load errors are reported instead of failing startup.
 	Scratch bool `json:"-"`
+	// Image overrides the backend's worker image (the tooling worker runs
+	// GOFI_TOOLING_IMAGE); empty uses the backend's.
+	Image string `json:"-"`
 }
 
 // FunctionTest is a saved sample input for one library function.
@@ -76,6 +94,7 @@ func (d Definition) Managed() bool { return d.ManagedBy != "" }
 // runtimeEqual compares only what the running worker depends on.
 func runtimeEqual(a, b Definition) bool {
 	return a.Name == b.Name && a.SourceCode == b.SourceCode && a.TimeoutSeconds == b.TimeoutSeconds && a.MemoryMiB == b.MemoryMiB &&
+		maps.Equal(a.Env, b.Env) &&
 		slices.EqualFunc(a.Egress, b.Egress, func(x, y EgressRule) bool {
 			return x.CIDR == y.CIDR && x.Port == y.Port && x.Protocol == y.Protocol && x.Namespace == y.Namespace && maps.Equal(x.PodSelector, y.PodSelector)
 		})
@@ -165,6 +184,9 @@ type Status struct {
 	Name  string `json:"name"`
 	Phase string `json:"phase"`
 	Error string `json:"error,omitempty"`
+	// AIAvailable reports whether the deployment currently provides an AI
+	// endpoint (Administration) to libraries that opt in with AI.
+	AIAvailable bool `json:"aiAvailable,omitempty"`
 }
 type Store interface {
 	Load(context.Context) ([]Definition, error)
@@ -178,6 +200,15 @@ type HealthBackend interface {
 type Backend interface {
 	Start(context.Context, Definition, string) (string, error)
 	Stop(context.Context, string) error
+}
+
+// Adopter is a backend that can find a worker an earlier controller started
+// for the same definition and reuse it: Adopt returns its endpoint and token
+// when one exists, runs the same definition, and is healthy. A supervisor
+// starting up adopts instead of recreating, so a controller restart neither
+// rotates tokens nor recreates the listeners that carry them.
+type Adopter interface {
+	Adopt(context.Context, Definition) (endpoint, token string, ok bool, err error)
 }
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
@@ -246,21 +277,83 @@ type Supervisor struct {
 	toolingCancel  context.CancelFunc
 	// scratch maps active RunSource worker names to their tokens (for log
 	// redaction); entries exist from before Start until after Stop.
-	scratch map[string]string
+	// scratchDefs holds their definitions (LibraryByToken).
+	scratch     map[string]string
+	scratchDefs map[string]Definition
 	// healthFailures counts consecutive failed health probes per library;
 	// a worker restarts only after unhealthyThreshold failures in a row.
 	healthFailures map[string]int
+	// passive makes a standby controller replica observe libraries without
+	// starting, stopping, or adopting workers (SetPassive).
+	passive atomic.Bool
+	// AIEnvironment supplies the deployment's AI endpoint to libraries with
+	// AI set (set before Run; nil means no AI endpoint).
+	AIEnvironment AIEnvironment
+}
+
+// ErrStandby is returned by Apply and Delete on a standby replica.
+var ErrStandby = errors.New("this controller replica is a standby; the leader applies changes")
+
+// SetPassive switches between observing (standby) and supervising (leader).
+// A passive supervisor loads definitions so the API can list them, with
+// phase "Standby", and touches no worker. Leaving passive mode adopts the
+// healthy workers of the previous leader on the next Reconcile.
+func (s *Supervisor) SetPassive(passive bool) {
+	if s.passive.Swap(passive) && !passive {
+		s.mu.Lock()
+		for name, st := range s.statuses {
+			if st.Phase == "Standby" {
+				delete(s.statuses, name)
+				delete(s.defs, name)
+			}
+		}
+		s.mu.Unlock()
+	}
+}
+
+// Passive reports whether this supervisor only observes.
+func (s *Supervisor) Passive() bool { return s.passive.Load() }
+
+// observe is Reconcile for a passive supervisor: definitions only.
+func (s *Supervisor) observe(ctx context.Context) error {
+	defs, err := s.store.Load(ctx)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seen := map[string]bool{}
+	for _, d := range defs {
+		if d, err = Normalize(d); err != nil {
+			return err
+		}
+		seen[d.Name] = true
+		s.defs[d.Name] = s.resolveAI(d)
+		s.statuses[d.Name] = Status{Name: d.Name, Phase: "Standby"}
+	}
+	for name := range s.defs {
+		if !seen[name] {
+			delete(s.defs, name)
+			delete(s.statuses, name)
+			delete(s.bindings, name)
+		}
+	}
+	return nil
 }
 
 func New(b Backend, s Store) *Supervisor {
 	toolingContext, toolingCancel := context.WithCancel(context.Background())
-	return &Supervisor{backend: b, store: s, defs: map[string]Definition{}, bindings: map[string]Binding{}, statuses: map[string]Status{}, toolingContext: toolingContext, toolingCancel: toolingCancel, scratch: map[string]string{}}
+	return &Supervisor{backend: b, store: s, defs: map[string]Definition{}, bindings: map[string]Binding{}, statuses: map[string]Status{}, toolingContext: toolingContext, toolingCancel: toolingCancel, scratch: map[string]string{}, scratchDefs: map[string]Definition{}}
 }
 func (s *Supervisor) Apply(ctx context.Context, d Definition) error {
 	d, err := Normalize(d)
 	if err != nil {
 		return err
 	}
+	if s.passive.Load() {
+		return ErrStandby
+	}
+	d = s.resolveAI(d)
 	s.operations.Lock()
 	defer s.operations.Unlock()
 	if s.store != nil {
@@ -292,7 +385,7 @@ func (s *Supervisor) start(ctx context.Context, d Definition) error {
 		return err
 	}
 	value := hex.EncodeToString(token)
-	endpoint, err := s.backend.Start(ctx, d, value)
+	endpoint, err := s.backend.Start(ctx, s.forBackend(d), value)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
@@ -303,9 +396,36 @@ func (s *Supervisor) start(ctx context.Context, d Definition) error {
 	s.statuses[d.Name] = Status{Name: d.Name, Phase: "Ready"}
 	return nil
 }
+
+// adopt takes over a healthy worker an earlier controller started for d.
+func (s *Supervisor) adopt(ctx context.Context, d Definition) bool {
+	adopter, supports := s.backend.(Adopter)
+	if !supports {
+		return false
+	}
+	endpoint, token, ok, err := adopter.Adopt(ctx, d)
+	if err != nil {
+		slog.Warn("Python library adoption check failed", "library", d.Name, "error", err)
+		return false
+	}
+	if !ok {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.defs[d.Name] = d
+	s.bindings[d.Name] = Binding{Endpoint: endpoint, Token: token, TimeoutSeconds: d.TimeoutSeconds}
+	s.statuses[d.Name] = Status{Name: d.Name, Phase: "Ready"}
+	slog.Info("Python library adopted: worker from a previous controller is healthy", "library", d.Name)
+	return true
+}
+
 func (s *Supervisor) Delete(ctx context.Context, name string) error {
 	if !namePattern.MatchString(name) {
 		return fmt.Errorf("invalid library name")
+	}
+	if s.passive.Load() {
+		return ErrStandby
 	}
 	s.operations.Lock()
 	defer s.operations.Unlock()
@@ -344,8 +464,11 @@ func (s *Supervisor) Get(name string) (Definition, bool) {
 }
 func (s *Supervisor) Status(name string) (Status, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	v, ok := s.statuses[name]
+	s.mu.RUnlock()
+	if ok {
+		v.AIAvailable = s.AIAvailable()
+	}
 	return v, ok
 }
 func (s *Supervisor) Bindings(context.Context) (map[string]Binding, error) {
@@ -393,6 +516,9 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	}
 	s.operations.Lock()
 	defer s.operations.Unlock()
+	if s.passive.Load() {
+		return s.observe(ctx)
+	}
 	defs, err := s.store.Load(ctx)
 	if err != nil {
 		return err
@@ -403,6 +529,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		d = s.resolveAI(d)
 		seen[d.Name] = true
 		old, ok := s.Get(d.Name)
 		st, _ := s.Status(d.Name)
@@ -418,6 +545,9 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			s.mu.Lock()
 			s.defs[d.Name] = d
 			s.mu.Unlock()
+			continue
+		}
+		if !ok && s.adopt(ctx, d) {
 			continue
 		}
 		switch {

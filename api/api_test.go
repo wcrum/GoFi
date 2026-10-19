@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/wcrum/gofi/controller"
@@ -67,7 +71,7 @@ func TestConnectCRUDRoundTripsFullTypedDefinition(t *testing.T) {
 	client, ctrl, _ := newTestClient()
 	ctx := context.Background()
 	def := basicDefinition()
-	def.Parser.Decoders = []spec.CodecStep{{Type: "base64"}}
+	def.Decode = &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}}}
 	def.Parser.ErrorPolicy = "drop"
 	def.Stages = []spec.StageSpec{{ID: "app", Kind: "filter", Type: "regex", Field: "app", Expression: "^payments$"}, {ID: "status", Kind: "filter", Type: "cel", Expression: `fields["status"] >= 200`}}
 	def.Sinks = []spec.SinkCfg{{Type: "http", URL: "https://receiver.example/ingest", Headers: map[string]string{"X-App": "GoFi"}, Auth: &spec.HTTPAuth{Type: "apiKey", HeaderName: "X-Token", APIKey: "example"}, When: `fields["app"] == "payments"`}}
@@ -81,12 +85,38 @@ func TestConnectCRUDRoundTripsFullTypedDefinition(t *testing.T) {
 	if err := fromProto(saved.Msg.Flow, &roundTrip); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(def, roundTrip) {
-		t.Fatalf("typed contract lost fields:\nwant %+v\ngot %+v", def, roundTrip)
+	// Responses show credentials as the sentinel; everything else is intact.
+	if !reflect.DeepEqual(spec.Redact(def), roundTrip) {
+		t.Fatalf("typed contract lost fields:\nwant %+v\ngot %+v", spec.Redact(def), roundTrip)
+	}
+	if roundTrip.Sinks[0].Auth.APIKey != spec.Redacted {
+		t.Fatalf("API key shown in clear: %+v", roundTrip.Sinks[0].Auth)
+	}
+	if stored, _ := ctrl.Get(def.Name); stored.Sinks[0].Auth.APIKey != "example" {
+		t.Fatalf("stored definition redacted: %+v", stored.Sinks[0].Auth)
 	}
 	got, err := client.GetFlow(ctx, connect.NewRequest(&gofiv1.GetFlowRequest{Name: def.Name}))
 	if err != nil || len(got.Msg.Flow.Stages) != 2 || got.Msg.Flow.Stages[1].Expression != def.Stages[1].Expression {
 		t.Fatalf("get: %v %v", got, err)
+	}
+	if got.Msg.Flow.Sinks[0].Auth.ApiKey != spec.Redacted {
+		t.Fatalf("GetFlow shows the API key: %v", got.Msg.Flow.Sinks[0].Auth)
+	}
+	// Saving back what a read showed keeps the stored credential; an edit
+	// elsewhere goes through.
+	got.Msg.Flow.Sinks[0].Headers["X-App"] = "Edited"
+	if _, err := client.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: got.Msg.Flow})); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _ := ctrl.Get(def.Name); stored.Sinks[0].Auth.APIKey != "example" || stored.Sinks[0].Headers["X-App"] != "Edited" {
+		t.Fatalf("redacted round trip changed the credential or lost the edit: %+v", stored.Sinks[0])
+	}
+	// A sentinel on a new flow has nothing to keep: refused before saving.
+	fresh := basicDefinition()
+	fresh.Name = "fresh"
+	fresh.Sinks = []spec.SinkCfg{{Type: "http", URL: "https://receiver.example", Auth: &spec.HTTPAuth{Type: "bearer", Token: spec.Redacted}}}
+	if _, err := client.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, fresh)})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("sentinel without a stored value: %v", err)
 	}
 	list, err := client.ListFlows(ctx, connect.NewRequest(&gofiv1.ListFlowsRequest{}))
 	if err != nil || len(list.Msg.Flows) != 1 {
@@ -115,8 +145,10 @@ func TestConnectRejectsInvalidConfigurationBeforePersistence(t *testing.T) {
 		"invalid network":       func(d *spec.FlowDefinition) { d.Source.Listen.Network = "sctp" },
 		"binary ClusterIP":      func(d *spec.FlowDefinition) { d.Source.Listen.Service = &spec.ServiceExposure{Type: "ClusterIP"} },
 		"unknown parser":        func(d *spec.FlowDefinition) { d.Parser.Format = "unknown" },
-		"invalid decoder":       func(d *spec.FlowDefinition) { d.Parser.Decoders = []spec.CodecStep{{Type: "unknown"}} },
-		"invalid framing":       func(d *spec.FlowDefinition) { d.Framing.Mode = "unknown" },
+		"invalid decoder": func(d *spec.FlowDefinition) {
+			d.Decode = &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "unknown"}}}
+		},
+		"invalid framing": func(d *spec.FlowDefinition) { d.Framing.Mode = "unknown" },
 		"duplicate stage IDs": func(d *spec.FlowDefinition) {
 			d.Stages = []spec.StageSpec{{ID: "same", Kind: "filter", Type: "cel", Expression: "true"}, {ID: "same", Kind: "filter", Type: "cel", Expression: "false"}}
 		},
@@ -224,7 +256,8 @@ func TestConnectRejectsMalformedOrMissingRequests(t *testing.T) {
 func TestHealthSPARoutesAndRetiredREST(t *testing.T) {
 	ctrl := controller.New(driver.NewInProcess())
 	handler := New(ctrl, fstest.MapFS{"index.html": {Data: []byte("portal shell")}, "assets/test.js": {Data: []byte("asset")}}, deploymode.ModeBinary)
-	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/login": 200, "/assets/test.js": 200, "/assets/missing.js": 404, "/api/listeners": 404, "/api/stream": 404} {
+	// /readyz is 503 here: the controller never ran a reconcile pass.
+	for path, want := range map[string]int{"/healthz": 200, "/readyz": 503, "/login": 200, "/assets/test.js": 200, "/assets/missing.js": 404, "/api/listeners": 404, "/api/stream": 404} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
 		if recorder.Code != want {
@@ -280,4 +313,76 @@ func TestInlinePythonIsShownAsCodeNotItsManagedLibrary(t *testing.T) {
 	if list.Msg.Flows[0].Stages[0].Python.Library != "" {
 		t.Fatal("list leaked the managed library")
 	}
+}
+
+// TestReadyzFollowsControllerReadiness: /readyz is 503 until the controller
+// has completed its first reconcile pass, 200 after it, and 503 again while
+// the runtime driver does not answer; /healthz is liveness only and stays 200.
+func TestReadyzFollowsControllerReadiness(t *testing.T) {
+	d := &probeDriver{Driver: driver.NewInProcess()}
+	ctrl := controller.New(d)
+	handler := New(ctrl, nil, deploymode.ModeBinary)
+	probe := func(path string) (int, string) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		body, _ := io.ReadAll(recorder.Result().Body)
+		return recorder.Code, string(body)
+	}
+	if code, body := probe("/readyz"); code != http.StatusServiceUnavailable || !strings.Contains(body, "first reconcile pass") {
+		t.Fatalf("before the first pass: %d %q", code, body)
+	}
+	if code, _ := probe("/healthz"); code != http.StatusOK {
+		t.Fatal("healthz must be liveness only")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go ctrl.Run(ctx)
+	waitForCode(t, probe, http.StatusOK)
+
+	d.listErr.Store(true)
+	ctrl.Enqueue("anything") // single-flow items do not List; force a full pass
+	if err := ctrl.Add(basicDefinition()); err != nil {
+		t.Fatal(err)
+	}
+	waitForCode(t, probe, http.StatusServiceUnavailable)
+	if _, body := probe("/readyz"); !strings.Contains(body, "runtime driver unreachable") {
+		t.Fatalf("reason: %q", body)
+	}
+	d.listErr.Store(false)
+	def := basicDefinition()
+	def.Framing.Mode = "raw"
+	if err := ctrl.Add(def); err != nil { // another save triggers a full pass
+		t.Fatal(err)
+	}
+	waitForCode(t, probe, http.StatusOK)
+	_ = driver.NewInProcess().DrainAll(ctx)
+}
+
+func waitForCode(t *testing.T, probe func(string) (int, string), want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		code, body := probe("/readyz")
+		if code == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("/readyz = %d %q, want %d", code, body, want)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// probeDriver is the in-process driver with a switch that makes List fail,
+// as a Docker daemon that stopped answering would.
+type probeDriver struct {
+	driver.Driver
+	listErr atomic.Bool
+}
+
+func (d *probeDriver) List(ctx context.Context) ([]spec.FlowDefinition, error) {
+	if d.listErr.Load() {
+		return nil, errors.New("Cannot connect to the Docker daemon")
+	}
+	return d.Driver.List(ctx)
 }

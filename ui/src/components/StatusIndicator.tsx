@@ -7,11 +7,11 @@ export type StatusTone = 'success' | 'warning' | 'error' | 'info' | 'neutral'
 /** State shown beside controls (Unsaved, Running, Streaming…). A dot and a
  * label at the same height as a medium Button, so control rows line up;
  * use Badge only for tags attached to items, not for state next to actions. */
-export function StatusIndicator({ tone, text, tooltip, pulse }: { tone: StatusTone; text: string; tooltip?: string; pulse?: boolean }) {
+export function StatusIndicator({ tone, text, tooltip, pulse, hideTextNarrow }: { tone: StatusTone; text: string; tooltip?: string; pulse?: boolean; /** Below the md breakpoint show only the dot (the text stays the accessible name). */ hideTextNarrow?: boolean }) {
   const styles = useStyles2(getStyles)
-  const indicator = <span className={styles.root} role="status">
+  const indicator = <span className={styles.root} role="status" aria-label={hideTextNarrow ? text : undefined}>
     <span className={cx(styles.dot, styles[tone], pulse && styles.pulse, pulse && styles[`${tone}Color`])} aria-hidden="true" />
-    {text}
+    <span className={cx(hideTextNarrow && styles.textNarrow)}>{text}</span>
   </span>
   return tooltip ? <Tooltip content={tooltip}>{indicator}</Tooltip> : indicator
 }
@@ -22,6 +22,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize, color: theme.colors.text.secondary, whiteSpace: 'nowrap',
   }),
   dot: css({ width: 8, height: 8, borderRadius: theme.shape.radius.circle, flexShrink: 0 }),
+  textNarrow: css({ [theme.breakpoints.down('md')]: { display: 'none' } }),
   success: css({ background: theme.colors.success.main }),
   warning: css({ background: theme.colors.warning.main }),
   error: css({ background: theme.colors.error.main }),

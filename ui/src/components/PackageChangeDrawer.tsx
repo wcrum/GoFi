@@ -7,6 +7,7 @@ import { lineDiff } from '../lib/line-diff'
 import { PageLoading } from './PageLoading'
 import { StatusIndicator } from './StatusIndicator'
 import { useToast } from './Toast'
+import { t } from '../i18n'
 
 /** Reviews GoFi's own UDS Package change (live → as GoFi would apply it for
  * the saved flows) with Pepr's verdict, then applies exactly that plan. GoFi
@@ -26,7 +27,7 @@ export function PackageChangeDrawer({ onClose, onApplied }: { onClose: () => voi
     try {
       const next = await applyUdsPackage(plan.digest)
       setPlan(next)
-      addToast(`Applied Package ${next.namespace}/${next.name}. UDS regenerates its policies shortly.`, 'success')
+      addToast(t('gofi.components.package-change.applied', 'Applied Package {{namespace}}/{{name}}. the policy controller regenerates its rules shortly.', { namespace: next.namespace, name: next.name }), 'success')
       onApplied()
     } catch (reason) {
       setError(String(reason))
@@ -38,22 +39,22 @@ export function PackageChangeDrawer({ onClose, onApplied }: { onClose: () => voi
 
   const rejected = plan?.admission && !plan.admission.accepted
   const canApply = !!plan && plan.managed && !plan.error && !plan.inSync && !rejected
-  return <Drawer title="Review GoFi's UDS Package" subtitle={plan?.name ? `${plan.namespace}/${plan.name} · live → as GoFi applies it for the saved flows` : undefined} size="md" onClose={onClose}>
-    {!plan && !error ? <PageLoading text="Planning Package change..." /> : <Stack direction="column" gap={2}>
-      {error && <Alert severity="error" title="Could not apply" bottomSpacing={0}>{error}</Alert>}
-      {plan?.error && <Alert severity="error" title="No plan" bottomSpacing={0}>{plan.error}</Alert>}
-      {plan && !plan.managed && <Alert severity="info" title="GoFi does not manage this Package" bottomSpacing={0}>uds.manageAllows is off, so GoFi only shows the change. Add the entries to additionalNetworkAllow in the uds-gofi-config chart values.</Alert>}
+  return <Drawer title={t('gofi.components.package-change.title', "Review GoFi's network policy Package")} subtitle={plan?.name ? t('gofi.components.package-change.subtitle', '{{namespace}}/{{name}} · live → as GoFi applies it for the saved flows', { namespace: plan.namespace, name: plan.name }) : undefined} size="md" onClose={onClose}>
+    {!plan && !error ? <PageLoading text={t('gofi.components.package-change.planning', 'Planning Package change...')} /> : <Stack direction="column" gap={2}>
+      {error && <Alert severity="error" title={t('gofi.components.package-change.could-not-apply', 'Could not apply')} bottomSpacing={0}>{error}</Alert>}
+      {plan?.error && <Alert severity="error" title={t('gofi.components.package-change.no-plan', 'No plan')} bottomSpacing={0}>{plan.error}</Alert>}
+      {plan && !plan.managed && <Alert severity="info" title={t('gofi.components.package-change.unmanaged-title', 'GoFi does not manage this Package')} bottomSpacing={0}>{t('gofi.components.package-change.unmanaged-body', 'uds.manageAllows is off, so GoFi only shows the change. Add the entries to additionalNetworkAllow in the uds-gofi-config chart values.')}</Alert>}
       {plan && !plan.error && <>
         <Stack gap={2} alignItems="center" wrap="wrap">
-          {plan.inSync ? <StatusIndicator tone="success" text="Live Package is up to date" /> : <StatusIndicator tone="warning" text="Live Package differs" />}
-          {plan.admission && <StatusIndicator tone={rejected ? 'error' : 'success'} text={rejected ? 'Pepr rejects it' : 'Pepr accepts it'} tooltip={plan.admission.error} />}
+          {plan.inSync ? <StatusIndicator tone="success" text={t('gofi.components.package-change.in-sync', 'Live Package is up to date')} /> : <StatusIndicator tone="warning" text={t('gofi.components.package-change.differs', 'Live Package differs')} />}
+          {plan.admission && <StatusIndicator tone={rejected ? 'error' : 'success'} text={rejected ? t('gofi.components.package-change.pepr-rejects', 'Pepr rejects it') : t('gofi.components.package-change.pepr-accepts', 'Pepr accepts it')} tooltip={plan.admission.error} />}
         </Stack>
-        {rejected && <Alert severity="error" title="Pepr admission rejects this Package" bottomSpacing={0}>{plan.admission?.error}</Alert>}
-        <Text variant="bodySmall" color="secondary">Only GoFi's own Package is written. Paths blocked by another application's Package still need that application's owner.</Text>
+        {rejected && <Alert severity="error" title={t('gofi.components.package-change.pepr-rejects-title', 'Pepr admission rejects this Package')} bottomSpacing={0}>{plan.admission?.error}</Alert>}
+        <Text variant="bodySmall" color="secondary">{t('gofi.components.package-change.own-package-note', "Only GoFi's own Package is written. Paths blocked by another application's Package still need that application's owner.")}</Text>
         <DiffView before={plan.liveYaml} after={plan.desiredYaml} />
         <Stack gap={1}>
-          <Button icon={applying ? 'spinner' : 'check'} disabled={!canApply || applying} onClick={() => void apply()}>{applying ? 'Applying...' : 'Apply Package'}</Button>
-          <Button variant="secondary" onClick={onClose}>Close</Button>
+          <Button icon={applying ? 'spinner' : 'check'} disabled={!canApply || applying} onClick={() => void apply()}>{applying ? t('gofi.components.package-change.applying', 'Applying...') : t('gofi.components.package-change.apply', 'Apply Package')}</Button>
+          <Button variant="secondary" onClick={onClose}>{t('gofi.common.close', 'Close')}</Button>
         </Stack>
       </>}
     </Stack>}
@@ -65,7 +66,7 @@ export function PackageChangeDrawer({ onClose, onApplied }: { onClose: () => voi
 function DiffView({ before, after }: { before: string; after: string }) {
   const styles = useStyles2(getStyles)
   const lines = lineDiff(before, after)
-  return <pre className={styles.diff} aria-label="Package change">
+  return <pre className={styles.diff} aria-label={t('gofi.components.package-change.diff-label', 'Package change')}>
     {lines.map((line, index) => <div key={index} className={cx(styles.line, line.kind === 'added' && styles.added, line.kind === 'removed' && styles.removed)}>
       <span className={styles.sign} aria-hidden="true">{line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '}</span>{line.text}
     </div>)}

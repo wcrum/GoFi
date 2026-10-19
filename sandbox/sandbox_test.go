@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"github.com/wcrum/gofi/atomicfile"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,8 +81,16 @@ func TestDisappearingDesiredStateDoesNotEraseWorkers(t *testing.T) {
 	if e := s.Apply(ctx, Definition{Name: "library", SourceCode: "x"}); e != nil {
 		t.Fatal(e)
 	}
+	// A missing primary is served from the backup of the last save; with
+	// every copy gone the store reports an error rather than "no libraries".
 	if e := os.Remove(path); e != nil {
 		t.Fatal(e)
+	}
+	if e := s.Reconcile(ctx); e != nil {
+		t.Fatalf("missing primary must be served from its backup: %v", e)
+	}
+	for _, suffix := range []string{atomicfile.BackupSuffix, atomicfile.PreviousSuffix} {
+		_ = os.Remove(path + suffix)
 	}
 	if e := s.Reconcile(ctx); e == nil {
 		t.Fatal("expected missing desired state error")

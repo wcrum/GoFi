@@ -10,9 +10,9 @@ spec:
     import gofi
 
     @gofi.parser("telemetry")
-    def telemetry(raw):
+    def telemetry(raw: bytes) -> dict:
         return json.loads(raw)
 
     @gofi.transformer("normalize")
-    def normalize(fields, meta):
+    def normalize(fields: dict, meta: dict) -> dict:
         return {**fields, "app": str(fields.get("app", "unknown")).lower()}

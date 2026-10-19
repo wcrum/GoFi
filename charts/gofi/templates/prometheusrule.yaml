@@ -1,0 +1,244 @@
+{{- if .Values.alerting.enabled }}
+{{- $a := .Values.alerting }}
+{{- $for := $a.for | default "5m" }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "gofi.fullname" . }}-flows
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+    {{- with $a.ruleLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: gofi-flows
+      rules:
+        # Controller metrics: the flow should run but no runtime exists.
+        - alert: GoFiFlowDown
+          expr: max by (listener) (gofi_flow_desired_running) == 1 and max by (listener) (gofi_flow_runtime_up) == 0
+          for: {{ $for }}
+          labels:
+            severity: critical
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiFlowDown") }}
+            summary: "GoFi flow {{ "{{ $labels.listener }}" }} is down"
+            description: "Flow {{ "{{ $labels.listener }}" }} is declared running but has no runtime. Check its Problems panel and start errors."
+        - alert: GoFiFlowCrashLooping
+          expr: sum by (listener) (increase(gofi_flow_restarts_total[1h])) >= {{ $a.restartsPerHour | default 3 }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiFlowCrashLooping") }}
+            summary: "GoFi flow {{ "{{ $labels.listener }}" }} keeps restarting"
+            description: "The runtime of {{ "{{ $labels.listener }}" }} exited {{ "{{ $value | humanize }}" }} times in the last hour."
+        # Flow runtime metrics (scrape the listener Pods' metrics port).
+        - alert: GoFiSourceErrors
+          expr: sum by (listener) (rate(gofi_source_events_total{outcome=~"error|reconnect"}[5m])) > {{ $a.sourceErrorsPerSecond | default 0.1 }}
+          for: {{ $for }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiSourceErrors") }}
+            summary: "GoFi flow {{ "{{ $labels.listener }}" }} source is failing"
+            description: "Pulled source polls or connections of {{ "{{ $labels.listener }}" }} fail at {{ "{{ $value | humanize }}" }}/s."
+        - alert: GoFiSinkFailures
+          expr: |
+            sum by (listener) (rate(gofi_sink_dispatch_total{outcome="error"}[5m]))
+              / sum by (listener) (rate(gofi_sink_dispatch_total[5m])) > {{ $a.sinkFailureRatio | default 0.05 }}
+          for: {{ $for }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiSinkFailures") }}
+            summary: "GoFi flow {{ "{{ $labels.listener }}" }} destinations are failing"
+            description: "{{ "{{ $value | humanizePercentage }}" }} of sends from {{ "{{ $labels.listener }}" }} fail."
+        - alert: GoFiParseErrors
+          expr: |
+            sum by (listener) (rate(gofi_parser_errors_total[5m]))
+              / sum by (listener) (rate(gofi_frames_received_total[5m])) > {{ $a.parseErrorRatio | default 0.1 }}
+          for: {{ $for }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiParseErrors") }}
+            summary: "GoFi flow {{ "{{ $labels.listener }}" }} cannot parse its input"
+            description: "{{ "{{ $value | humanizePercentage }}" }} of frames received by {{ "{{ $labels.listener }}" }} fail to parse."
+        - alert: GoFiTapEventsDropped
+          expr: sum by (listener) (rate(gofi_tap_events_dropped_total[5m])) > {{ $a.tapDropsPerSecond | default 1 }}
+          for: {{ $for }}
+          labels:
+            severity: info
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiTapEventsDropped") }}
+            summary: "Live traffic viewers of {{ "{{ $labels.listener }}" }} miss events"
+            description: "A slow live-traffic subscriber misses {{ "{{ $value | humanize }}" }} events/s. Pipeline delivery is not affected."
+        {{- with $a.noTrafficFlows }}
+        - alert: GoFiFlowNoTraffic
+          expr: sum by (listener) (increase(gofi_frames_received_total{listener=~"{{ join "|" . }}"}[{{ $a.noTrafficMinutes | default 15 }}m])) == 0
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiFlowNoTraffic") }}
+            summary: "GoFi flow {{ "{{ $labels.listener }}" }} received no traffic"
+            description: "No frame reached {{ "{{ $labels.listener }}" }} in {{ $a.noTrafficMinutes | default 15 }} minutes."
+        - alert: GoFiFlowNoTrafficSeries
+          expr: |
+            {{- range $i, $flow := . }}
+            {{ if $i }}or {{ end }}(absent(gofi_frames_received_total{listener="{{ $flow }}"}) and on() (max(gofi_flow_desired_running{listener="{{ $flow }}"}) == 1))
+            {{- end }}
+          for: {{ $a.noTrafficMinutes | default 15 }}m
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiFlowNoTrafficSeries") }}
+            summary: "A GoFi flow opted into traffic alerts reports no traffic metrics"
+            description: "An opted-in flow has not reported gofi_frames_received_total for {{ $a.noTrafficMinutes | default 15 }} minutes (no frames since its runtime started, or it is not scraped)."
+        {{- end }}
+    {{- if $a.controller.enabled }}
+    {{- $c := $a.controller }}
+    - name: gofi-controller
+      rules:
+        # The controller exports gofi_controller_leader{pod}=1 on the Lease holder
+        # (always 1 without leader election).
+        - alert: GoFiControllerNoLeader
+          expr: max(gofi_controller_leader) == 0 or absent(gofi_controller_leader)
+          for: 2m
+          labels:
+            severity: critical
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiControllerNoLeader") }}
+            summary: "No GoFi controller holds the leader Lease"
+            description: "No controller replica reports leadership for 2 minutes: flows are not reconciled. Check the Lease, controller logs, and that at least one replica is Ready."
+        - alert: GoFiControllerLeaderFlapping
+          expr: sum(increase(gofi_controller_leader_transitions_total[15m])) > 2
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiControllerLeaderFlapping") }}
+            summary: "GoFi controller leadership changed {{ "{{ $value | humanize }}" }} times in 15 minutes"
+            description: "Leader changes point at Lease renew timeouts (API latency, CPU throttling, restarts). Compare with GoFiPodRestarts and GoFiControllerAPIThrottled."
+        # Watches that keep failing, and a reconcile loop that has not completed.
+        - alert: GoFiControllerWatchErrors
+          expr: sum(rate(gofi_controller_watch_errors_total[5m])) * 60 > {{ $c.watchErrorsPerMinute }}
+          for: {{ $for }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiControllerWatchErrors") }}
+            summary: "GoFi controller informers are failing to watch"
+            description: "Flow/Sandbox/Pod watches fail {{ "{{ $value | humanize }}" }} times per minute: the controller works from stale caches. Check RBAC, API server health, and network policy to the Kubernetes API."
+        - alert: GoFiControllerReconcileStale
+          expr: (time() - max(gofi_controller_reconcile_last_success_timestamp_seconds)) > {{ $c.reconcileStaleSeconds }} and max(gofi_controller_leader) == 1
+          labels:
+            severity: critical
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiControllerReconcileStale") }}
+            summary: "GoFi reconcile loop has not completed for {{ "{{ $value | humanizeDuration }}" }}"
+            description: "The leader has not finished a reconcile pass in {{ $c.reconcileStaleSeconds }}s (informer lag, a hung driver call, or API throttling). Flows keep running but changes are not applied."
+        # client-go rate limiter: requests waiting on the client-side QPS budget.
+        - alert: GoFiControllerAPIThrottled
+          expr: histogram_quantile(0.99, sum by (le) (rate(rest_client_rate_limiter_duration_seconds_bucket{job=~".*gofi.*"}[5m]))) > {{ $c.apiThrottleP99Seconds }}
+          for: {{ $for }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiControllerAPIThrottled") }}
+            summary: "GoFi controller is throttled by its Kubernetes client rate limiter"
+            description: "p99 client-side wait is {{ "{{ $value | humanizeDuration }}" }}. Raise GOFI_KUBE_QPS/GOFI_KUBE_BURST or shard flows across namespaces (docs/deployment.md, Sizing and scaling)."
+        # kube-state-metrics: controller and worker container restarts.
+        - alert: GoFiPodRestarts
+          expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", pod=~"{{ include "gofi.fullname" . }}-.*|gofi-python-.*"}[1h])) >= {{ $c.podRestartsPerHour }}
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiPodRestarts") }}
+            summary: "GoFi Pod {{ "{{ $labels.pod }}" }} restarted {{ "{{ $value | humanize }}" }} times in an hour"
+            description: "Repeated restarts of the controller or a Python worker: check OOMKilled (raise memory limits or Sandbox memoryMib), probe failures, and the previous container's logs."
+    {{- end }}
+    {{- if $a.streaming.enabled }}
+    {{- $s := $a.streaming }}
+    # Live-stream hub (controller metrics; docs/observability.md "Live traffic
+    # and stats streams"). Pipeline delivery is never affected by any of these.
+    - name: gofi-streaming
+      rules:
+        - alert: GoFiLiveViewersDropping
+          expr: sum by (layer) (rate(gofi_tap_dropped_total[5m])) > {{ $s.viewerDropsPerSecond }}
+          for: 10m
+          labels:
+            severity: info
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiLiveViewersDropping") }}
+            summary: "Live traffic viewers miss {{ "{{ $value | humanize }}" }} events/s at the {{ "{{ $labels.layer }}" }} layer"
+            description: "Browsers watching live traffic fall behind the flows they watch. Narrow the view to one flow, raise GOFI_WATCH_QUEUE, or check the browser's load. Pipeline delivery is not affected."
+        - alert: GoFiStreamCapReached
+          expr: sum by (reason) (increase(gofi_watch_streams_rejected_total[15m])) > 0
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiStreamCapReached") }}
+            summary: "GoFi refused live streams ({{ "{{ $labels.reason }}" }} cap)"
+            description: "Browser streams were refused by GOFI_WATCH_MAX_STREAMS (global) or GOFI_WATCH_MAX_STREAMS_PER_CLIENT (client) in the last 15 minutes. Raise the cap or find the reconnecting client."
+        - alert: GoFiRelayReconnectStorm
+          expr: sum(rate(gofi_relay_reconnects_total[5m])) > {{ $s.relayReconnectsPerSecond }}
+          for: 10m
+          labels:
+            severity: warning
+            {{- with $a.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            runbook_url: {{ include "gofi.runbook" (list $ "GoFiRelayReconnectStorm") }}
+            summary: "GoFi controller keeps reconnecting to flow runtimes ({{ "{{ $value | humanize }}" }}/s)"
+            description: "Controller-to-runtime traffic or stats streams drop and reconnect repeatedly: check listener Pod restarts (GoFiFlowCrashLooping) and network policy or UDS allows between the controller and the :9091 relay."
+    {{- end }}
+{{- end }}

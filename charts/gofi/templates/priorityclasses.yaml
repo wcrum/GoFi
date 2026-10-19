@@ -1,0 +1,33 @@
+{{- /* Cluster-scoped: create from exactly one release per cluster. */ -}}
+{{- if .Values.priorityClasses.create }}
+{{- with .Values.priorityClasses.controlPlane }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "gofi.labels" $ | nindent 4 }}
+  annotations:
+    # Survives release deletion so Pods referencing it keep scheduling.
+    helm.sh/resource-policy: keep
+value: {{ .value | int64 }}
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: {{ .description | quote }}
+{{- end }}
+---
+{{- with .Values.priorityClasses.dataPlane }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "gofi.labels" $ | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+value: {{ .value | int64 }}
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: {{ .description | quote }}
+{{- end }}
+{{- end }}

@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
 
+	"github.com/wcrum/gofi/atomicfile"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -37,14 +38,25 @@ type resourceList struct {
 	Items      []resource `json:"items"`
 }
 
+// load reads the file, or the backup of the last save when the primary is
+// missing or unreadable (atomicfile); the next write heals the primary.
 func (f *FileStore) load() ([]Expression, error) {
-	b, err := os.ReadFile(f.Path)
+	out, recovered, err := atomicfile.Decode(f.Path, decodeExpressions)
 	if os.IsNotExist(err) && !f.loaded {
 		return []Expression{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	if recovered {
+		slog.Warn("CEL library unreadable; recovered from backup", "path", f.Path, "backup", f.Path+atomicfile.BackupSuffix)
+	}
+	f.loaded = true
+	return out, nil
+}
+
+func decodeExpressions(b []byte) ([]Expression, error) {
+	var err error
 	var list resourceList
 	if err = yaml.UnmarshalStrict(b, &list); err != nil {
 		var item resource
@@ -82,7 +94,6 @@ func (f *FileStore) load() ([]Expression, error) {
 		}
 		out = append(out, e)
 	}
-	f.loaded = true
 	return out, nil
 }
 
@@ -107,22 +118,8 @@ func (f *FileStore) write(items []Expression) error {
 	if b, err = yaml.JSONToYAML(b); err != nil {
 		return err
 	}
-	if err = os.MkdirAll(filepath.Dir(f.Path), 0700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(f.Path), ".gofi-cel-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err = tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	if err = os.Rename(tmp.Name(), f.Path); err != nil {
+	// Atomic + fsync, keeps .bak, skips unchanged content (see atomicfile).
+	if err = atomicfile.WriteFile(f.Path, b, 0o600); err != nil {
 		return err
 	}
 	f.loaded = true

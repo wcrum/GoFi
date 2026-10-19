@@ -11,7 +11,7 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class DebugFunctionRequest(_message.Message):
-    __slots__ = ("library", "source", "name", "kind", "raw", "fields", "meta", "config", "watches", "max_steps", "run_id", "timeout_seconds")
+    __slots__ = ("library", "source", "name", "kind", "raw", "fields", "meta", "config", "watches", "max_steps", "run_id", "timeout_seconds", "ai")
     LIBRARY_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
@@ -24,6 +24,7 @@ class DebugFunctionRequest(_message.Message):
     MAX_STEPS_FIELD_NUMBER: _ClassVar[int]
     RUN_ID_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    AI_FIELD_NUMBER: _ClassVar[int]
     library: str
     source: str
     name: str
@@ -36,7 +37,8 @@ class DebugFunctionRequest(_message.Message):
     max_steps: int
     run_id: str
     timeout_seconds: int
-    def __init__(self, library: _Optional[str] = ..., source: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., watches: _Optional[_Iterable[str]] = ..., max_steps: _Optional[int] = ..., run_id: _Optional[str] = ..., timeout_seconds: _Optional[int] = ...) -> None: ...
+    ai: bool
+    def __init__(self, library: _Optional[str] = ..., source: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., watches: _Optional[_Iterable[str]] = ..., max_steps: _Optional[int] = ..., run_id: _Optional[str] = ..., timeout_seconds: _Optional[int] = ..., ai: _Optional[bool] = ...) -> None: ...
 
 class DebugRecording(_message.Message):
     __slots__ = ("steps", "result", "initial_globals", "truncated", "truncation_reason", "entry_line", "run_id")
@@ -147,7 +149,7 @@ class WorkerLogEntry(_message.Message):
     def __init__(self, time: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., stream: _Optional[str] = ..., line: _Optional[str] = ..., invocation_id: _Optional[str] = ..., function: _Optional[str] = ..., kind: _Optional[str] = ..., level: _Optional[str] = ...) -> None: ...
 
 class SandboxDefinition(_message.Message):
-    __slots__ = ("name", "source_code", "timeout_seconds", "memory_mib", "tests", "managed_by", "egress")
+    __slots__ = ("name", "source_code", "timeout_seconds", "memory_mib", "tests", "managed_by", "egress", "ai")
     NAME_FIELD_NUMBER: _ClassVar[int]
     SOURCE_CODE_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_SECONDS_FIELD_NUMBER: _ClassVar[int]
@@ -155,6 +157,7 @@ class SandboxDefinition(_message.Message):
     TESTS_FIELD_NUMBER: _ClassVar[int]
     MANAGED_BY_FIELD_NUMBER: _ClassVar[int]
     EGRESS_FIELD_NUMBER: _ClassVar[int]
+    AI_FIELD_NUMBER: _ClassVar[int]
     name: str
     source_code: str
     timeout_seconds: int
@@ -162,7 +165,8 @@ class SandboxDefinition(_message.Message):
     tests: _containers.RepeatedCompositeFieldContainer[FunctionTest]
     managed_by: str
     egress: _containers.RepeatedCompositeFieldContainer[EgressRule]
-    def __init__(self, name: _Optional[str] = ..., source_code: _Optional[str] = ..., timeout_seconds: _Optional[int] = ..., memory_mib: _Optional[int] = ..., tests: _Optional[_Iterable[_Union[FunctionTest, _Mapping]]] = ..., managed_by: _Optional[str] = ..., egress: _Optional[_Iterable[_Union[EgressRule, _Mapping]]] = ...) -> None: ...
+    ai: bool
+    def __init__(self, name: _Optional[str] = ..., source_code: _Optional[str] = ..., timeout_seconds: _Optional[int] = ..., memory_mib: _Optional[int] = ..., tests: _Optional[_Iterable[_Union[FunctionTest, _Mapping]]] = ..., managed_by: _Optional[str] = ..., egress: _Optional[_Iterable[_Union[EgressRule, _Mapping]]] = ..., ai: _Optional[bool] = ...) -> None: ...
 
 class EgressRule(_message.Message):
     __slots__ = ("cidr", "port", "protocol", "namespace", "pod_selector", "description")
@@ -210,14 +214,16 @@ class FunctionTest(_message.Message):
     def __init__(self, name: _Optional[str] = ..., function: _Optional[str] = ..., kind: _Optional[str] = ..., raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., expect_fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., expect_drop: _Optional[bool] = ...) -> None: ...
 
 class SandboxStatus(_message.Message):
-    __slots__ = ("name", "phase", "error")
+    __slots__ = ("name", "phase", "error", "ai_available")
     NAME_FIELD_NUMBER: _ClassVar[int]
     PHASE_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
+    AI_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
     name: str
     phase: str
     error: str
-    def __init__(self, name: _Optional[str] = ..., phase: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
+    ai_available: bool
+    def __init__(self, name: _Optional[str] = ..., phase: _Optional[str] = ..., error: _Optional[str] = ..., ai_available: _Optional[bool] = ...) -> None: ...
 
 class ListSandboxesRequest(_message.Message):
     __slots__ = ()
@@ -276,20 +282,22 @@ class ListLibraryFunctionsRequest(_message.Message):
     def __init__(self, library: _Optional[str] = ...) -> None: ...
 
 class LibraryFunction(_message.Message):
-    __slots__ = ("library", "name", "kind", "description", "params", "managed_by")
+    __slots__ = ("library", "name", "kind", "description", "params", "managed_by", "every")
     LIBRARY_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     PARAMS_FIELD_NUMBER: _ClassVar[int]
     MANAGED_BY_FIELD_NUMBER: _ClassVar[int]
+    EVERY_FIELD_NUMBER: _ClassVar[int]
     library: str
     name: str
     kind: str
     description: str
     params: _containers.RepeatedCompositeFieldContainer[FunctionParam]
     managed_by: str
-    def __init__(self, library: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., description: _Optional[str] = ..., params: _Optional[_Iterable[_Union[FunctionParam, _Mapping]]] = ..., managed_by: _Optional[str] = ...) -> None: ...
+    every: str
+    def __init__(self, library: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., description: _Optional[str] = ..., params: _Optional[_Iterable[_Union[FunctionParam, _Mapping]]] = ..., managed_by: _Optional[str] = ..., every: _Optional[str] = ...) -> None: ...
 
 class FunctionParam(_message.Message):
     __slots__ = ("name", "type", "default", "required", "description")
@@ -334,16 +342,18 @@ class WorkerDebugRequest(_message.Message):
     def __init__(self, name: _Optional[str] = ..., kind: _Optional[str] = ..., raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., watches: _Optional[_Iterable[str]] = ..., max_steps: _Optional[int] = ..., invocation_id: _Optional[str] = ...) -> None: ...
 
 class WorkerFunction(_message.Message):
-    __slots__ = ("name", "kind", "description", "params")
+    __slots__ = ("name", "kind", "description", "params", "every")
     NAME_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     PARAMS_FIELD_NUMBER: _ClassVar[int]
+    EVERY_FIELD_NUMBER: _ClassVar[int]
     name: str
     kind: str
     description: str
     params: _containers.RepeatedCompositeFieldContainer[FunctionParam]
-    def __init__(self, name: _Optional[str] = ..., kind: _Optional[str] = ..., description: _Optional[str] = ..., params: _Optional[_Iterable[_Union[FunctionParam, _Mapping]]] = ...) -> None: ...
+    every: str
+    def __init__(self, name: _Optional[str] = ..., kind: _Optional[str] = ..., description: _Optional[str] = ..., params: _Optional[_Iterable[_Union[FunctionParam, _Mapping]]] = ..., every: _Optional[str] = ...) -> None: ...
 
 class WorkerListFunctionsRequest(_message.Message):
     __slots__ = ()
@@ -401,21 +411,66 @@ class WorkerInvokeResponse(_message.Message):
     invocation_id: str
     def __init__(self, fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., raw: _Optional[bytes] = ..., drop: _Optional[bool] = ..., stdout: _Optional[str] = ..., stderr: _Optional[str] = ..., duration_us: _Optional[int] = ..., error: _Optional[str] = ..., error_location: _Optional[_Union[SourceDiagnostic, _Mapping]] = ..., entry_line: _Optional[int] = ..., executed_lines: _Optional[_Iterable[int]] = ..., invocation_id: _Optional[str] = ...) -> None: ...
 
-class WorkerListenRequest(_message.Message):
-    __slots__ = ("name",)
+class WorkerSourceRequest(_message.Message):
+    __slots__ = ("name", "config", "flow", "state", "invocation_id")
     NAME_FIELD_NUMBER: _ClassVar[int]
+    CONFIG_FIELD_NUMBER: _ClassVar[int]
+    FLOW_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    INVOCATION_ID_FIELD_NUMBER: _ClassVar[int]
     name: str
-    def __init__(self, name: _Optional[str] = ...) -> None: ...
+    config: _struct_pb2.Struct
+    flow: str
+    state: _struct_pb2.Struct
+    invocation_id: str
+    def __init__(self, name: _Optional[str] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., flow: _Optional[str] = ..., state: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., invocation_id: _Optional[str] = ...) -> None: ...
 
-class WorkerListenResponse(_message.Message):
-    __slots__ = ("raw", "fields", "meta")
-    RAW_FIELD_NUMBER: _ClassVar[int]
-    FIELDS_FIELD_NUMBER: _ClassVar[int]
+class SourceFrame(_message.Message):
+    __slots__ = ("data", "meta")
+    class MetaEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    DATA_FIELD_NUMBER: _ClassVar[int]
     META_FIELD_NUMBER: _ClassVar[int]
-    raw: bytes
-    fields: _struct_pb2.Struct
-    meta: _struct_pb2.Struct
-    def __init__(self, raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    data: bytes
+    meta: _containers.ScalarMap[str, str]
+    def __init__(self, data: _Optional[bytes] = ..., meta: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
+class WorkerFetchResponse(_message.Message):
+    __slots__ = ("frames", "state", "stdout", "stderr", "duration_us", "error", "error_location", "invocation_id")
+    FRAMES_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    STDOUT_FIELD_NUMBER: _ClassVar[int]
+    STDERR_FIELD_NUMBER: _ClassVar[int]
+    DURATION_US_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    ERROR_LOCATION_FIELD_NUMBER: _ClassVar[int]
+    INVOCATION_ID_FIELD_NUMBER: _ClassVar[int]
+    frames: _containers.RepeatedCompositeFieldContainer[SourceFrame]
+    state: _struct_pb2.Struct
+    stdout: str
+    stderr: str
+    duration_us: int
+    error: str
+    error_location: SourceDiagnostic
+    invocation_id: str
+    def __init__(self, frames: _Optional[_Iterable[_Union[SourceFrame, _Mapping]]] = ..., state: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., stdout: _Optional[str] = ..., stderr: _Optional[str] = ..., duration_us: _Optional[int] = ..., error: _Optional[str] = ..., error_location: _Optional[_Union[SourceDiagnostic, _Mapping]] = ..., invocation_id: _Optional[str] = ...) -> None: ...
+
+class WorkerStreamResponse(_message.Message):
+    __slots__ = ("frames", "state", "started", "invocation_id")
+    FRAMES_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    STARTED_FIELD_NUMBER: _ClassVar[int]
+    INVOCATION_ID_FIELD_NUMBER: _ClassVar[int]
+    frames: _containers.RepeatedCompositeFieldContainer[SourceFrame]
+    state: _struct_pb2.Struct
+    started: bool
+    invocation_id: str
+    def __init__(self, frames: _Optional[_Iterable[_Union[SourceFrame, _Mapping]]] = ..., state: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., started: _Optional[bool] = ..., invocation_id: _Optional[str] = ...) -> None: ...
 
 class SourceDiagnostic(_message.Message):
     __slots__ = ("line", "column", "code", "message")
@@ -530,7 +585,7 @@ class RunFunctionResponse(_message.Message):
     def __init__(self, fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., raw: _Optional[bytes] = ..., drop: _Optional[bool] = ..., stdout: _Optional[str] = ..., stderr: _Optional[str] = ..., duration_us: _Optional[int] = ..., error: _Optional[str] = ..., error_location: _Optional[_Union[SourceDiagnostic, _Mapping]] = ..., entry_line: _Optional[int] = ..., executed_lines: _Optional[_Iterable[int]] = ..., run_id: _Optional[str] = ...) -> None: ...
 
 class RunSourceRequest(_message.Message):
-    __slots__ = ("source", "name", "kind", "raw", "fields", "meta", "config", "timeout_seconds", "memory_mib", "run_id", "trace_lines")
+    __slots__ = ("source", "name", "kind", "raw", "fields", "meta", "config", "timeout_seconds", "memory_mib", "run_id", "trace_lines", "ai")
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
@@ -542,6 +597,7 @@ class RunSourceRequest(_message.Message):
     MEMORY_MIB_FIELD_NUMBER: _ClassVar[int]
     RUN_ID_FIELD_NUMBER: _ClassVar[int]
     TRACE_LINES_FIELD_NUMBER: _ClassVar[int]
+    AI_FIELD_NUMBER: _ClassVar[int]
     source: str
     name: str
     kind: str
@@ -553,7 +609,8 @@ class RunSourceRequest(_message.Message):
     memory_mib: int
     run_id: str
     trace_lines: bool
-    def __init__(self, source: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., timeout_seconds: _Optional[int] = ..., memory_mib: _Optional[int] = ..., run_id: _Optional[str] = ..., trace_lines: _Optional[bool] = ...) -> None: ...
+    ai: bool
+    def __init__(self, source: _Optional[str] = ..., name: _Optional[str] = ..., kind: _Optional[str] = ..., raw: _Optional[bytes] = ..., fields: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., meta: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., config: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., timeout_seconds: _Optional[int] = ..., memory_mib: _Optional[int] = ..., run_id: _Optional[str] = ..., trace_lines: _Optional[bool] = ..., ai: _Optional[bool] = ...) -> None: ...
 
 class DescribePythonEnvironmentRequest(_message.Message):
     __slots__ = ()
@@ -580,17 +637,19 @@ class PythonDecorator(_message.Message):
     def __init__(self, name: _Optional[str] = ..., signature: _Optional[str] = ..., description: _Optional[str] = ...) -> None: ...
 
 class DescribePythonEnvironmentResponse(_message.Message):
-    __slots__ = ("python_version", "packages", "decorators", "network_policy", "max_timeout_seconds", "max_memory_mib")
+    __slots__ = ("python_version", "packages", "decorators", "network_policy", "max_timeout_seconds", "max_memory_mib", "ai_available")
     PYTHON_VERSION_FIELD_NUMBER: _ClassVar[int]
     PACKAGES_FIELD_NUMBER: _ClassVar[int]
     DECORATORS_FIELD_NUMBER: _ClassVar[int]
     NETWORK_POLICY_FIELD_NUMBER: _ClassVar[int]
     MAX_TIMEOUT_SECONDS_FIELD_NUMBER: _ClassVar[int]
     MAX_MEMORY_MIB_FIELD_NUMBER: _ClassVar[int]
+    AI_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
     python_version: str
     packages: _containers.RepeatedCompositeFieldContainer[PythonPackage]
     decorators: _containers.RepeatedCompositeFieldContainer[PythonDecorator]
     network_policy: str
     max_timeout_seconds: int
     max_memory_mib: int
-    def __init__(self, python_version: _Optional[str] = ..., packages: _Optional[_Iterable[_Union[PythonPackage, _Mapping]]] = ..., decorators: _Optional[_Iterable[_Union[PythonDecorator, _Mapping]]] = ..., network_policy: _Optional[str] = ..., max_timeout_seconds: _Optional[int] = ..., max_memory_mib: _Optional[int] = ...) -> None: ...
+    ai_available: bool
+    def __init__(self, python_version: _Optional[str] = ..., packages: _Optional[_Iterable[_Union[PythonPackage, _Mapping]]] = ..., decorators: _Optional[_Iterable[_Union[PythonDecorator, _Mapping]]] = ..., network_policy: _Optional[str] = ..., max_timeout_seconds: _Optional[int] = ..., max_memory_mib: _Optional[int] = ..., ai_available: _Optional[bool] = ...) -> None: ...

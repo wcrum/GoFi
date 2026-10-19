@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+
+	"github.com/wcrum/gofi/kubeclient"
 )
 
 var GVR = schema.GroupVersionResource{Group: "gofi.wcrum.dev", Version: "v1alpha1", Resource: "celexpressions"}
@@ -26,27 +30,50 @@ const writtenAnnotation = "gofi.wcrum.dev/written-expression"
 type KubernetesStore struct {
 	Client    dynamic.Interface
 	Namespace string
+	// Lister, when set, serves Load from the CelExpression informer cache.
+	Lister cache.GenericNamespaceLister
 }
 
+// NewKubernetesStore uses the shared in-cluster client (kubeclient).
 func NewKubernetesStore(namespace string) (*KubernetesStore, error) {
-	cfg, err := rest.InClusterConfig()
+	clients, err := kubeclient.Get()
 	if err != nil {
 		return nil, err
 	}
-	c, err := dynamic.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &KubernetesStore{Client: c, Namespace: namespace}, nil
+	return &KubernetesStore{Client: clients.Dynamic, Namespace: namespace}, nil
 }
 
-func (k *KubernetesStore) Load(ctx context.Context) ([]Expression, error) {
+func (k *KubernetesStore) items(ctx context.Context) ([]unstructured.Unstructured, error) {
+	if k.Lister != nil {
+		objects, err := k.Lister.List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		out := make([]unstructured.Unstructured, 0, len(objects))
+		for _, obj := range objects {
+			if item, ok := obj.(*unstructured.Unstructured); ok {
+				out = append(out, *item)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].GetName() < out[j].GetName() })
+		return out, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, kubeclient.CallTimeout)
+	defer cancel()
 	list, err := k.Client.Resource(GVR).Namespace(k.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
+	return list.Items, nil
+}
+
+func (k *KubernetesStore) Load(ctx context.Context) ([]Expression, error) {
+	items, err := k.items(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := []Expression{}
-	for _, r := range list.Items {
+	for _, r := range items {
 		if r.GetDeletionTimestamp() != nil {
 			continue
 		}

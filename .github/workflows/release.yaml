@@ -1,0 +1,492 @@
+# Release: binaries, container images, Helm charts and the Zarf package for one
+# version, every artifact signed with Sigstore (keyless, GitHub OIDC) and
+# carrying SLSA build provenance via GitHub Artifact Attestations.
+#
+# Trigger: push a tag `vX.Y.Z` (or run manually with a version for a dry run
+# that builds and signs but publishes nothing).
+#
+# Verify a download (see docs/deployment.md "Release artifacts and verification"):
+#   cosign verify-blob --bundle gofi-edge-linux-arm64.sigstore.json \
+#     --certificate-identity-regexp '^https://github.com/wcrum/GoFi/.github/workflows/release.yaml@refs/tags/v' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com gofi-edge-linux-arm64
+#   gh attestation verify gofi-edge-linux-arm64 --repo wcrum/GoFi
+#   cosign verify ghcr.io/wcrum/gofi:X.Y.Z --certificate-identity-regexp ... --certificate-oidc-issuer ...
+#
+# Action versions use tags; Renovate (helpers:pinGitHubActionDigests) pins them
+# to digests on its first pass.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (without leading v), e.g. 0.3.0-rc.1
+        required: true
+      publish:
+        description: Push images/charts/packages and create the GitHub release
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_GOFI: ghcr.io/wcrum/gofi
+  IMAGE_PYTHON: ghcr.io/wcrum/gofi-python
+  IMAGE_TOOLING: ghcr.io/wcrum/gofi-python-tooling
+  CHART_REPO: ghcr.io/wcrum/charts
+  ZARF_REPO: ghcr.io/wcrum/packages
+  GOWORK: "off"
+  GOTOOLCHAIN: auto
+  COSIGN_YES: "true"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - id: v
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            v="${REF_NAME#v}"; publish=true
+          else
+            v="${INPUT_VERSION#v}"; publish="${INPUT_PUBLISH}"
+          fi
+          case "$v" in *[!0-9A-Za-z.+-]*|"") echo "bad version '$v'"; exit 1;; esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Releasing $v (publish=$publish)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  ui:
+    name: Portal bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24.22.0"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm --prefix ui ci && npm --prefix ui run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  binaries:
+    name: Binaries
+    needs: [prepare, ui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write      # Sigstore keyless signing
+      attestations: write  # GitHub artifact attestations
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CGO_ENABLED: "0"
+      EDGE_TAGS: gofi_nosql,gofi_nokafka,gofi_nos3
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v5
+        with:
+          name: ui-dist
+          path: ui/dist
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Cross-build (linux amd64/arm64/armv7, full and edge)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ld="-s -w"
+          build() { # os arch arm suffix tags
+            GOOS=$1 GOARCH=$2 GOARM=$3 go build -trimpath -ldflags="$ld" ${5:+-tags "$5"} -o "dist/gofi${5:+-edge}-$1-$4" .
+          }
+          for t in "amd64::amd64" "arm64::arm64" "arm:7:armv7"; do
+            IFS=: read -r arch arm sfx <<<"$t"
+            build linux "$arch" "$arm" "$sfx" ""
+            build linux "$arch" "$arm" "$sfx" "$EDGE_TAGS"
+          done
+          GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$ld" -o dist/gofi-darwin-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$ld" -o dist/gofi-darwin-amd64 .
+          cp deploy/edge/gofi.service deploy/edge/gofi.env.example deploy/edge/gofi.openrc dist/
+          (cd dist && sha256sum * > SHA256SUMS)
+          { echo '### Binary sizes'; echo; echo '| file | bytes |'; echo '|---|---|';
+            for f in dist/gofi-*; do printf '| %s | %s |\n' "$(basename "$f")" "$(stat -c %s "$f")"; done; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign every artifact (keyless, Sigstore bundle per file)
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in gofi-* SHA256SUMS; do
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/gofi-*
+            dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  images:
+    name: Image ${{ matrix.name }}
+    needs: [prepare, ui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gofi
+            image: ghcr.io/wcrum/gofi
+            file: Dockerfile
+            target: ""
+            platforms: linux/amd64,linux/arm64,linux/arm/v7
+            build_args: ""
+            suffix: ""
+          - name: gofi-edge
+            image: ghcr.io/wcrum/gofi
+            file: Dockerfile
+            target: ""
+            platforms: linux/amd64,linux/arm64,linux/arm/v7
+            build_args: GOFI_BUILD_TAGS=gofi_nosql,gofi_nokafka,gofi_nos3
+            suffix: -edge
+          - name: gofi-python
+            image: ghcr.io/wcrum/gofi-python
+            file: python/Dockerfile
+            target: worker
+            platforms: linux/amd64,linux/arm64
+            build_args: ""
+            suffix: ""
+          - name: gofi-python-tooling
+            image: ghcr.io/wcrum/gofi-python-tooling
+            file: python/Dockerfile
+            target: tooling
+            platforms: linux/amd64,linux/arm64
+            build_args: ""
+            suffix: ""
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v5
+        with:
+          name: ui-dist
+          path: ui/dist
+      - run: scripts/release-version.sh "$VERSION"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }},onlatest=true
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest,enable=${{ !contains(env.VERSION, '-') }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.name }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platforms }}
+          build-args: ${{ matrix.build_args }}
+          push: ${{ env.PUBLISH == 'true' }}
+          load: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+      - uses: sigstore/cosign-installer@v3
+        if: env.PUBLISH == 'true'
+      - name: Sign image (keyless)
+        if: env.PUBLISH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            cosign sign --yes --recursive "${tag}@${DIGEST}"
+          done
+      - name: SBOM (SPDX) of the pushed image
+        if: env.PUBLISH == 'true'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.name }}.spdx.json
+          upload-artifact: false
+      - name: Attest provenance and SBOM, push to registry
+        if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - if: env.PUBLISH == 'true'
+        uses: actions/attest-sbom@v3
+        with:
+          subject-name: ${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-${{ matrix.name }}.spdx.json
+          push-to-registry: true
+      - name: Attach SBOM signature
+        if: env.PUBLISH == 'true'
+        run: cosign sign-blob --yes --bundle "sbom-${{ matrix.name }}.spdx.json.sigstore.json" "sbom-${{ matrix.name }}.spdx.json"
+      - if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.name }}
+          path: sbom-${{ matrix.name }}.spdx.json*
+      - name: Summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "- \`${{ matrix.image }}${{ matrix.suffix }}\` ${VERSION} ${DIGEST:-(not pushed)}" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  charts:
+    name: Helm charts
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.1
+      - run: scripts/release-version.sh "$VERSION"
+      - name: Lint and package
+        run: |
+          set -euo pipefail
+          helm lint charts/gofi chart
+          helm template gofi charts/gofi --namespace gofi >/dev/null
+          helm template uds-gofi-config chart --namespace gofi >/dev/null
+          mkdir -p dist
+          helm package charts/gofi --destination dist
+          helm package chart --destination dist --app-version "$VERSION"
+          (cd dist && sha256sum *.tgz > SHA256SUMS)
+          ls -l dist
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign chart archives
+        run: |
+          cd dist && for f in *.tgz SHA256SUMS; do cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"; done
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/*.tgz
+      - name: Push to OCI registry and sign the OCI digests
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | helm registry login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          for f in dist/*.tgz; do
+            out=$(helm push "$f" "oci://$CHART_REPO" 2>&1); echo "$out"
+            digest=$(echo "$out" | sed -n 's/^Digest: //p')
+            name=$(tar -xOzf "$f" --wildcards '*/Chart.yaml' | sed -n 's/^name: //p')
+            ver=$(tar -xOzf "$f" --wildcards '*/Chart.yaml' | sed -n 's/^version: //p')
+            cosign sign --yes "$CHART_REPO/$name@$digest"
+            echo "$CHART_REPO/$name:$ver $digest" >> dist/charts.txt
+            echo "- chart \`oci://$CHART_REPO/$name:$ver\` $digest" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: charts
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  zarf:
+    name: Zarf package ${{ matrix.arch }}
+    needs: [prepare, images, charts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: zarf-dev/setup-zarf@v1
+        with:
+          version: v0.72.0
+          download-init-package: false
+      - run: scripts/release-version.sh "$VERSION"
+      - name: Registry login (images referenced by the package)
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | zarf tools registry login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+      - name: Create package
+        if: env.PUBLISH == 'true'   # dry runs have no pushed images to pull
+        run: |
+          set -euo pipefail
+          zarf package create . --flavor upstream --architecture "${{ matrix.arch }}" --confirm --output dist
+          ls -l dist
+      - name: Create package (dry run, local images unavailable; validate only)
+        if: env.PUBLISH != 'true'
+        run: |
+          zarf dev lint . --flavor upstream || true
+          mkdir -p dist && echo "dry run: package not built (images are not pushed)" > dist/DRY_RUN
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign package archive (keyless) and attest
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in zarf-package-*.tar.zst; do
+            sha256sum "$f" > "$f.sha256"
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
+      - if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/zarf-package-*.tar.zst
+      - name: Publish to OCI and sign the published package
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          pkg=$(ls dist/zarf-package-*.tar.zst)
+          zarf package publish "$pkg" "oci://$ZARF_REPO"
+          ref="$ZARF_REPO/gofi:${VERSION}-${{ matrix.arch }}"
+          digest=$(zarf tools crane digest "$ref")
+          cosign sign --yes "$ZARF_REPO/gofi@$digest"
+          echo "- zarf \`oci://$ref\` $digest" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zarf-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  release:
+    name: GitHub release
+    needs: [prepare, binaries, images, charts, zarf]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp artifacts/binaries/* release/
+          cp artifacts/charts/*.tgz artifacts/charts/*.sigstore.json release/ 2>/dev/null || true
+          for d in artifacts/zarf-*; do cp "$d"/zarf-package-* release/ 2>/dev/null || true; done
+          for d in artifacts/sbom-*; do cp "$d"/* release/ 2>/dev/null || true; done
+          (cd release && sha256sum $(ls | grep -v -e '^SHA256SUMS' -e '\.sigstore\.json$') > SHA256SUMS.all)
+          {
+            echo "## Verify"
+            echo
+            echo 'Every file has a Sigstore bundle (`<file>.sigstore.json`) and a GitHub artifact attestation:'
+            echo
+            echo '```sh'
+            echo "cosign verify-blob --bundle gofi-edge-linux-arm64.sigstore.json \\"
+            echo "  --certificate-identity-regexp '^https://github.com/${{ github.repository }}/.github/workflows/release.yaml@refs/tags/v' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com gofi-edge-linux-arm64"
+            echo "gh attestation verify gofi-edge-linux-arm64 --repo ${{ github.repository }}"
+            echo "cosign verify ghcr.io/wcrum/gofi:${VERSION} --certificate-identity-regexp '^https://github.com/${{ github.repository }}/' --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo "gh attestation verify oci://ghcr.io/wcrum/gofi:${VERSION} --repo ${{ github.repository }}"
+            echo '```'
+            echo
+            echo "Images: \`ghcr.io/wcrum/gofi:${VERSION}\`, \`ghcr.io/wcrum/gofi:${VERSION}-edge\`, \`ghcr.io/wcrum/gofi-python:${VERSION}\`, \`ghcr.io/wcrum/gofi-python-tooling:${VERSION}\` (multi-arch)."
+            echo "Charts: \`oci://ghcr.io/wcrum/charts/gofi:${VERSION}\`, \`oci://ghcr.io/wcrum/charts/uds-gofi-config\`."
+            echo "Zarf: \`oci://ghcr.io/wcrum/packages/gofi:${VERSION}-amd64\`, \`...-arm64\` (also attached below)."
+            if [ -f artifacts/charts/charts.txt ]; then echo; echo '```'; cat artifacts/charts/charts.txt; echo '```'; fi
+          } > notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          args=(--title "GoFi ${VERSION}" --notes-file notes.md --generate-notes --verify-tag)
+          case "$VERSION" in *-*) args+=(--prerelease);; esac
+          gh release create "$TAG" "${args[@]}" release/*

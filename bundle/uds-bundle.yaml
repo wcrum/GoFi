@@ -8,3 +8,21 @@ packages:
     path: ../
     ref: dev
     flavor: upstream
+    overrides:
+      gofi:
+        gofi:
+          variables:
+            # Dev clusters rebuilding one tag: set IMAGE_PULL_POLICY=Always in
+            # uds-config.yaml. Production keeps IfNotPresent.
+            - name: IMAGE_PULL_POLICY
+              description: imagePullPolicy for the controller, listener, and worker Pods
+              path: image.pullPolicy
+              default: IfNotPresent
+            - name: REPLICA_COUNT
+              description: Controller replicas (more than 1 needs LEADER_ELECTION=true)
+              path: replicaCount
+              default: 1
+            - name: LEADER_ELECTION
+              description: Lease-based controller leader election
+              path: leaderElection.enabled
+              default: false

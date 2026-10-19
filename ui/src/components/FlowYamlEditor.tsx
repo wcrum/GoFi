@@ -6,12 +6,14 @@ import '../lib/monaco'
 import { saveFlow, validateFlow } from '../api'
 import { flowToProto } from '../rpc-model'
 import { flowResource, parseFlowResource, toYAML } from '../lib/resource'
+import { flowKey } from '../lib/flow-normalize'
 import { useGoFi } from '../state'
 import type { FlowDefinition } from '../types'
 import FlowCanvas from './canvas/FlowCanvas'
 import { ResizableSplit } from './canvas/ResizableSplit'
 import { StatusIndicator } from './StatusIndicator'
 import { useToast } from './Toast'
+import { t } from '../i18n'
 
 type Monaco = typeof monacoTypes
 type Check = { state: 'valid'; warnings: string[] } | { state: 'invalid'; error: string; line?: number }
@@ -31,11 +33,11 @@ export function FlowYamlEditor({ definition, onSaved, onCancel }: { definition: 
   const [text, setText] = useState(savedText)
   const [check, setCheck] = useState<Check | null>(null)
   const [busy, setBusy] = useState<'validate' | 'save' | null>(null)
-  // The graph shows the last valid definition; it is remounted only when the
-  // YAML (not the graph itself) changed the flow.
-  const [graph, setGraph] = useState({ definition, key: 0 })
+  // The graph shows the last valid definition; it follows the YAML in place
+  // only when the YAML (not the graph itself) changed the flow.
+  const [graph, setGraph] = useState(definition)
   const [parseError, setParseError] = useState<{ error: string; line?: number } | null>(null)
-  const synced = useRef(JSON.stringify(definition))
+  const synced = useRef(flowKey(definition))
   const editor = useRef<{ instance: monacoTypes.editor.IStandaloneCodeEditor; monaco: Monaco } | null>(null)
   const dirty = text !== savedText
 
@@ -45,17 +47,17 @@ export function FlowYamlEditor({ definition, onSaved, onCancel }: { definition: 
       const parsed = parseFlowResource(text)
       if (parsed.error !== undefined) { setParseError({ error: parsed.error, line: parsed.line }); return }
       setParseError(null)
-      const key = JSON.stringify(parsed.definition)
+      const key = flowKey(parsed.definition)
       if (key === synced.current) return
       synced.current = key
-      setGraph(previous => ({ definition: parsed.definition, key: previous.key + 1 }))
+      setGraph(parsed.definition)
     }, SYNC_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [text])
 
   // Graph → YAML: the graph's own edits rewrite the resource.
   function onGraphChange(next: FlowDefinition) {
-    synced.current = JSON.stringify(next)
+    synced.current = flowKey(next)
     setText(toYAML(flowResource(next, configuration)))
     setCheck(null)
   }
@@ -74,7 +76,7 @@ export function FlowYamlEditor({ definition, onSaved, onCancel }: { definition: 
   function parse(): FlowDefinition | null {
     const parsed = parseFlowResource(text)
     if (parsed.error !== undefined) { setCheck({ state: 'invalid', error: parsed.error, line: parsed.line }); return null }
-    if (parsed.definition.name !== definition.name) { setCheck({ state: 'invalid', error: `metadata.name must stay "${definition.name}"; create a new flow to use another name`, line: lineOf('name:') }); return null }
+    if (parsed.definition.name !== definition.name) { setCheck({ state: 'invalid', error: t('gofi.components.flow-yaml-editor.rename-refused', 'metadata.name must stay "{{name}}"; create a new flow to use another name', { name: definition.name }), line: lineOf('name:') }); return null }
     try { flowToProto(parsed.definition) } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason)
       const field = /field "?([\w.]+)"?/.exec(message)?.[1]?.split('.').pop()
@@ -100,7 +102,7 @@ export function FlowYamlEditor({ definition, onSaved, onCancel }: { definition: 
     setBusy('save')
     try {
       const { flow, warnings } = await saveFlow(next)
-      if (warnings.length) addToast(warnings.join('\n'), 'warning', `Saved, but ${warnings.length === 1 ? 'a path is' : `${warnings.length} paths are`} not allowed`)
+      if (warnings.length) addToast(warnings.join('\n'), 'warning', t('gofi.components.flow-yaml-editor.saved-with-warnings', 'Saved, but {{count}} paths are not allowed', { count: warnings.length, defaultValue_one: 'Saved, but a path is not allowed' }))
       onSaved(flow)
     } catch (reason) {
       setCheck({ state: 'invalid', error: rpcMessage(reason) })
@@ -112,25 +114,25 @@ export function FlowYamlEditor({ definition, onSaved, onCancel }: { definition: 
       <CodeEditor language="yaml" value={text} onChange={value => { setText(value); setCheck(null) }} showLineNumbers showMiniMap={false} height="100%" width="100%" containerStyles={styles.editor}
         onEditorDidMount={(instance, monaco) => { editor.current = { instance, monaco } }} monacoOptions={{ scrollBeyondLastLine: false, tabSize: 2 }} />
     </div>
-    {check?.state === 'valid' && <div className={styles.validLine}><Icon name="check-circle" />Valid: GoFi would accept this flow{check.warnings.length ? ', with warnings' : ''}.</div>}
-    {check?.state === 'valid' && check.warnings.length > 0 && <Alert severity="warning" title="Some paths are not allowed" bottomSpacing={0}>{check.warnings.map(warning => <div key={warning}>{warning}</div>)}</Alert>}
-    {check?.state === 'invalid' && <div className={styles.invalidLine}><Icon name="exclamation-circle" />{check.line ? `Line ${check.line}: ` : ''}{check.error}</div>}
-    {!check && parseError && <div className={styles.invalidLine}><Icon name="exclamation-circle" />{parseError.line ? `Line ${parseError.line}: ` : ''}{parseError.error}</div>}
+    {check?.state === 'valid' && <div className={styles.validLine}><Icon name="check-circle" />{check.warnings.length ? t('gofi.components.flow-yaml-editor.valid-with-warnings', 'Valid: GoFi would accept this flow, with warnings.') : t('gofi.components.flow-yaml-editor.valid', 'Valid: GoFi would accept this flow.')}</div>}
+    {check?.state === 'valid' && check.warnings.length > 0 && <Alert severity="warning" title={t('gofi.components.flow-yaml-editor.paths-not-allowed', 'Some paths are not allowed')} bottomSpacing={0}>{check.warnings.map(warning => <div key={warning}>{warning}</div>)}</Alert>}
+    {check?.state === 'invalid' && <div className={styles.invalidLine}><Icon name="exclamation-circle" />{check.line ? t('gofi.components.flow-yaml-editor.line-error', 'Line {{line}}: {{error}}', { line: check.line, error: check.error }) : check.error}</div>}
+    {!check && parseError && <div className={styles.invalidLine}><Icon name="exclamation-circle" />{parseError.line ? t('gofi.components.flow-yaml-editor.line-error', 'Line {{line}}: {{error}}', { line: parseError.line, error: parseError.error }) : parseError.error}</div>}
   </div>
 
   const graphPane = <div className={styles.graphPane}>
-    {parseError && <div className={styles.stale}><StatusIndicator tone="warning" text="Showing the last valid version: fix the YAML to update the graph" /></div>}
-    <FlowCanvas key={graph.key} mode="edit" embedded live initial={graph.definition} onChange={onGraphChange} onClose={onCancel} />
+    {parseError && <div className={styles.stale}><StatusIndicator tone="warning" text={t('gofi.components.flow-yaml-editor.stale-graph', 'Showing the last valid version: fix the YAML to update the graph')} /></div>}
+    <FlowCanvas mode="edit" embedded live initial={graph} onChange={onGraphChange} onClose={onCancel} />
   </div>
 
   return <div className={styles.root}>
     <div className={styles.toolbar}>
-      <Text color="secondary" variant="bodySmall">The {flowResource(definition, configuration).apiVersion} Flow resource and its live graph: edit either side.</Text>
+      <Text color="secondary" variant="bodySmall">{t('gofi.components.flow-yaml-editor.intro', 'The {{apiVersion}} Flow resource and its live graph: edit either side.', { apiVersion: flowResource(definition, configuration).apiVersion })}</Text>
       <Stack gap={1} alignItems="center">
-        {dirty && <StatusIndicator tone="warning" text="Unsaved changes" />}
-        <Button variant="secondary" icon={busy === 'validate' ? 'spinner' : 'check'} disabled={!!busy} onClick={() => void validate()}>Validate</Button>
-        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-        <Button icon={busy === 'save' ? 'spinner' : 'save'} disabled={!!busy || !dirty} onClick={() => void save()}>Save flow</Button>
+        {dirty && <StatusIndicator tone="warning" text={t('gofi.common.unsaved-changes', 'Unsaved changes')} />}
+        <Button variant="secondary" icon={busy === 'validate' ? 'spinner' : 'check'} disabled={!!busy} onClick={() => void validate()}>{t('gofi.common.validate', 'Validate')}</Button>
+        <Button variant="secondary" onClick={onCancel}>{t('gofi.common.cancel', 'Cancel')}</Button>
+        <Button icon={busy === 'save' ? 'spinner' : 'save'} disabled={!!busy || !dirty} onClick={() => void save()}>{t('gofi.components.flow-yaml-editor.save-flow', 'Save flow')}</Button>
       </Stack>
     </div>
     <div className={styles.body}>

@@ -32,8 +32,11 @@ func (s ListenSource) Validate() error {
 	if s.Port < 0 || s.Port > 65535 {
 		return fmt.Errorf("source.listen.port must be between 0 and 65535")
 	}
-	if s.Network != "" && s.Network != "tcp" && s.Network != "udp" {
-		return fmt.Errorf("source.listen.network must be tcp or udp")
+	if s.Network != "" && s.Network != "tcp" && s.Network != "udp" && s.Network != NetworkQUIC {
+		return fmt.Errorf("source.listen.network must be tcp, udp, or quic")
+	}
+	if err := s.validateQUIC(); err != nil {
+		return err
 	}
 	if s.Service == nil {
 		return nil

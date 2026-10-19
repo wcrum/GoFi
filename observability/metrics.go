@@ -24,9 +24,29 @@ func Handler() http.Handler { return promhttp.HandlerFor(registry, promhttp.Hand
 func Frame(listener string, size int) {
 	received.WithLabelValues(listener).Inc()
 	receivedBytes.WithLabelValues(listener).Add(float64(size))
+	counterFor(listener).observed.Add(1)
 }
-func ParseError(listener string)      { parseErrors.WithLabelValues(listener).Inc() }
-func Rejected(listener, stage string) { rejected.WithLabelValues(listener, stage).Inc() }
+
+var tapDropped = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_tap_events_dropped_total", Help: "Live traffic events not delivered to a slow tap subscriber (the pipeline itself never blocks or drops for the tap)."}, []string{"listener"})
+
+func init() { registry.MustRegister(tapDropped) }
+
+// TapDropped counts live traffic events a slow subscriber missed.
+func TapDropped(listener string, n int) {
+	if n > 0 {
+		tapDropped.WithLabelValues(listener).Add(float64(n))
+		TapDroppedAt("pipeline", uint64(n))
+		counterFor(listener).tapDropped.Add(uint64(n))
+	}
+}
+func ParseError(listener string) {
+	parseErrors.WithLabelValues(listener).Inc()
+	counterFor(listener).parseErrors.Add(1)
+}
+func Rejected(listener, stage string) {
+	rejected.WithLabelValues(listener, stage).Inc()
+	counterFor(listener).rejected.Add(1)
+}
 func SinkDispatch(listener, sinkType string, duration time.Duration, err error) {
 	if sinkType == "" {
 		sinkType = "stdout"
@@ -34,7 +54,17 @@ func SinkDispatch(listener, sinkType string, duration time.Duration, err error) 
 	outcome := "success"
 	if err != nil {
 		outcome = "error"
+		counterFor(listener).sinkFailures.Add(1)
+	} else {
+		counterFor(listener).delivered.Add(1)
 	}
 	dispatches.WithLabelValues(listener, sinkType, outcome).Inc()
 	dispatchSeconds.WithLabelValues(listener, sinkType).Observe(duration.Seconds())
 }
+
+var stageErrors = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gofi_stage_errors_total", Help: "Stage evaluation errors by stage ID (CEL errors, parse stage failures, Python errors), whether or not the stage then dropped the message."}, []string{"listener", "stage"})
+
+func init() { registry.MustRegister(stageErrors) }
+
+// StageError counts one stage evaluation error.
+func StageError(listener, stage string) { stageErrors.WithLabelValues(listener, stage).Inc() }

@@ -6,9 +6,12 @@ metadata:
   labels:
     {{- include "gofi.labels" . | nindent 4 }}
 rules:
+  # Listener Pods: created and deleted per flow revision; "patch" stamps the
+  # gofi.io/activated-at annotation (a merge patch) when an edit reverts to a
+  # Pod that still exists.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
   # WatchWorkerLogs follows Python worker Pod output.
   - apiGroups: [""]
     resources: ["pods/log"]
@@ -19,6 +22,10 @@ rules:
   - apiGroups: ["gofi.wcrum.dev"]
     resources: ["flows", "sandboxes", "celexpressions"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Flow revision history: GoFi creates, reads, and prunes revisions; it never updates them.
+  - apiGroups: ["gofi.wcrum.dev"]
+    resources: ["flowrevisions"]
+    verbs: ["get", "list", "create", "delete"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "create", "update", "delete"]
@@ -30,15 +37,31 @@ rules:
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
     verbs: ["get", "list", "create", "update", "delete"]
-  # Gateway exposure: each flow's TCPRoute/UDPRoute lives in this namespace.
+  # Gateway exposure: each flow's TCPRoute/UDPRoute lives in this namespace;
+  # the driver reads them from a dynamic informer ("watch").
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["tcproutes", "udproutes"]
-    verbs: ["get", "list", "create", "update", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  {{- if .Values.leaderElection.enabled }}
+  # Controller leader election holds a Lease in this namespace.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  {{- end }}
+  # Python workers may run as Deployments (replicas, HPA) instead of bare
+  # Pods, and the controller reads and removes Deployments whenever it
+  # reconciles a worker, so it decides between the two shapes; the rule is
+  # not conditional on workers.replicas (a controller without it fails with
+  # "cannot get resource deployments" on every validate or format call).
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   {{- if .Values.uds.manageAllows }}
-  # GoFi keeps one UDS Package (gofi-flows) with the network allows its flows need.
+  # GoFi keeps one UDS Package (gofi-flows) with the network allows its flows
+  # need, and removes it when the last flow needing allows goes away.
   - apiGroups: ["uds.dev"]
     resources: ["packages"]
-    verbs: ["get", "list", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["configmaps"]
     resourceNames: [{{ .Values.uds.packageBaseConfigMap | quote }}]

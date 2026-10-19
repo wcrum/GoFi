@@ -21,8 +21,8 @@ func Validate(cfg spec.SinkCfg) error {
 		}
 	}
 	if cfg.Kubernetes != nil {
-		if cfg.Type != "tcp" && cfg.Type != "udp" {
-			return fmt.Errorf("Kubernetes targets support only tcp or udp sinks")
+		if cfg.Type != "tcp" && cfg.Type != "udp" && cfg.Type != spec.NetworkQUIC {
+			return fmt.Errorf("Kubernetes targets support only tcp, udp, or quic sinks")
 		}
 		if cfg.URL != "" {
 			return fmt.Errorf("choose URL or Kubernetes selector target")
@@ -41,6 +41,10 @@ func Validate(cfg spec.SinkCfg) error {
 		return nil
 	case "tcp", "udp":
 		_, err := newNetwork(cfg, "validation")
+		return err
+	case spec.NetworkQUIC:
+		// Builds the TLS configuration (parsing the inline PEM) without dialing.
+		_, err := newQUIC(cfg, "validation")
 		return err
 	case "aster":
 		_, err := configureAster(cfg)

@@ -35,8 +35,10 @@ func New(cfg spec.SinkCfg, listenerName string) (Sink, error) {
 		return newAster(cfg)
 	case "tcp", "udp":
 		return newNetwork(cfg, listenerName)
+	case spec.NetworkQUIC:
+		return newQUIC(cfg, listenerName)
 	case "stdout", "":
-		return &stdoutSink{}, nil
+		return newStdout(), nil
 	default:
 		return nil, fmt.Errorf("sink: unknown type %q", cfg.Type)
 	}

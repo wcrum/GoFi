@@ -168,3 +168,68 @@ func Call(ctx context.Context, binding Binding, request *gofiv1.WorkerInvokeRequ
 	}
 	return res.Msg, nil
 }
+
+// LibraryBinding returns the worker binding of one saved library.
+func LibraryBinding(ctx context.Context, library string) (Binding, error) {
+	bindings, err := Bindings(ctx)
+	if err != nil {
+		return Binding{}, err
+	}
+	binding, ok := bindings[library]
+	if !ok {
+		return Binding{}, fmt.Errorf("Python library %q is not ready", library)
+	}
+	return binding, nil
+}
+
+// streamTransport serves long-lived source streams: a streamer may take any
+// time to produce, so there is no response header timeout (cancellation ends
+// the call instead).
+var streamTransport = &http.Transport{Proxy: nil}
+var streamClient = &http.Client{Transport: streamTransport}
+
+// MaxSourceMessageBytes caps one Fetch response or Stream message.
+const MaxSourceMessageBytes = 20 << 20
+
+func workerClient(binding Binding, hc *http.Client, readMax int) gofiv1connect.WorkerServiceClient {
+	return gofiv1connect.NewWorkerServiceClient(hc, binding.Endpoint, connect.WithReadMaxBytes(readMax), connect.WithSendMaxBytes(2<<20))
+}
+
+// ListFunctions asks a library's worker for its registered functions.
+func ListFunctions(ctx context.Context, binding Binding) ([]*gofiv1.WorkerFunction, error) {
+	req := connect.NewRequest(&gofiv1.WorkerListFunctionsRequest{})
+	req.Header().Set("Authorization", "Bearer "+binding.Token)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	res, err := workerClient(binding, client, 1<<20).ListFunctions(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return res.Msg.Functions, nil
+}
+
+// Fetch runs one @gofi.fetcher poll. The worker enforces the library's
+// deadline; the client allows a little more for transport.
+func Fetch(ctx context.Context, binding Binding, request *gofiv1.WorkerSourceRequest) (*gofiv1.WorkerFetchResponse, error) {
+	timeout := binding.TimeoutSeconds
+	if timeout <= 0 || timeout > 30 {
+		timeout = 5
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second+5*time.Second)
+	defer cancel()
+	req := connect.NewRequest(request)
+	req.Header().Set("Authorization", "Bearer "+binding.Token)
+	res, err := workerClient(binding, client, MaxSourceMessageBytes).Fetch(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return res.Msg, nil
+}
+
+// Stream opens a @gofi.streamer. Cancelling ctx (the flow stopping) closes
+// the stream, and the worker stops the streamer process.
+func Stream(ctx context.Context, binding Binding, request *gofiv1.WorkerSourceRequest) (*connect.ServerStreamForClient[gofiv1.WorkerStreamResponse], error) {
+	req := connect.NewRequest(request)
+	req.Header().Set("Authorization", "Bearer "+binding.Token)
+	return workerClient(binding, streamClient, MaxSourceMessageBytes).Stream(ctx, req)
+}

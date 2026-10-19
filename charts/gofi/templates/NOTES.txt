@@ -10,4 +10,10 @@ To access the UI locally, run:
 Then open http://localhost:{{ .Values.service.port }} in your browser.
 
 Listener configuration is persisted in namespaced gofi.wcrum.dev resources.
-Exactly one controller is supported until leader election is implemented.
+{{- if .Values.leaderElection.enabled }}
+{{ .Values.replicaCount }} controller replica(s) coordinate through the Lease
+"{{ .Values.leaderElection.leaseName | default (include "gofi.fullname" .) }}"; only the holder reconciles.
+{{- else }}
+One controller reconciles; set replicaCount > 1 with leaderElection.enabled
+for standbys (docs/deployment.md, "Controller availability").
+{{- end }}

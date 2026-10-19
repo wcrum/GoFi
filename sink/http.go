@@ -77,7 +77,7 @@ func newHTTP(cfg spec.SinkCfg) (*httpSink, error) {
 		bodyMode:    bodyMode,
 		headers:     cfg.Headers,
 		auth:        cfg.Auth,
-		c:           &http.Client{Timeout: sendTimeout},
+		c:           &http.Client{Timeout: sendTimeout, Transport: newTransport()},
 	}, nil
 }
 
@@ -192,4 +192,4 @@ func (e *StatusError) Error() string {
 func (e *StatusError) HTTPStatus() int    { return e.Code }
 func (e *StatusError) PolicyDenied() bool { return e.denied }
 
-func (s *httpSink) Close() error { return nil }
+func (s *httpSink) Close() error { s.c.CloseIdleConnections(); return nil }

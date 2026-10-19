@@ -1,0 +1,107 @@
+suite: rbac
+templates:
+  - templates/rbac.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: grants no Lease or Deployment access by default
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - notContains:
+          path: rules
+          content:
+            apiGroups: ["coordination.k8s.io"]
+          any: true
+      - notContains:
+          path: rules
+          content:
+            apiGroups: ["apps"]
+          any: true
+  - it: may delete the UDS Package it manages
+    set:
+      uds.manageAllows: true
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["uds.dev"]
+            resources: ["packages"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - it: manages worker Deployments when workers scale
+    set:
+      workers.replicas: 2
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["apps"]
+            resources: ["deployments"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - it: lets the informer-based driver patch Pods and watch routes
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["get", "list", "watch", "create", "patch", "delete"]
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["gateway.networking.k8s.io"]
+            resources: ["tcproutes", "udproutes"]
+            verbs: ["get", "list", "watch", "create", "update", "delete"]
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["gofi.wcrum.dev"]
+            resources: ["flows", "sandboxes", "celexpressions"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - it: grants Lease access with leader election
+    set:
+      leaderElection.enabled: true
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["coordination.k8s.io"]
+            resources: ["leases"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - it: manages worker Deployments when autoscaling is on
+    set:
+      workers.autoscaling.enabled: true
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["apps"]
+            resources: ["deployments"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - it: grants no UDS Package access unless allows are managed
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - notContains:
+          path: rules
+          content:
+            apiGroups: ["uds.dev"]
+          any: true

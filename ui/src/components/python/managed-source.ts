@@ -2,6 +2,7 @@
 // flow's inline stages as one `_gofi._inline("<stage id>", "<source>")` call
 // per stage, with both arguments JSON string literals (sandbox/inline.go). The
 // view shows each stage's actual code under a comment header instead.
+import { t } from '../../i18n/index.ts'
 
 export interface InlineStage { id: string; source: string }
 export interface ManagedView {
@@ -36,12 +37,12 @@ export function parseManagedSource(source: string): InlineStage[] | null {
 /** Read-only text: a header per stage, then that stage's code verbatim. */
 export function managedView(flow: string, stages: InlineStage[]): ManagedView {
   const lines = [
-    `# Inline Python stages of flow "${flow}" (read-only).`,
-    '# GoFi generates and runs this library from the flow; edit the stages in the flow.',
+    t('gofi.python.managed-source.header-title', '# Inline Python stages of flow "{{flow}}" (read-only).', { flow }),
+    t('gofi.python.managed-source.header-note', '# GoFi generates and runs this library from the flow; edit the stages in the flow.'),
   ]
   const offsets: Record<string, number> = {}
   for (const stage of stages) {
-    lines.push('', `# ── Stage "${stage.id}" · inline transformer ${'─'.repeat(Math.max(4, 40 - stage.id.length))}`)
+    lines.push('', t('gofi.python.managed-source.stage-header', '# ── Stage "{{id}}" · inline transformer {{rule}}', { id: stage.id, rule: '─'.repeat(Math.max(4, 40 - stage.id.length)) }))
     offsets[stage.id] = lines.length + 1
     lines.push(...stage.source.replace(/\n+$/, '').split('\n'))
   }

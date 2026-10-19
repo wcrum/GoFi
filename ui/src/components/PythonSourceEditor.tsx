@@ -5,6 +5,7 @@ import { CodeEditor, useStyles2, type Monaco, type MonacoEditor } from '@grafana
 import '../lib/monaco'
 import type { SourceDiagnostic } from '../sandbox-api'
 import { lineRanges, type SourceHighlights } from './canvas/python-templates'
+import { t } from '../i18n'
 
 export type { SourceHighlights }
 export interface RevealRequest { line: number; column?: number; nonce: number }
@@ -26,8 +27,9 @@ interface Props {
   validity?: 'valid' | 'invalid'
 }
 
-export default function PythonSourceEditor({ source, onChange, diagnostics, disabled, height = '420px', reveal, ariaLabel = 'Python source', highlights, debug, validity }: Props) {
+export default function PythonSourceEditor({ source, onChange, diagnostics, disabled, height = '420px', reveal, ariaLabel, highlights, debug, validity }: Props) {
   const styles = useStyles2(getStyles)
+  const editorLabel = ariaLabel ?? t('gofi.components.python-source-editor.aria-label', 'Python source')
   const editor = useRef<MonacoEditor | null>(null)
   const monaco = useRef<Monaco | null>(null)
   const decorationIds = useRef<string[]>([])
@@ -42,24 +44,26 @@ export default function PythonSourceEditor({ source, onChange, diagnostics, disa
     const next: Parameters<MonacoEditor['deltaDecorations']>[1] = []
     for (const [start, end] of lineRanges(highlights?.executed ?? [])) {
       if (!valid(start)) continue
-      next.push({ range: { startLineNumber: start, startColumn: 1, endLineNumber: Math.min(end, lastLine), endColumn: 1 }, options: { isWholeLine: true, className: styles.executedLine, linesDecorationsClassName: styles.executedGutter, hoverMessage: { value: 'Executed for this input' } } })
+      next.push({ range: { startLineNumber: start, startColumn: 1, endLineNumber: Math.min(end, lastLine), endColumn: 1 }, options: { isWholeLine: true, className: styles.executedLine, linesDecorationsClassName: styles.executedGutter, hoverMessage: { value: t('gofi.components.python-source-editor.executed-for-input', 'Executed for this input') } } })
     }
     const entry = highlights?.entry
     if (entry && valid(entry.line)) {
-      const message = { value: `**Input enters here:** \`${entry.label}\`${entry.preview ? `\n\nInput: \`${entry.preview}\`` : ''}` }
+      const message = { value: entry.preview
+        ? t('gofi.components.python-source-editor.entry-hover-with-input', '**Input enters here:** `{{label}}`\n\nInput: `{{preview}}`', { label: entry.label, preview: entry.preview })
+        : t('gofi.components.python-source-editor.entry-hover', '**Input enters here:** `{{label}}`', { label: entry.label }) }
       next.push({ range: { startLineNumber: entry.line, startColumn: 1, endLineNumber: entry.line, endColumn: 1 }, options: {
         isWholeLine: true, className: styles.entryLine, glyphMarginClassName: styles.entryGlyph, glyphMarginHoverMessage: message, hoverMessage: message,
-        stickiness: 1, ...(entry.preview ? { after: { content: `  ← input: ${entry.preview}`, inlineClassName: styles.entryPreview } } : {}),
+        stickiness: 1, ...(entry.preview ? { after: { content: t('gofi.components.python-source-editor.entry-inline-preview', '  ← input: {{preview}}', { preview: entry.preview }), inlineClassName: styles.entryPreview } } : {}),
       } })
     }
     if (valid(highlights?.error)) {
-      next.push({ range: { startLineNumber: highlights!.error!, startColumn: 1, endLineNumber: highlights!.error!, endColumn: 1 }, options: { isWholeLine: true, className: styles.errorLine, glyphMarginClassName: styles.errorGlyph, glyphMarginHoverMessage: { value: 'Raised here' } } })
+      next.push({ range: { startLineNumber: highlights!.error!, startColumn: 1, endLineNumber: highlights!.error!, endColumn: 1 }, options: { isWholeLine: true, className: styles.errorLine, glyphMarginClassName: styles.errorGlyph, glyphMarginHoverMessage: { value: t('gofi.components.python-source-editor.raised-here', 'Raised here') } } })
     }
     for (const line of debug?.breakpoints ?? []) {
-      if (valid(line)) next.push({ range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }, options: { glyphMarginClassName: styles.breakpointGlyph, glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' } } })
+      if (valid(line)) next.push({ range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }, options: { glyphMarginClassName: styles.breakpointGlyph, glyphMarginHoverMessage: { value: t('gofi.components.python-source-editor.breakpoint', 'Breakpoint (click to remove)') } } })
     }
     if (valid(debug?.currentLine)) {
-      next.push({ range: { startLineNumber: debug!.currentLine!, startColumn: 1, endLineNumber: debug!.currentLine!, endColumn: 1 }, options: { isWholeLine: true, className: styles.currentLine, glyphMarginClassName: styles.currentGlyph, glyphMarginHoverMessage: { value: 'Current step' }, zIndex: 10 } })
+      next.push({ range: { startLineNumber: debug!.currentLine!, startColumn: 1, endLineNumber: debug!.currentLine!, endColumn: 1 }, options: { isWholeLine: true, className: styles.currentLine, glyphMarginClassName: styles.currentGlyph, glyphMarginHoverMessage: { value: t('gofi.components.python-source-editor.current-step', 'Current step') }, zIndex: 10 } })
     }
     decorationIds.current = instance.deltaDecorations(decorationIds.current, next)
   }, [highlights, debug?.breakpoints, debug?.currentLine, styles]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -86,7 +90,7 @@ export default function PythonSourceEditor({ source, onChange, diagnostics, disa
   }, [reveal])
   return <div className={cx(styles.frame, validity === 'valid' && styles.frameValid, validity === 'invalid' && styles.frameInvalid)}>
     <CodeEditor language="python" value={source} onChange={onChange} height={height} width="100%" showLineNumbers showMiniMap={false} readOnly={disabled} wordWrap
-      monacoOptions={{ tabSize: 4, insertSpaces: true, fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true, ariaLabel, glyphMargin: true, renderValidationDecorations: 'on' }}
+      monacoOptions={{ tabSize: 4, insertSpaces: true, fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true, ariaLabel: editorLabel, glyphMargin: true, renderValidationDecorations: 'on' }}
       onEditorDidMount={(instance, api) => {
         editor.current = instance; monaco.current = api; decorationIds.current = []; markers(); decorate()
         // Breakpoints toggle from the glyph margin or line numbers, even read-only.

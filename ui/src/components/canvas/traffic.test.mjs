@@ -16,6 +16,12 @@ test('a delivered message travels every edge; a dropped one stops at the droppin
   assert.deepEqual(edgesTraveled(edges, { dropped: true, droppedBy: 'unknown-stage' }), [])
 })
 
+test('the dead-letter connection (from its Encode node) carries rejected messages only', () => {
+  const withDeadLetter = [...edges, { id: 'e', source: 'encode-1', target: 'deadletter' }]
+  assert.deepEqual(edgesTraveled(withDeadLetter, { dropped: false }), ['a', 'b', 'c', 'd'])
+  assert.deepEqual(edgesTraveled(withDeadLetter, { dropped: true, droppedBy: 'filter' }), ['a', 'b', 'e'])
+})
+
 test('rates rise with traffic and decay to idle', () => {
   const tracker = new RateTracker()
   let now = performance.now()
@@ -35,7 +41,9 @@ test('particles and labels scale with the rate', () => {
   assert.deepEqual(particlesFor(0), { count: 0, seconds: 0 })
   assert.ok(particlesFor(1000).count > particlesFor(1).count)
   assert.ok(particlesFor(1000).seconds < particlesFor(1).seconds)
-  assert.equal(formatRate(0.5), '30/min')
+  assert.equal(formatRate(0.4), '24/min')
+  assert.equal(formatRate(0.5), '0.5/s')
+  assert.equal(formatRate(1), '1.0/s')
   assert.equal(formatRate(2.5), '2.5/s')
   assert.equal(formatRate(1500), '1.5k/s')
 })

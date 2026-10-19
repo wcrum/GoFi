@@ -3,6 +3,7 @@ package pipeline
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/wcrum/gofi/filter"
 	"github.com/wcrum/gofi/message"
@@ -55,7 +56,7 @@ type SimulateResult struct {
 // for independent test-case playback (a test case shouldn't be affected by
 // how many times it, or another test case, was played before).
 func Simulate(def spec.FlowDefinition, raw []byte) (*SimulateResult, error) {
-	result, _, err := simulate(def, raw, "")
+	result, _, err := simulateGuarded(def, raw, "")
 	return result, err
 }
 
@@ -63,6 +64,10 @@ func Simulate(def spec.FlowDefinition, raw []byte) (*SimulateResult, error) {
 // halts just before that Python step and returns the exact input it would
 // receive. A nil target with a nil error means the frame never reached it.
 func simulate(def spec.FlowDefinition, raw []byte, stop string) (*SimulateResult, *DebugTarget, error) {
+	def, err := def.Prepared()
+	if err != nil {
+		return nil, nil, err
+	}
 	// Inline stages always run the source being simulated (possibly unsaved),
 	// never a managed library that may still hold the previous version.
 	def.Stages = append([]spec.StageSpec(nil), def.Stages...)
@@ -81,7 +86,7 @@ func simulate(def spec.FlowDefinition, raw []byte, stop string) (*SimulateResult
 		return nil, nil, err
 	}
 
-	pr, err := parser.New(def.Parser)
+	pr, err := parser.ForFlow(def)
 	if err != nil {
 		return nil, nil, fmt.Errorf("simulate: parser: %w", err)
 	}
@@ -92,12 +97,13 @@ func simulate(def spec.FlowDefinition, raw []byte, stop string) (*SimulateResult
 		return result, capture(stop, def.Framing.Python, "framer", msg.Raw, msg), nil
 	}
 	// A Python decoder is debugged with the bytes the steps before it produce.
-	for i, d := range def.Parser.Decoders {
+	decode := def.DecodeSteps()
+	for i, d := range decode.Decoders {
 		if stop != DecoderStep(i) {
 			continue
 		}
-		before := def.Parser
-		before.Decoders = def.Parser.Decoders[:i]
+		before := decode
+		before.Decoders = decode.Decoders[:i]
 		input, derr := parser.DecodeFrame(before, msg.Raw)
 		if derr != nil {
 			result.ParseError = derr.Error()
@@ -106,7 +112,7 @@ func simulate(def spec.FlowDefinition, raw []byte, stop string) (*SimulateResult
 		return result, capture(stop, d.Python, "decoder", input, msg), nil
 	}
 	if stop == "parser" {
-		decoded, derr := parser.DecodeFrame(def.Parser, msg.Raw)
+		decoded, derr := parser.DecodeFrame(decode, msg.Raw)
 		if derr != nil {
 			result.ParseError = derr.Error()
 			return result, nil, nil
@@ -133,12 +139,23 @@ func simulate(def spec.FlowDefinition, raw []byte, stop string) (*SimulateResult
 		if stop != "" && s.ID == stop {
 			return result, capture(stop, s.Python, "transformer", msg.Raw, msg), nil
 		}
+		if s.Kind == "parse" && s.Parse != nil && stop != "" && strings.HasPrefix(stop, s.ID+"/") {
+			if target, terr := captureParse(s, stop, msg); terr != nil {
+				result.Stages = append(result.Stages, StageTrace{ID: s.ID, Kind: s.Kind, Type: s.Parse.Format, Error: terr.Error(), Fields: cloneFields(msg.Fields)})
+				return result, nil, nil
+			} else if target != nil {
+				return result, target, nil
+			}
+		}
 		st, err := filter.New(s)
 		if err != nil {
 			return nil, nil, fmt.Errorf("simulate: build stage %q: %w", s.ID, err)
 		}
 		pass, perr := st.Process(msg)
 		trace := StageTrace{ID: s.ID, Kind: s.Kind, Type: s.Type, Pass: pass, Fields: cloneFields(msg.Fields)}
+		if s.Kind == "parse" && s.Parse != nil {
+			trace.Type = s.Parse.Format
+		}
 		if perr != nil {
 			trace.Error = perr.Error()
 		}

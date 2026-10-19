@@ -8,6 +8,7 @@ import { appendBounded, logTime, shortId } from '../canvas/python-templates'
 import { StatusIndicator } from '../StatusIndicator'
 import { buildLogItems, filterLogItems, formatDuration, type LifecycleTone, type LineSeverity, type LogItem, type RunOutcome } from './log-model'
 import { PanelEmpty } from '../PanelEmpty'
+import { t } from '../../i18n'
 
 const MAX_LINES = 1000
 export interface LogTarget { library?: string; runId?: string }
@@ -15,7 +16,7 @@ const targetKey = (target: LogTarget | null) => target ? `${target.library ?? ''
 
 /** Live worker output in Grafana Explore style. Follows a saved library's
  * worker, or one unsaved run's short-lived worker until it exits. */
-export function WorkerLogsPanel({ target, highlightInvocation, compact, height, title = 'Worker logs', onState, emptyText, onJumpToLine }: {
+export function WorkerLogsPanel({ target, highlightInvocation, compact, height, title: titleProp, onState, emptyText, onJumpToLine }: {
   target: LogTarget | null
   /** Rows of this invocation are emphasized; "Only this run" filters to them. */
   highlightInvocation?: string
@@ -28,6 +29,7 @@ export function WorkerLogsPanel({ target, highlightInvocation, compact, height, 
   onJumpToLine?: (line: number, fn: string) => void
 }) {
   const styles = useStyles2(getStyles)
+  const title = titleProp ?? t('gofi.python.worker-logs.title', 'Worker logs')
   const [entries, setEntries] = useState<WorkerLogEntry[]>([])
   const [state, setState] = useState<LogStreamState>('connecting')
   const [detail, setDetail] = useState('')
@@ -57,43 +59,58 @@ export function WorkerLogsPanel({ target, highlightInvocation, compact, height, 
   const items = useMemo(() => buildLogItems(entries, showRuntime), [entries, showRuntime])
   const visible = useMemo(() => filterLogItems(items, query, onlyRun ? highlightInvocation : undefined), [items, query, onlyRun, highlightInvocation])
   const runCount = items.filter(item => item.type === 'run').length
-  useEffect(() => { if (follow && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight }, [visible, follow])
+  // Newest first: following means staying at the top.
+  const newestFirst = useMemo(() => [...visible].reverse(), [visible])
+  useEffect(() => { if (follow && scroller.current) scroller.current.scrollTop = 0 }, [visible, follow])
   const toggle = (key: string) => setCollapsed(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next })
 
-  const stateIndicator = state === 'live' ? <StatusIndicator tone="success" pulse text={target?.runId ? 'Streaming run' : 'Live'} />
-    : state === 'ended' ? <StatusIndicator tone="neutral" text="Worker exited" />
-    : state === 'unavailable' ? <StatusIndicator tone="warning" text="Unavailable" tooltip={detail || undefined} />
-    : state === 'reconnecting' ? <StatusIndicator tone="warning" text="Reconnecting…" tooltip={detail || undefined} />
-    : <StatusIndicator tone="info" text="Connecting…" />
+  const stateIndicator = state === 'live' ? <StatusIndicator tone="success" pulse text={target?.runId ? t('gofi.python.worker-logs.state-streaming-run', 'Streaming run') : t('gofi.python.worker-logs.state-live', 'Live')} />
+    : state === 'ended' ? <StatusIndicator tone="neutral" text={t('gofi.python.worker-logs.state-exited', 'Worker exited')} />
+    : state === 'unavailable' ? <StatusIndicator tone="warning" text={t('gofi.python.worker-logs.state-unavailable', 'Unavailable')} tooltip={detail || undefined} />
+    : state === 'reconnecting' ? <StatusIndicator tone="warning" text={t('gofi.python.worker-logs.state-reconnecting', 'Reconnecting…')} tooltip={detail || undefined} />
+    : <StatusIndicator tone="info" text={t('gofi.python.worker-logs.state-connecting', 'Connecting…')} />
   const actions = <Stack gap={1} alignItems="center">
     {stateIndicator}
-    <Button size="sm" variant="secondary" fill="outline" icon={paused ? 'play' : 'pause'} onClick={() => { setPaused(value => !value); setSkipped(0) }}>{paused ? 'Resume' : 'Pause'}</Button>
-    <Button size="sm" variant="secondary" fill="outline" icon="trash-alt" onClick={() => { setEntries([]); setSkipped(0) }} disabled={!entries.length}>Clear</Button>
+    <Button size="sm" variant="secondary" fill="outline" icon={paused ? 'play' : 'pause'} onClick={() => { setPaused(value => !value); setSkipped(0) }}>{paused ? t('gofi.common.resume', 'Resume') : t('gofi.common.pause', 'Pause')}</Button>
+    <Button size="sm" variant="secondary" fill="outline" icon="trash-alt" onClick={() => { setEntries([]); setSkipped(0) }} disabled={!entries.length}>{t('gofi.common.clear', 'Clear')}</Button>
   </Stack>
+  const summary = [
+    t('gofi.python.worker-logs.run-count', '{{count}} runs', { count: runCount }),
+    t('gofi.python.worker-logs.line-count', '{{count}} lines', { count: entries.length }),
+    ...(paused && skipped ? [t('gofi.python.worker-logs.arrived-while-paused', '{{count}} arrived while paused', { count: skipped })] : []),
+  ].join(' · ')
+  const emptyMessage = (state === 'unavailable' ? detail
+    : !target ? (emptyText ?? t('gofi.python.worker-logs.empty-nothing-to-follow', 'Nothing to follow.'))
+    : entries.length ? t('gofi.python.worker-logs.empty-no-match', 'No lines match the filter.')
+    : (emptyText ?? (target.runId ? t('gofi.python.worker-logs.empty-waiting-run', 'Waiting for the run to start…') : t('gofi.python.worker-logs.empty-waiting-output', 'Waiting for worker output…'))))
+    || t('gofi.python.worker-logs.empty-nothing-to-show', 'Nothing to show.')
 
   return <PanelChrome title={title} padding="none" actions={actions}>
     <div className={styles.toolbar}>
-      <div className={styles.filter}><FilterInput value={query} onChange={setQuery} placeholder="Filter lines, functions, or run ids" /></div>
-      {highlightInvocation && <InlineSwitch transparent label="Only this run" showLabel value={onlyRun} onChange={event => setOnlyRun(event.currentTarget.checked)} />}
-      <InlineSwitch transparent label="Show runtime details" showLabel value={showRuntime} onChange={event => setShowRuntime(event.currentTarget.checked)} />
-      <Text color="secondary" variant="bodySmall">{runCount} run{runCount === 1 ? '' : 's'} · {entries.length} lines{paused && skipped ? ` · ${skipped} arrived while paused` : ''}</Text>
+      <div className={styles.filter}><FilterInput value={query} onChange={setQuery} placeholder={t('gofi.python.worker-logs.filter-placeholder', 'Filter lines, functions, or run ids')} /></div>
+      {highlightInvocation && <InlineSwitch transparent label={t('gofi.python.worker-logs.only-this-run', 'Only this run')} showLabel value={onlyRun} onChange={event => setOnlyRun(event.currentTarget.checked)} />}
+      <InlineSwitch transparent label={t('gofi.python.worker-logs.show-runtime-details', 'Show runtime details')} showLabel value={showRuntime} onChange={event => setShowRuntime(event.currentTarget.checked)} />
+      <Text color="secondary" variant="bodySmall">{summary}</Text>
     </div>
     <div ref={scroller} role="log" aria-live="off" aria-label={title} className={styles.rows} style={{ height: height ?? (compact ? 160 : 360) }}
-      onScroll={event => { const element = event.currentTarget; setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 24) }}>
-      {!visible.length && <PanelEmpty icon={state === 'unavailable' ? 'exclamation-triangle' : 'document-info'} text={(state === 'unavailable' ? detail : !target ? (emptyText ?? 'Nothing to follow.') : entries.length ? 'No lines match the filter.' : (emptyText ?? (target.runId ? 'Waiting for the run to start…' : 'Waiting for worker output…'))) || 'Nothing to show.'} />}
-      {visible.map(item => <LogItemRow key={item.key} item={item} compact={compact} collapsed={collapsed.has(item.key)} onToggle={() => toggle(item.key)}
+      onScroll={event => setFollow(event.currentTarget.scrollTop < 24)}>
+      {!visible.length && <PanelEmpty icon={state === 'unavailable' ? 'exclamation-triangle' : 'document-info'} text={emptyMessage} />}
+      {newestFirst.map(item => <LogItemRow key={item.key} item={item} compact={compact} collapsed={collapsed.has(item.key)} onToggle={() => toggle(item.key)}
         highlighted={!!highlightInvocation && item.type === 'run' && item.id === highlightInvocation} onJumpToLine={onJumpToLine} />)}
     </div>
-    {!follow && visible.length > 0 && <div className={styles.jump}><Button size="sm" icon="arrow-down" onClick={() => { setFollow(true); if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight }}>Jump to newest</Button></div>}
+    {!follow && visible.length > 0 && <div className={styles.jump}><Button size="sm" icon="arrow-up" onClick={() => { setFollow(true); if (scroller.current) scroller.current.scrollTop = 0 }}>{t('gofi.python.worker-logs.jump-to-newest', 'Jump to newest')}</Button></div>}
   </PanelChrome>
 }
 
 const LIFECYCLE_ICON: Record<LifecycleTone, IconName> = { starting: 'sync', ready: 'check-circle', stopped: 'pause', error: 'exclamation-triangle', info: 'info-circle' }
-const OUTCOME: Record<RunOutcome, { icon: IconName; label: string }> = {
-  running: { icon: 'sync', label: 'running' },
-  ok: { icon: 'check-circle', label: 'ok' },
-  dropped: { icon: 'minus-circle', label: 'dropped' },
-  error: { icon: 'exclamation-triangle', label: 'error' },
+const OUTCOME_ICON: Record<RunOutcome, IconName> = { running: 'sync', ok: 'check-circle', dropped: 'minus-circle', error: 'exclamation-triangle' }
+function outcomeLabel(outcome: RunOutcome): string {
+  switch (outcome) {
+    case 'running': return t('gofi.python.worker-logs.outcome-running', 'running')
+    case 'ok': return t('gofi.python.worker-logs.outcome-ok', 'ok')
+    case 'dropped': return t('gofi.python.worker-logs.outcome-dropped', 'dropped')
+    case 'error': return t('gofi.python.worker-logs.outcome-error', 'error')
+  }
 }
 
 function LogItemRow({ item, highlighted, compact, collapsed, onToggle, onJumpToLine }: { item: LogItem; highlighted: boolean; compact?: boolean; collapsed: boolean; onToggle: () => void; onJumpToLine?: (line: number, fn: string) => void }) {
@@ -101,7 +118,7 @@ function LogItemRow({ item, highlighted, compact, collapsed, onToggle, onJumpToL
   // Every row shares one grid, Explore style: time | level bar + icon | message.
   if (item.type === 'lifecycle') return <div className={cx(styles.row, styles.level[item.tone === 'ready' ? 'ok' : item.tone === 'error' ? 'error' : item.tone === 'stopped' ? 'warn' : 'info'])}>
     <span className={styles.time}>{logTime(item.time)}</span>
-    <Icon name={LIFECYCLE_ICON[item.tone]} size="sm" className={cx(styles.levelIcon, item.tone === 'starting' && styles.spin)} />
+    <Icon name={LIFECYCLE_ICON[item.tone]} size="sm" className={cx(styles.levelIcon, item.tone === 'starting' && !item.settled && styles.spin)} />
     <span className={styles.message}>
       <span className={styles.lifecycleText}>{item.text}</span>
       {item.functions && item.functions.length > 0 && <span className={styles.muted}> · {item.functions.join(', ')}</span>}
@@ -113,18 +130,19 @@ function LogItemRow({ item, highlighted, compact, collapsed, onToggle, onJumpToL
   if (item.type === 'line') return <div className={cx(styles.row, item.severity === 'stderr' ? styles.level.warn : styles.level.output)}>
     <span className={styles.time}>{logTime(item.time)}</span><span className={styles.levelIcon} /><span className={cx(styles.message, styles.mono)}>{item.text}</span>
   </div>
-  const outcome = OUTCOME[item.outcome]
+  const outcome = outcomeLabel(item.outcome)
+  const outcomeText = item.durationUs !== undefined ? t('gofi.python.worker-logs.outcome-with-duration', '{{outcome}} in {{duration}}', { outcome, duration: formatDuration(item.durationUs) }) : outcome
   const runLevel = item.outcome === 'error' ? styles.level.error : item.outcome === 'running' ? styles.level.info : item.outcome === 'dropped' ? styles.level.debug : styles.level.ok
   return <div className={cx(highlighted && styles.highlighted)}>
     <button type="button" className={cx(styles.row, styles.runHeader, runLevel)} onClick={onToggle} aria-expanded={!collapsed}>
       <span className={styles.time}>{logTime(item.start)}</span>
-      <Icon name={outcome.icon} size="sm" className={cx(styles.levelIcon, item.outcome === 'running' && styles.spin)} />
+      <Icon name={OUTCOME_ICON[item.outcome]} size="sm" className={cx(styles.levelIcon, item.outcome === 'running' && styles.spin)} />
       <span className={styles.message}>
         <Icon name={collapsed ? 'angle-right' : 'angle-down'} size="sm" className={styles.caret} />
-        <span className={styles.fn}>{item.function || 'function'}</span>
+        <span className={styles.fn}>{item.function || t('gofi.common.function', 'function')}</span>
         {item.kind && <span className={styles.muted}> {item.kind}</span>}
-        <span className={styles.outcomeLabel}> · {outcome.label}{item.durationUs !== undefined ? ` in ${formatDuration(item.durationUs)}` : ''}</span>
-        {item.debugSteps !== undefined && <span className={styles.muted}> · debug, {item.debugSteps} steps</span>}
+        <span className={styles.outcomeLabel}> · {outcomeText}</span>
+        {item.debugSteps !== undefined && <span className={styles.muted}> · {t('gofi.python.worker-logs.debug-steps', 'debug, {{count}} steps', { count: item.debugSteps })}</span>}
         {!compact && <span className={styles.runId} title={item.id}> {shortId(item.id)}</span>}
       </span>
     </button>
@@ -132,13 +150,13 @@ function LogItemRow({ item, highlighted, compact, collapsed, onToggle, onJumpToL
       {item.lines.map((line, index) => <div key={index} className={cx(styles.row, styles.nested, styles.level[line.severity === 'output' ? 'output' : line.severity === 'stderr' || line.severity === 'warn' ? 'warn' : line.severity === 'error' ? 'error' : 'debug'])}>
         <span className={styles.time}>{logTime(line.time)}</span><span className={styles.levelIcon} /><span className={cx(styles.message, styles.mono)}>{line.text}</span>
       </div>)}
-      {!item.lines.length && item.outcome !== 'error' && <div className={cx(styles.row, styles.nested, styles.level.debug)}><span /><span className={styles.levelIcon} /><span className={cx(styles.message, styles.muted)}>{item.outcome === 'running' ? 'Running…' : 'No output.'}</span></div>}
+      {!item.lines.length && item.outcome !== 'error' && <div className={cx(styles.row, styles.nested, styles.level.debug)}><span /><span className={styles.levelIcon} /><span className={cx(styles.message, styles.muted)}>{item.outcome === 'running' ? t('gofi.python.worker-logs.run-running', 'Running…') : t('gofi.python.common.no-output', 'No output.')}</span></div>}
       {item.error && <div className={cx(styles.row, styles.nested, styles.level.error)}>
         <span /><span className={styles.levelIcon} />
         <span className={cx(styles.message, styles.mono, styles.errorText)}>{item.error}
           {item.errorLine && (onJumpToLine
-            ? <Button size="sm" fill="text" variant="destructive" icon="arrow-right" onClick={() => onJumpToLine(item.errorLine!, item.function)}>line {item.errorLine}</Button>
-            : <span className={styles.muted}> · line {item.errorLine}</span>)}
+            ? <Button size="sm" fill="text" variant="destructive" icon="arrow-right" onClick={() => onJumpToLine(item.errorLine!, item.function)}>{t('gofi.python.common.line-number', 'line {{line}}', { line: item.errorLine })}</Button>
+            : <span className={styles.muted}> · {t('gofi.python.common.line-number', 'line {{line}}', { line: item.errorLine })}</span>)}
         </span>
       </div>}
     </div>}

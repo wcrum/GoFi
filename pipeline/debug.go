@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wcrum/gofi/filter"
 	"github.com/wcrum/gofi/message"
 	"github.com/wcrum/gofi/spec"
 )
@@ -12,7 +13,7 @@ import (
 // DebugTarget is a Python step of a flow together with the exact input a
 // simulated frame delivered to it.
 type DebugTarget struct {
-	Step   string // "source", "parser", a stage id, or "sink:<index>"
+	Step   string // "framer", "decoder:<i>", "parser", a stage id, "<parse stage id>/parser", "<parse stage id>/decoder:<i>", or "sink:<index>"
 	Ref    spec.PythonRef
 	Kind   string // worker function kind (spec.FunctionKinds)
 	Raw    []byte
@@ -23,18 +24,28 @@ type DebugTarget struct {
 // DecoderStep names the debug step of decoder i.
 func DecoderStep(i int) string { return "decoder:" + strconv.Itoa(i) }
 
+// ParseParserStep names the debug step of a parse stage's Python parser.
+func ParseParserStep(stageID string) string { return stageID + "/parser" }
+
+// ParseDecoderStep names the debug step of a parse stage's decoder i.
+func ParseDecoderStep(stageID string, i int) string { return stageID + "/" + DecoderStep(i) }
+
 // SinkStep names the debug step of sink i.
 func SinkStep(i int) string { return "sink:" + strconv.Itoa(i) }
 
 // ResolveDebugStep validates step (or picks the first Python step when it is
 // empty) and reports the worker kind it runs as.
 func ResolveDebugStep(def spec.FlowDefinition, step string) (string, string, error) {
+	def, err := def.Prepared()
+	if err != nil {
+		return "", "", err
+	}
 	type candidate struct{ step, kind string }
 	var steps []candidate
 	if def.Framing.Mode == "python" && def.Framing.Python != nil {
 		steps = append(steps, candidate{"framer", "framer"})
 	}
-	for i, d := range def.Parser.Decoders {
+	for i, d := range def.DecodeSteps().Decoders {
 		if d.Type == "python" && d.Python != nil {
 			steps = append(steps, candidate{DecoderStep(i), "decoder"})
 		}
@@ -45,6 +56,16 @@ func ResolveDebugStep(def spec.FlowDefinition, step string) (string, string, err
 	for _, s := range def.Stages {
 		if s.Kind == "python" && s.Python != nil {
 			steps = append(steps, candidate{s.ID, "transformer"})
+		}
+		if s.Kind == "parse" && s.Parse != nil {
+			for i, d := range s.Parse.Decoders {
+				if d.Type == "python" && d.Python != nil {
+					steps = append(steps, candidate{ParseDecoderStep(s.ID, i), "decoder"})
+				}
+			}
+			if s.Parse.Format == "python" && s.Parse.Python != nil {
+				steps = append(steps, candidate{ParseParserStep(s.ID), "parser"})
+			}
 		}
 	}
 	for i, s := range def.Sinks {
@@ -78,7 +99,7 @@ func SimulateTo(def spec.FlowDefinition, raw []byte, step string) (result *Simul
 	if err != nil {
 		return nil, nil, "", err
 	}
-	result, target, err = simulate(def, raw, resolved)
+	result, target, err = simulateGuarded(def, raw, resolved)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -108,4 +129,28 @@ func capture(step string, ref *spec.PythonRef, kind string, raw []byte, msg *mes
 		target.Meta[k] = v
 	}
 	return target
+}
+
+// captureParse returns the debug target of a parse stage step (a nil target
+// when stop names no step of this stage): the exact bytes its Python
+// decoder or parser receives. A parse function starts from empty fields.
+func captureParse(s spec.StageSpec, stop string, msg *message.Message) (*DebugTarget, error) {
+	empty := &message.Message{Raw: msg.Raw, Fields: map[string]any{}, Meta: msg.Meta}
+	if stop == ParseParserStep(s.ID) {
+		input, err := filter.ParseInput(s, msg, -1)
+		if err != nil {
+			return nil, err
+		}
+		return capture(stop, s.Parse.Python, "parser", input, empty), nil
+	}
+	for i, d := range s.Parse.Decoders {
+		if stop == ParseDecoderStep(s.ID, i) {
+			input, err := filter.ParseInput(s, msg, i)
+			if err != nil {
+				return nil, err
+			}
+			return capture(stop, d.Python, "decoder", input, msg), nil
+		}
+	}
+	return nil, nil
 }

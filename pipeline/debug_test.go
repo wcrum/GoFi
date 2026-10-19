@@ -75,7 +75,7 @@ func TestSimulateToReportsFramesThatNeverArrive(t *testing.T) {
 }
 
 func TestSimulateToParserReceivesDecodedPayload(t *testing.T) {
-	def := spec.FlowDefinition{Name: "p", Parser: spec.ParserCfg{Format: "python", Decoders: []spec.CodecStep{{Type: "base64"}}, Python: &spec.PythonRef{Library: "lib", Function: "decode"}}}
+	def := spec.FlowDefinition{Name: "p", Decode: &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}}}, Parser: spec.ParserCfg{Format: "python", Python: &spec.PythonRef{Library: "lib", Function: "decode"}}}
 	_, target, _, err := SimulateTo(def, []byte("aGVsbG8="), "parser")
 	if err != nil || target == nil || string(target.Raw) != "hello" || target.Kind != "parser" || target.Ref.Function != "decode" {
 		t.Fatalf("parser input: %v %+v", err, target)

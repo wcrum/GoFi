@@ -68,10 +68,7 @@ func TestKubernetesSelectorServicesPreserveDesiredDefinitionAndRepairDrift(t *te
 	if err != nil || service.Spec.Selector["app"] != "receiver" || service.Spec.Ports[0].TargetPort.IntValue() != 7777 || service.Labels[kubeLabelTarget] != "true" {
 		t.Fatalf("selector Service: %+v %v", service, err)
 	}
-	pod, err := cs.CoreV1().Pods("apps").Get(ctx, podName(def.Name), metav1.GetOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	pod := flowPod(t, cs, "apps", def.Name)
 	original, ok := decodePodListenerSpec(pod)
 	if !ok || original.Sinks[0].URL != "" || original.Sinks[0].Kubernetes.Selector["app"] != "receiver" {
 		t.Fatalf("desired definition rewritten: %+v", original)
@@ -152,7 +149,7 @@ func TestCrossNamespaceTargetPublishesEndpointSliceWithClusterDiscovery(t *testi
 	if err := cs.CoreV1().Pods("apps").Delete(ctx, "second", metav1.DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	runtime, _ := cs.CoreV1().Pods("gofi").Get(ctx, podName(def.Name), metav1.GetOptions{})
+	runtime := flowPod(t, cs, "gofi", def.Name)
 	runtime.Status.Phase = corev1.PodRunning
 	if _, err := cs.CoreV1().Pods("gofi").UpdateStatus(ctx, runtime, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)

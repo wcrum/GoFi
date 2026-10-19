@@ -40,7 +40,22 @@ def safe_repr(value):
     return (text[:MAX_REPR], True) if len(text) > MAX_REPR else (text, False)
 
 
+# Names whose values are credentials wherever they appear (the same list the
+# controller redacts in flow definitions, plus common SDK spellings). Their
+# values are recorded as *** so a recording never carries a key.
+SECRET_NAMES = frozenset({
+    "api_key", "apikey", "password", "token", "secret", "secret_key", "secretaccesskey", "sessiontoken",
+    "dsn", "nkeyseed", "creds", "tlskey", "authorization", "bearer", "access_token", "refresh_token", "client_secret",
+})
+
+
+def is_secret_name(name):
+    return str(name).replace("-", "_").lower() in SECRET_NAMES
+
+
 def variable(name, value, depth=0):
+    if is_secret_name(name) and value is not None and value != "":
+        return {"name": str(name), "type": type(value).__name__, "repr": "'***'", "redacted": True}
     text, truncated = safe_repr(value)
     out = {"name": str(name), "type": type(value).__name__, "repr": text}
     if truncated:
@@ -158,6 +173,11 @@ class Recorder:
 
     @staticmethod
     def watch(expression, frame):
+        # A watch that simply names a credential is answered with ***; any
+        # other expression runs as user code in the worker, so a library is
+        # one trust domain and the worker holds no deployment secrets.
+        if is_secret_name(expression.strip()):
+            return {"expression": expression, "repr": "'***'", "redacted": True}
         try:
             value = eval(expression, frame.f_globals, dict(frame.f_locals))
         except Exception as exc:

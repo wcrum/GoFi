@@ -2,7 +2,7 @@
 apiVersion: uds.dev/v1alpha1
 kind: Exemption
 metadata:
-  name: gofi-listener-nodeports
+  name: {{ .Values.nodePort.exemptionName | default "gofi-listener-nodeports" }}
   namespace: uds-policy-exemptions
 spec:
   exemptions:

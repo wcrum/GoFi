@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wcrum/gofi/api"
+	"github.com/wcrum/gofi/config"
 	"github.com/wcrum/gofi/controller"
 	"github.com/wcrum/gofi/deploymode"
 	"github.com/wcrum/gofi/desired"
@@ -26,8 +28,19 @@ import (
 //go:generate sh -c "cd ui && npm run build"
 
 func main() {
+	// Runtime limits (GOFI_PROFILE presets + GOFI_* overrides) are resolved
+	// and applied first: log handler, GOMEMLIMIT from the cgroup/GOFI_MEMORY_LIMIT,
+	// GOMAXPROCS. See docs/configuration.md.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-	slog.Info("=== gofi starting ===")
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+	config.Set(cfg)
+	applied := config.Apply(cfg)
+	slog.Info("=== gofi starting ===", "profile", cfg.Profile)
+	slog.Info("runtime limits applied", "memoryBudget", applied.MemoryLimitBytes, "memorySource", applied.MemorySource, "gomemlimit", applied.GOMEMLIMIT, "gomaxprocs", applied.GOMAXPROCS, "logLevel", applied.LogLevel.String())
 
 	// Runtime mode: run a single flow defined by the FLOW_SPEC env var. This is
 	// how the Docker/Kubernetes drivers spawn independent flow runtimes.
@@ -51,8 +64,19 @@ func runListenerMode(raw string) {
 
 	slog.Info("runtime mode", "flow", def.Name, "port", def.Source.Listening().Port)
 
+	// Bind every port before anything runs: the tap relay's, then the
+	// flow's own (listener.New binds it and connects the sinks). A port
+	// that cannot be bound stops the process here, with nothing started
+	// and nothing to drain (fail fast; the controller reports the exit).
+	relayAddr := envOrDefault("TAP_RELAY_ADDR", ":9091")
+	relayLn, err := net.Listen("tcp", relayAddr)
+	if err != nil {
+		slog.Error("runtime mode: tap relay bind failed", "flow", def.Name, "addr", relayAddr, "error", err)
+		os.Exit(1)
+	}
 	ln, err := listener.New(def)
 	if err != nil {
+		_ = relayLn.Close()
 		slog.Error("runtime mode: failed to start", "error", err)
 		os.Exit(1)
 	}
@@ -60,17 +84,21 @@ func runListenerMode(raw string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	runDone := make(chan struct{})
 	go func() {
+		defer close(runDone)
 		defer ln.Close()
 		ln.Run(ctx)
 	}()
 
 	// Expose this listener's tap over the network so the controller (running
 	// as a separate container/Pod under Docker/Kubernetes) can proxy live
-	// ConnectRPC traffic to it. See taprelay and driver.TapTarget.
-	relayAddr := envOrDefault("TAP_RELAY_ADDR", ":9091")
+	// ConnectRPC traffic to it. See taprelay and driver.TapTarget. The relay
+	// outlives the drain, so metrics and bulletins stay readable meanwhile.
+	relayCtx, stopRelay := context.WithCancel(context.Background())
+	defer stopRelay()
 	go func() {
-		if err := taprelay.New(ln.Tap).ListenAndServe(ctx, relayAddr); err != nil {
+		if err := taprelay.New(ln.Tap).Serve(relayCtx, relayLn); err != nil {
 			slog.Error("tap relay server error", "name", def.Name, "error", err)
 		}
 	}()
@@ -78,12 +106,40 @@ func runListenerMode(raw string) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
-	slog.Info("runtime mode: shutting down", "flow", def.Name)
+	// Graceful stop: stop accepting, finish frames already received, flush
+	// sinks, then exit; a second signal or the deadline stops hard.
+	timeout := driver.DrainTimeout()
+	slog.Info("runtime mode: draining", "flow", def.Name, "timeout", timeout)
+	drainCtx, stopDrain := context.WithTimeout(context.Background(), timeout)
+	defer stopDrain()
+	go func() {
+		select {
+		case <-sig:
+			slog.Warn("runtime mode: second signal; stopping hard", "flow", def.Name)
+			stopDrain()
+		case <-drainCtx.Done():
+		}
+	}()
+	started := time.Now()
+	if err := ln.Shutdown(drainCtx); err != nil {
+		slog.Warn("runtime mode: drain incomplete", "flow", def.Name, "error", err)
+	}
+	cancel()
+	<-runDone
+	slog.Info("runtime mode: shut down", "flow", def.Name, "drainedIn", time.Since(started).Round(time.Millisecond))
 }
 
 // runControllerMode starts the event loop and ConnectRPC services.
 func runControllerMode() {
 	apiAddr := envOrDefault("INGRESS_API_ADDR", ":9090")
+	// Bind the API port before the driver, the store, or any flow starts: a
+	// port conflict stops the process with nothing started, instead of
+	// after in-process flows bound their ports and containers were created.
+	apiLn, err := net.Listen("tcp", apiAddr)
+	if err != nil {
+		slog.Error("API bind failed", "addr", apiAddr, "error", err)
+		os.Exit(1)
+	}
 
 	mode := deploymode.Detect()
 	slog.Info("deployment mode detected", "mode", mode)
@@ -95,10 +151,12 @@ func runControllerMode() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Kubernetes: informer caches, leader election, readiness (kubernetes_runtime.go).
+	kubeRuntime = startKubernetes(ctx, d, ctrl)
+
 	var store desired.Store
-	var err error
 	if d.Kind() == "kubernetes" {
-		store, err = desired.NewKubernetes(k8sNamespace())
+		store, err = kubeRuntime.flowStore(k8sNamespace())
 	} else {
 		path := os.Getenv("GOFI_CONFIG_FILE")
 		if path == "" {
@@ -127,8 +185,13 @@ func runControllerMode() {
 		}
 	}
 
-	manager := startSandboxes(ctx, ctrl, mode)
+	// The assistant configuration comes first: AI libraries inherit its
+	// endpoint through the sandbox supervisor.
+	bot := newAssistant(ctx, d.Kind(), store)
+	manager, llmServer := startSandboxes(ctx, ctrl, mode, bot)
+	kubeRuntime.elect(ctx, ctrl, manager)
 	go ctrl.Run(ctx)
+	revisions := startHistory(ctx, d.Kind(), store, ctrl)
 
 	// Serve embedded SPA if the dist directory was bundled at build time.
 	var staticFS fs.FS
@@ -142,15 +205,15 @@ func runControllerMode() {
 	protocols.SetUnencryptedHTTP2(true)
 	srv := &http.Server{
 		Addr:              apiAddr,
-		Handler:           api.New(ctrl, staticFS, mode, manager),
+		Handler:           kubeRuntime.wrap(api.NewWithDeps(ctrl, staticFS, mode, api.Deps{History: revisions, Assistant: bot, Docs: assistantDocsFS()}, manager)),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       90 * time.Second,
 		Protocols:         protocols,
 	}
 
 	go func() {
-		slog.Info("API server listening", "addr", apiAddr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Info("API server listening", "addr", apiLn.Addr().String())
+		if err := srv.Serve(apiLn); err != nil && err != http.ErrServerClosed {
 			slog.Error("API server error", "error", err)
 			os.Exit(1)
 		}
@@ -163,10 +226,22 @@ func runControllerMode() {
 	<-sig
 
 	slog.Info("shutting down...")
-	cancel()
+	cancel() // stops reconciling; in-process runtimes keep running until drained
+	// In-process flows drain before the controller exits (other drivers'
+	// runtimes keep running without it).
+	if drainer, ok := d.(driver.Drainer); ok {
+		drainCtx, stopDrain := context.WithTimeout(context.Background(), driver.DrainTimeout())
+		if err := drainer.DrainAll(drainCtx); err != nil {
+			slog.Warn("flow drain incomplete", "error", err)
+		}
+		stopDrain()
+	}
 	shutdownCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 	defer stop()
 	_ = srv.Shutdown(shutdownCtx)
+	if llmServer != nil {
+		_ = llmServer.Shutdown(shutdownCtx)
+	}
 	if manager != nil {
 		if err := manager.CloseTooling(shutdownCtx); err != nil {
 			slog.Warn("Python tooling cleanup failed", "error", err)

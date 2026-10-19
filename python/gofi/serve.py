@@ -3,7 +3,6 @@ import datetime
 import json
 import logging
 import sys
-import uvicorn
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
@@ -13,6 +12,11 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(value, ensure_ascii=False)
 
 def main():
+    # Imported here, not at module level: multiprocessing spawn re-runs this
+    # module's top level in every child process (one-shot invocations, debug
+    # runs, streamers), and user code never needs the ASGI server.
+    import uvicorn
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)

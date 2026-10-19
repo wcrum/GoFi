@@ -197,8 +197,10 @@ func (d *Docker) Create(ctx context.Context, def spec.FlowDefinition) error {
 
 	name := containerName(def.Name)
 	cfg := &container.Config{
-		Image:        d.image,
-		Env:          []string{spec.FlowSpecEnv + "=" + string(raw)},
+		Image: d.image,
+		Env:   []string{spec.FlowSpecEnv + "=" + string(raw), DrainTimeoutEnv + "=" + DrainTimeout().String()},
+		// docker stop (and Delete) wait this long for the runtime to drain.
+		StopTimeout:  dockerStopTimeout(),
 		ExposedPorts: exposed,
 		Labels: map[string]string{
 			labelListener: def.Name,
@@ -278,7 +280,7 @@ func (d *Docker) Delete(ctx context.Context, name string) error {
 	// Act on the inspected ID so a concurrent rename/replacement cannot turn
 	// this request into deletion of an unrelated container with the same name.
 	cn = info.ID
-	timeoutSec := 5
+	timeoutSec := *dockerStopTimeout()
 	if err := d.cli.ContainerStop(ctx, cn, container.StopOptions{Timeout: &timeoutSec}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("docker driver: stop %q: %w", name, err)
 	}
@@ -431,10 +433,7 @@ func dockerDataPort(def spec.FlowDefinition) (nat.PortSet, nat.PortMap, error) {
 	if def.Source.Listen == nil {
 		return nil, nil, nil
 	}
-	proto := "tcp"
-	if strings.EqualFold(def.Source.Listening().Network, "udp") {
-		proto = "udp"
-	}
+	proto := strings.ToLower(string(transportOf(def.Source.Listening().Network))) // quic publishes its UDP port
 	port, err := nat.NewPort(proto, strconv.Itoa(def.Source.Listening().Port))
 	if err != nil {
 		return nil, nil, fmt.Errorf("docker driver: invalid port %d/%s for %q: %w", def.Source.Listening().Port, proto, def.Name, err)

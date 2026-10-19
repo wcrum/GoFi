@@ -29,6 +29,7 @@ func TestRemotePythonBindingsTrackOnlyReferencedLibraries(t *testing.T) {
 	k := &Kube{namespace: "test", cs: fake.NewClientset(&corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: podName(def.Name), Namespace: "test", Labels: map[string]string{kubeLabelManaged: "true", kubeLabelListener: def.Name}},
 		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "gofi-listener", Env: []corev1.EnvVar{{Name: "GOFI_PYTHON_BINDINGS", Value: env}}}}},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
 	})}
 	for name, checker := range map[string]PythonBindingsChecker{"docker": d, "kubernetes": k} {
 		t.Run(name, func(t *testing.T) {

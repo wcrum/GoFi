@@ -48,7 +48,7 @@ func TestDecodersParseAndPreserveOriginalFrame(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := New(spec.ParserCfg{Format: "json", Decoders: []spec.CodecStep{{Type: tc.name}}})
+			p, err := decoding("json", spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: tc.name}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +71,7 @@ func TestDecoderChainOrderAndPassthrough(t *testing.T) {
 	payload := []byte("text with a plus + and newline\n")
 	compressed := compressForTest(t, payload, true)
 	raw := []byte(base64.StdEncoding.EncodeToString(compressed))
-	p, err := New(spec.ParserCfg{Format: "none", Decoders: []spec.CodecStep{{Type: "base64"}, {Type: "gzip"}}})
+	p, err := decoding("none", spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}, {Type: "gzip"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestDecoderChainOrderAndPassthrough(t *testing.T) {
 	if msg.Fields["raw"] != string(payload) || !bytes.Equal(msg.Raw, raw) {
 		t.Fatalf("unexpected decoded message: %#v", msg)
 	}
-	p, err = New(spec.ParserCfg{Format: "none", Decoders: []spec.CodecStep{{Type: "gzip"}, {Type: "base64"}}})
+	p, err = decoding("none", spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "gzip"}, {Type: "base64"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,14 +92,16 @@ func TestDecoderChainOrderAndPassthrough(t *testing.T) {
 }
 
 func TestDecodersRejectInvalidConfiguration(t *testing.T) {
-	for _, cfg := range []spec.ParserCfg{
+	for _, cfg := range []spec.DecodeCfg{
 		{Decoders: []spec.CodecStep{{Type: "unknown"}}},
 		{MaxDecodedBytes: -1},
-		{ErrorPolicy: "typo"},
 	} {
-		if _, err := New(cfg); err == nil {
+		if _, err := decoding("json", cfg); err == nil {
 			t.Fatalf("expected error for %#v", cfg)
 		}
+	}
+	if _, err := New(spec.ParserCfg{ErrorPolicy: "typo"}); err == nil {
+		t.Fatal("expected error for an unknown errorPolicy")
 	}
 }
 
@@ -121,7 +123,7 @@ func TestDecodersRejectMalformedOrOversizedOutput(t *testing.T) {
 		{"url", []byte(strings.Repeat("%78", 65))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := New(spec.ParserCfg{Decoders: []spec.CodecStep{{Type: tc.name}}, MaxDecodedBytes: 64})
+			p, err := decoding("", spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: tc.name}}, MaxDecodedBytes: 64})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,7 +141,7 @@ func TestDecodersRejectMalformedOrOversizedOutput(t *testing.T) {
 func TestDecoderExactLimitAndChecksum(t *testing.T) {
 	payload := []byte(strings.Repeat("x", 64))
 	raw := compressForTest(t, payload, true)
-	p, err := New(spec.ParserCfg{Decoders: []spec.CodecStep{{Type: "gzip"}}, MaxDecodedBytes: 64})
+	p, err := decoding("", spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "gzip"}}, MaxDecodedBytes: 64})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +164,7 @@ func (replacingParser) Parse(msg *message.Message) error {
 }
 
 func TestDecodedParserResultReachesTheMessage(t *testing.T) {
-	p, err := withDecoders(replacingParser{}, spec.ParserCfg{Decoders: []spec.CodecStep{{Type: "base64"}}})
+	p, err := WithDecode(replacingParser{}, spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,5 +174,26 @@ func TestDecodedParserResultReachesTheMessage(t *testing.T) {
 	}
 	if msg.Fields["decoded"] != "hello" || string(msg.Raw) != "aGVsbG8=" {
 		t.Fatalf("fields %v raw %q", msg.Fields, msg.Raw)
+	}
+}
+
+func decoding(format string, cfg spec.DecodeCfg) (Parser, error) {
+	p, err := New(spec.ParserCfg{Format: format})
+	if err != nil {
+		return nil, err
+	}
+	return WithDecode(p, cfg)
+}
+
+// ForFlow reads a legacy parser.decoders flow as a decode step.
+func TestForFlowRunsLegacyDecoders(t *testing.T) {
+	def := spec.FlowDefinition{Parser: spec.ParserCfg{Format: "none", LegacyDecoders: []spec.CodecStep{{Type: "base64"}}}}
+	p, err := ForFlow(def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := message.New([]byte("aGVsbG8="), "test", "local")
+	if err := p.Parse(msg); err != nil || msg.Fields["raw"] != "hello" {
+		t.Fatalf("fields %v err %v", msg.Fields, err)
 	}
 }

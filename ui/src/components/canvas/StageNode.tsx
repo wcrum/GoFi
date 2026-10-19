@@ -5,6 +5,10 @@ import { STAGE_KIND_COLOR } from '../stageColors'
 import type { StageSpec } from '../../types'
 import type { StageNode as StageNodeType } from './types'
 import { NodeCard, NodeDetail, NodeSection } from './NodeCard'
+import { parseStageSummary } from '../../lib/parse-stage'
+import { pythonRefLabel } from '../../lib/python-ref'
+import { usePythonDefault } from './python-functions'
+import { formatNumber, t } from '../../i18n'
 
 export const KIND_ICON: Record<StageSpec['kind'], IconName> = {
   filter: 'filter',
@@ -13,36 +17,42 @@ export const KIND_ICON: Record<StageSpec['kind'], IconName> = {
   dedup: 'copy',
   schema: 'shield',
   python: 'brackets-curly',
+  parse: 'brackets-curly',
 }
 
-const KIND_LABEL: Record<StageSpec['kind'], string> = {
-  filter: 'Filter',
-  transform: 'Transform',
-  'rate-limit': 'Rate Limit',
-  dedup: 'Deduplicate',
-  schema: 'Schema',
-  python: 'Python Transformer',
-}
+const kindLabels = (): Record<StageSpec['kind'], string> => ({
+  filter: t('gofi.canvas.stage-node.kind-filter', 'Filter'),
+  transform: t('gofi.canvas.stage-node.kind-transform', 'Transform'),
+  'rate-limit': t('gofi.canvas.stage-node.kind-rate-limit', 'Rate Limit'),
+  dedup: t('gofi.canvas.stage-node.kind-dedup', 'Deduplicate'),
+  schema: t('gofi.canvas.stage-node.kind-schema', 'Schema'),
+  python: t('gofi.canvas.stage-node.kind-python', 'Python Transformer'),
+  parse: t('gofi.canvas.stage-node.kind-parse', 'Parse field'),
+})
 
 /** A stage linked to a CEL library entry (no literal expression). */
 function linkedSummary(spec: StageSpec): string | undefined {
   if (!spec.expressionRef) return undefined
-  return `library: ${spec.expressionRef.name}${spec.expressionRef.generation ? ` @${spec.expressionRef.generation}` : ''}`
+  return spec.expressionRef.generation
+    ? t('gofi.canvas.stage-node.library-ref-generation', 'library: {{name}} @{{generation}}', { name: spec.expressionRef.name, generation: spec.expressionRef.generation })
+    : t('gofi.canvas.stage-node.library-ref', 'library: {{name}}', { name: spec.expressionRef.name })
 }
 
 /** One-line, kind-specific summary of a stage's config, shown in the node
  * body so the graph is scannable without opening the inspector. */
-function summarize(spec: StageSpec): string | undefined {
+export function summarize(spec: StageSpec, defaultLibrary?: string): string | undefined {
   switch (spec.kind) {
+    case 'parse':
+      return parseStageSummary(spec, defaultLibrary)
     case 'python':
-      if (spec.python?.inlineSource !== undefined) return 'Inline Python'
-      return spec.python?.library ? `${spec.python.library}.${spec.python.function}` : 'Choose a Python function'
+      if (spec.python?.inlineSource !== undefined) return t('gofi.canvas.stage-node.inline-python', 'Inline Python')
+      return spec.python?.function ? pythonRefLabel(spec.python, defaultLibrary) : t('gofi.canvas.stage-node.choose-function', 'Choose a Python function')
     case 'filter':
       return spec.expression || linkedSummary(spec)
     case 'transform':
       if (spec.transformOp === 'rename') return `${spec.field ?? '?'} -> ${spec.newField ?? '?'}`
       if (spec.transformOp === 'set') return `${spec.field ?? '?'} = ${spec.valueExpr || linkedSummary(spec) || ''}`
-      if (spec.transformOp === 'remove') return `remove ${spec.field ?? '?'}`
+      if (spec.transformOp === 'remove') return t('gofi.canvas.stage-node.remove-field', 'remove {{field}}', { field: spec.field ?? '?' })
       return undefined
     case 'rate-limit':
       return spec.maxPerSecond != null ? `${spec.maxPerSecond}/s` : undefined
@@ -57,16 +67,16 @@ function summarize(spec: StageSpec): string | undefined {
 
 export function StageNode({ data, selected }: NodeProps<StageNodeType>) {
   const { spec, stats, mockState } = data
-  const summary = summarize(spec)
+  const summary = summarize(spec, usePythonDefault() || undefined)
   // The mock-playback outline takes precedence over the selection outline
   // while active, since it's the transient thing the user is watching move.
   return (
-    <NodeCard icon={KIND_ICON[spec.kind] ?? 'filter'} title={KIND_LABEL[spec.kind] ?? spec.kind} badge={{ text: spec.kind, color: STAGE_KIND_COLOR[spec.kind] ?? 'darkgrey' }} selected={selected} mockState={mockState}>
+    <NodeCard icon={KIND_ICON[spec.kind] ?? 'filter'} title={kindLabels()[spec.kind] ?? spec.kind} badge={{ text: spec.kind, color: STAGE_KIND_COLOR[spec.kind] ?? 'darkgrey' }} selected={selected} mockState={mockState}>
       <Handle type="target" position={Position.Left} />
       {summary && <NodeDetail mono title={summary}>{summary}</NodeDetail>}
       {stats && <NodeSection>
-        <Badge text={`passed ${stats.passedCount}`} color="green" />
-        {stats.droppedCount > 0 && <Badge text={`dropped ${stats.droppedCount}`} color="red" />}
+        <Badge text={t('gofi.canvas.stage-node.passed', 'passed {{n}}', { n: stats.pending ? '—' : formatNumber(stats.passedCount) })} color={stats.pending ? 'darkgrey' : 'green'} />
+        {stats.droppedCount > 0 && <Badge text={t('gofi.canvas.stage-node.dropped', 'dropped {{n}}', { n: formatNumber(stats.droppedCount) })} color="red" />}
       </NodeSection>}
       <Handle type="source" position={Position.Right} />
     </NodeCard>

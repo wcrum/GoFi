@@ -29,6 +29,11 @@ service GoFiService {
   // Empty name watches every configured flow over one connection. The
   // inventory is refreshed continuously as flows are added or replaced.
   rpc WatchTraffic(WatchTrafficRequest) returns (stream WatchTrafficResponse);
+  // Per-flow counters once per second (one small message for every flow, or
+  // the named one) for dashboards and status views. Counters are cumulative
+  // since the runtime started; a decrease means the runtime restarted. Use
+  // WatchTraffic only for views that show the events themselves.
+  rpc WatchFlowStats(WatchFlowStatsRequest) returns (stream WatchFlowStatsResponse);
   // What the flow's runtime has seen on each outbound route (destinations,
   // dead letter, pulled source) since it started: whether the last attempt
   // failed, and how. Empty while the runtime is not running.
@@ -49,22 +54,111 @@ message Flow {
   // Removed: legacy Listener compatibility (docs/flows.md).
   reserved 9;
   reserved "legacy";
+  // Declared run state: "running" (default when empty) or "stopped". A
+  // stopped flow keeps its definition but runs no runtime (OperationsService).
+  string state = 10;
+  // Decode step: ordered decoding applied to each frame before the parser
+  // (formerly parser.decoders / parser.max_decoded_bytes).
+  DecodeConfig decode = 11;
+  // Flow-wide Python settings (the default library of Python steps).
+  FlowPython python = 12;
+}
+// DecodeConfig is a flow's decode step (source → framing → decode → parser).
+message DecodeConfig {
+  // Ordered decoding steps; the raw frame is unchanged.
+  repeated CodecStep decoders = 1;
+  // Cap on each step's output; 0 = 1 MiB.
+  int32 max_decoded_bytes = 2;
+}
+// FlowPython holds flow-wide Python settings.
+message FlowPython {
+  // Default library for every Python reference in the flow that names only
+  // a function (inline source is unaffected).
+  string library = 1;
 }
 // FlowSource says how data arrives. Exactly one field is set.
 message FlowSource {
   ListenSource listen = 1;
   FetchSource fetch = 2;
   SubscribeSource subscribe = 3;
-  // Planned (docs/flows.md, R4): python @gofi.fetcher / @gofi.streamer.
-  reserved 4;
-  reserved "python";
+  // A @gofi.fetcher or @gofi.streamer in an isolated library worker
+  // (docs/flows.md, R4).
+  PythonSource python = 4;
 }
-// FetchSource: GoFi pulls on an interval.
+// PythonSource runs a library function as the flow's source. It executes in
+// the library's worker, under that library's egress allowlist; never in the
+// controller or the flow runtime.
+message PythonSource {
+  string library = 1;
+  string function = 2;
+  // Keyword arguments passed to the function.
+  google.protobuf.Struct config = 3;
+  // Fetchers only: poll interval (Go duration, at least 1s). Empty uses the
+  // decorator's every, else 30s.
+  string every = 4;
+}
+// FetchSource: GoFi pulls on an interval. Exactly one of http, s3, or sql
+// is set.
 message FetchSource {
   HTTPFetch http = 1;
-  // Optional JSON path ("$.items[*]") splitting one response into one frame
-  // per element.
+  // Optional JSON path ("$.items[*]") splitting one response (or S3 object)
+  // into one frame per element.
   string split = 2;
+  S3Fetch s3 = 3;
+  SQLFetch sql = 4;
+}
+// S3Fetch lists a bucket prefix every interval; each new object is one frame.
+// Credentials are inline; omit them for ambient credentials (environment,
+// IRSA web identity, or instance metadata).
+message S3Fetch {
+  // https://minio.example:9000 for S3-compatible stores; default AWS S3.
+  string endpoint = 1;
+  string region = 2;
+  string bucket = 3;
+  string prefix = 4;
+  // Optional glob on the key after prefix ("*.json"; * does not cross /).
+  string glob = 5;
+  string access_key_id = 6;
+  string secret_access_key = 7;
+  string session_token = 8;
+  bool path_style = 9;
+  bool insecure_skip_verify = 10;
+  // Inline CA certificate, PEM.
+  string tls_ca = 11;
+  // RFC 3339: skip objects last modified at or before this time.
+  string since = 12;
+  // Objects read per poll; default 100.
+  int32 max_objects = 13;
+  // After hand-off, delete the object, or move it under move_to.
+  bool delete_after = 14;
+  string move_to = 15;
+  // Go durations; defaults 30s and 10s (per request).
+  string every = 16;
+  string timeout = 17;
+}
+// SQLFetch runs a query every interval; each row is one JSON frame.
+message SQLFetch {
+  // postgres, mysql, or sqlserver.
+  string driver = 1;
+  // Full driver DSN, or the connection fields below.
+  string dsn = 2;
+  string host = 3;
+  int32 port = 4;
+  string database = 5;
+  string username = 6;
+  string password = 7;
+  // "", disable, require, or verify-full.
+  string tls = 8;
+  map<string, string> params = 9;
+  string query = 10;
+  // Incremental mode: the query binds the last row's cursor_column value as
+  // its one parameter ($1, ?, or @p1) and orders by that column.
+  string cursor_column = 11;
+  string cursor_start = 12;
+  // Rows read per poll; default 1000.
+  int32 max_rows = 13;
+  string every = 14;
+  string timeout = 15;
 }
 message HTTPFetch {
   string url = 1;
@@ -83,6 +177,27 @@ message SubscribeSource {
   MQTTSubscribe mqtt = 2;
   StreamSubscribe websocket = 3;
   StreamSubscribe sse = 4;
+  // Streaming brokers with consumer acknowledgement (docs/flows.md).
+  KafkaSubscribe kafka = 5;
+  AMQPSubscribe amqp = 6;
+  JetStreamSubscribe jetstream = 7;
+  RedisSubscribe redis = 8;
+  // Zenoh key expression through the router's REST plugin (docs/zenoh.md).
+  ZenohSubscribe zenoh = 20;
+}
+// ZenohSubscribe subscribes over Server-Sent Events from the Zenoh router's
+// REST plugin; each sample is one frame.
+message ZenohSubscribe {
+  // Router REST origin, e.g. http://zenoh-router:8000 (no path or credentials).
+  string url = 1;
+  // Key expression; whole-chunk * and ** wildcards allowed, admin space (@) not.
+  string key_expr = 2;
+  map<string, string> headers = 3;
+  HTTPAuth auth = 4;
+  // Sample kinds to forward: PUT and/or DELETE. Default PUT only.
+  repeated string kinds = 5;
+  // Also read current values from storages (GET as JSON) on each (re)connect.
+  bool query = 6;
 }
 message NATSSubscribe {
   string url = 1;
@@ -106,11 +221,95 @@ message StreamSubscribe {
   // WebSocket only: a text message sent after connecting (e.g. a subscribe request).
   string send = 4;
 }
+// SourceTLS: TLS for a broker connection. Kafka needs enabled; AMQP and
+// Redis enable TLS with their amqps:// and rediss:// schemes and use the rest.
+message SourceTLS {
+  bool enabled = 1;
+  // Inline PEM: CA bundle, and an optional client certificate and key.
+  string ca = 2;
+  string cert = 3;
+  string key = 4;
+  bool insecure_skip_verify = 5;
+}
+// KafkaSubscribe joins a consumer group. Offsets are committed after the
+// record's pipeline run.
+message KafkaSubscribe {
+  // host:port seed brokers.
+  repeated string brokers = 1;
+  repeated string topics = 2;
+  // Consumer group; default gofi-<flow>.
+  string group = 3;
+  // Where a group without a committed offset starts: latest (default) or earliest.
+  string start_offset = 4;
+  SourceTLS tls = 5;
+  KafkaSASL sasl = 6;
+  string client_id = 7;
+}
+message KafkaSASL {
+  // PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512.
+  string mechanism = 1;
+  string username = 2;
+  string password = 3;
+}
+// AMQPSubscribe consumes an AMQP 0-9-1 (RabbitMQ) queue, or binds a
+// server-named, exclusive, auto-delete queue to an exchange. Each delivery
+// is acknowledged after its pipeline run.
+message AMQPSubscribe {
+  // amqp:// or amqps://; credentials may be in the URL or below.
+  string url = 1;
+  string queue = 2;
+  string exchange = 3;
+  string routing_key = 4;
+  // Unacknowledged deliveries in flight; default 100.
+  int32 prefetch = 5;
+  string username = 6;
+  string password = 7;
+  SourceTLS tls = 8;
+}
+// JetStreamSubscribe consumes a NATS JetStream stream through a durable pull
+// consumer with explicit acks.
+message JetStreamSubscribe {
+  string url = 1;
+  string stream = 2;
+  // Durable consumer name; default gofi-<flow>. Created or updated.
+  string consumer = 3;
+  // Optional filter subject within the stream.
+  string subject = 4;
+  // all (default), last, new, or last_per_subject; fixed at creation.
+  string deliver_policy = 5;
+  // Go duration before an unacked message is redelivered; default 30s.
+  string ack_wait = 6;
+  NATSAuth auth = 7;
+}
+// RedisSubscribe reads a Redis Stream with a consumer group (XREADGROUP +
+// XACK) or subscribes to Pub/Sub channels. Set stream or channels.
+message RedisSubscribe {
+  // redis:// or rediss://, optionally with user:password@ and /db.
+  string url = 1;
+  string stream = 2;
+  // Stream mode: consumer group (default gofi-<flow>) and consumer name
+  // (default the runtime hostname).
+  string group = 3;
+  string consumer = 4;
+  // Where a new group starts: latest (default) or earliest.
+  string start = 5;
+  // Stream mode: emit only this entry field; default all fields as JSON.
+  string field = 6;
+  // Pub/Sub mode: channels, or glob patterns when pattern is set.
+  repeated string channels = 7;
+  bool pattern = 8;
+  string username = 9;
+  string password = 10;
+  SourceTLS tls = 11;
+}
 // ListenSource: senders push to a GoFi TCP/UDP port.
 message ListenSource {
+  // "tcp" | "udp" | "quic" (QUIC runs over UDP on `port`).
   string network = 1;
   int32 port = 2;
   ServiceExposure service = 3;
+  // QUIC only: the listener's certificate and client-auth policy.
+  TLSConfig tls = 5;
   // Removed: the Python ingress hook. Each pipeline step has its own Python
   // option instead (framer, decoder, parser, transformer, encoder, sink).
   reserved 4;
@@ -193,9 +392,12 @@ message Encoding {
 message ParserConfig {
   string format = 1;
   reserved 2;
-  // Ordered decoding steps applied before parsing.
-  repeated CodecStep decoders = 6;
-  int32 max_decoded_bytes = 3;
+  // Deprecated: moved to Flow.decode. Kept (not reserved) so older clients'
+  // requests still decode; the server reads them as Flow.decode and never
+  // returns them. Setting both with different values is an error.
+  repeated CodecStep decoders = 6 [deprecated = true];
+  // Deprecated: moved to Flow.decode.max_decoded_bytes (see decoders).
+  int32 max_decoded_bytes = 3 [deprecated = true];
   string error_policy = 4;
   PythonRef python = 5;
 }
@@ -218,6 +420,27 @@ message Stage {
   ExpressionRef expression_ref = 14;
   // CEL evaluation errors: "pass" (default; the message continues) or "drop".
   string on_error = 15;
+  // kind "parse": parse the raw frame or a field again.
+  ParseStage parse = 16;
+}
+// ParseStage parses a value already on the message and adds the result to
+// fields (docs/flows.md, "Layered data").
+message ParseStage {
+  // CEL expression yielding string or bytes; empty or "raw" = the raw frame.
+  string from = 1;
+  // Decoding steps applied to the input before parsing.
+  repeated CodecStep decoders = 2;
+  // "json" | "xml" | "text" | "python".
+  string format = 3;
+  // @gofi.parser function for format "python"; library may come from
+  // Flow.python.library.
+  PythonRef python = 4;
+  // "" merges into top-level fields; otherwise fields[into].
+  string into = 5;
+  // "merge" (default) | "replace" (fields become the result; into empty).
+  string mode = 6;
+  // "continue" (default; the message passes unchanged) | "drop".
+  string on_error = 7;
 }
 message KubernetesTarget {
  string namespace = 1;
@@ -246,6 +469,21 @@ message Sink {
   ExpressionRef when_ref = 16;
   // How the message is serialized and encoded before this sink sends it.
   Encoding encoding = 17;
+  // QUIC sinks (type "quic", url quic://host:port): client TLS.
+  TLSConfig tls = 18;
+}
+// TLSConfig is the QUIC listener's or sink's TLS: inline PEM material, the
+// client's verification policy (server_name, insecure_skip_verify), the ALPN
+// protocols offered or accepted (default ["gofi/1"]), and for a listener
+// whether a client certificate is required (verified against `ca`).
+message TLSConfig {
+  string cert = 1;
+  string key = 2;
+  string ca = 3;
+  bool insecure_skip_verify = 4;
+  string server_name = 5;
+  repeated string alpn = 6;
+  bool require_client_cert = 7;
 }
 message HTTPAuth {
   string type = 1;
@@ -324,6 +562,9 @@ message TrafficEvent {
   google.protobuf.Struct fields = 4;
   map<string, string> meta = 5;
   string raw = 6;
+  // raw, or a string inside fields/meta, was cut to the runtime's per-event
+  // limit (GOFI_TAP_MAX_BYTES, default 4 KiB) before streaming.
+  bool truncated = 7;
 }
 message StageTrace {
   string id = 1;
@@ -353,8 +594,19 @@ message SimulateResult {
   repeated SinkOutcome sinks = 7;
 }
 
-message ListFlowsRequest {}
-message ListFlowsResponse { repeated Flow flows = 1; }
+message ListFlowsRequest {
+  // The revision of the caller's last ListFlowsResponse. When the inventory
+  // has not changed since, the response is `unchanged` with no flows, so a
+  // poll costs one small round trip instead of every definition.
+  uint64 if_revision = 1;
+}
+message ListFlowsResponse {
+  repeated Flow flows = 1;
+  // Increases on every save, delete, and store reload (not comparable across
+  // controller replicas or restarts).
+  uint64 revision = 2;
+  bool unchanged = 3;
+}
 message GetFlowRequest { string name = 1; }
 message GetFlowResponse { Flow flow = 1; }
 message UpsertFlowRequest {
@@ -362,6 +614,9 @@ message UpsertFlowRequest {
   // Run every check a save runs (validation, inline Python, platform
   // admission such as Pepr) and report warnings, without saving.
   bool validate_only = 2;
+  // Optional note recorded on the flow revision this save creates
+  // (FlowHistoryService, history.proto).
+  string message = 3;
 }
 message UpsertFlowResponse {
   Flow flow = 1;
@@ -415,6 +670,37 @@ message WatchTrafficResponse {
   string flow = 1;
   TrafficEvent event = 2;
   bool heartbeat = 3;
+  // Events this stream skipped since the previous message because the
+  // client's queue was full (the viewer could not keep up). Attached to the
+  // next event or heartbeat; 0 when nothing was missed.
+  uint64 dropped = 4;
+}
+message WatchFlowStatsRequest {
+  // Empty: every configured flow.
+  string name = 1;
+}
+message WatchFlowStatsResponse {
+  repeated FlowStats flows = 1;
+  bool heartbeat = 2;
+  google.protobuf.Timestamp at = 3;
+}
+// FlowStats is one flow's cumulative counters since its runtime started.
+message FlowStats {
+  string flow = 1;
+  // The runtime is running and its counters were read within the last few
+  // seconds.
+  bool up = 2;
+  // Frames read from the source.
+  uint64 observed = 3;
+  // Messages a stage or the parser rejected.
+  uint64 rejected = 4;
+  uint64 parse_errors = 5;
+  // Successful destination sends (one per destination per message).
+  uint64 delivered = 6;
+  // Failed destination sends.
+  uint64 sink_failures = 7;
+  // Live-traffic events a slow viewer missed on the runtime.
+  uint64 tap_dropped = 8;
 }
 
 

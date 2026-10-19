@@ -17,24 +17,25 @@ import (
 const fanoutRefresh = 5 * time.Second
 
 // fanoutSink sends each message to every address a headless Service name
-// resolves to (one per ready Pod), keeping one connection per Pod.
+// resolves to (one per ready Pod), keeping one peer sink (connection) per
+// Pod. Peers are tcp/udp networkSinks or quicSinks.
 type fanoutSink struct {
 	network, host, port string
-	newPeer             func(address string) *networkSink
+	newPeer             func(address string) Sink
 	lookup              func(ctx context.Context, host string) ([]string, error)
 
 	mu       sync.Mutex
-	peers    map[string]*networkSink
+	peers    map[string]Sink
 	resolved time.Time
 }
 
-func newFanout(network, host, port string, newPeer func(string) *networkSink) *fanoutSink {
-	return &fanoutSink{network: network, host: host, port: port, newPeer: newPeer, lookup: net.DefaultResolver.LookupHost, peers: map[string]*networkSink{}}
+func newFanout(network, host, port string, newPeer func(string) Sink) *fanoutSink {
+	return &fanoutSink{network: network, host: host, port: port, newPeer: newPeer, lookup: net.DefaultResolver.LookupHost, peers: map[string]Sink{}}
 }
 
 // targets refreshes the address set from DNS at most every fanoutRefresh,
 // closing connections to Pods that went away.
-func (s *fanoutSink) targets() ([]*networkSink, error) {
+func (s *fanoutSink) targets() ([]Sink, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if time.Since(s.resolved) >= fanoutRefresh || len(s.peers) == 0 {
@@ -67,7 +68,7 @@ func (s *fanoutSink) targets() ([]*networkSink, error) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	out := make([]*networkSink, 0, len(keys))
+	out := make([]Sink, 0, len(keys))
 	for _, key := range keys {
 		out = append(out, s.peers[key])
 	}

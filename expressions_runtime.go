@@ -21,6 +21,7 @@ func newExpressionLibrary(ctx context.Context, driverKind string, listeners desi
 			slog.Error("CEL library initialization failed", "error", err)
 			return nil
 		}
+		k.Lister = kubeRuntime.lister(expressions.GVR)
 		store = k
 	} else {
 		path := os.Getenv("GOFI_EXPRESSIONS_CONFIG_FILE")

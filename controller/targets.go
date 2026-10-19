@@ -12,8 +12,8 @@ func (c *Controller) ValidateTarget(target spec.KubernetesTarget, network string
 	if err := target.Validate(); err != nil {
 		return err
 	}
-	if network != "tcp" && network != "udp" {
-		return fmt.Errorf("network must be tcp or udp")
+	if network != "tcp" && network != "udp" && network != "quic" {
+		return fmt.Errorf("network must be tcp, udp, or quic")
 	}
 	if c.drv.Kind() != "kubernetes" {
 		return fmt.Errorf("Kubernetes selector targets require the Kubernetes driver")

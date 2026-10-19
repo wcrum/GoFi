@@ -124,7 +124,7 @@ func TestExpressionCheckEvaluateAndDescribe(t *testing.T) {
 
 	// With a listener, raw is decoded and parsed exactly as on ingress.
 	def := basicDefinition()
-	def.Parser.Decoders = []spec.CodecStep{{Type: "base64"}}
+	def.Decode = &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "base64"}}}
 	if _, err := gofi.UpsertFlow(ctx, connect.NewRequest(&gofiv1.UpsertFlowRequest{Flow: flowMessage(t, def)})); err != nil {
 		t.Fatal(err)
 	}

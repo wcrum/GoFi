@@ -14,10 +14,11 @@ spec:
   framing:
     mode: line
     maxBytes: 1048576
-  parser:
-    format: json
+  decode:
     decoders: [base64]
     maxDecodedBytes: 1048576
+  parser:
+    format: json
     errorPolicy: drop
   stages:
     - id: application

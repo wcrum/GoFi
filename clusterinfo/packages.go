@@ -18,7 +18,7 @@ func (c *Client) Packages(ctx context.Context) (*gofiv1.ListUDSPackagesResponse,
 		return nil, fmt.Errorf("API discovery: %w", err)
 	}
 	out := &gofiv1.ListUDSPackagesResponse{Namespace: c.Opts.Namespace}
-	items, err := c.list(ctx, versions, "uds.dev", "packages", "")
+	items, err := c.list(ctx, versions, "uds.dev", "packages", "", &out.Warnings)
 	if err != nil {
 		out.Warnings = append(out.Warnings, warning("UDS Packages", err))
 		return out, nil

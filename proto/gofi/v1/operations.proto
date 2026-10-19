@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package gofi.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+
+// OperationsService runs flows: start, stop, and restart them, report their
+// run state, and show the problems their runtimes reported (bulletins).
+service OperationsService {
+  // StartFlow and StopFlow set the flow's declared state through the normal
+  // save path (so the change is stored and survives restarts). Run state is
+  // operational, not part of the versioned definition: no revision is recorded.
+  rpc StartFlow(StartFlowRequest) returns (StartFlowResponse);
+  rpc StopFlow(StopFlowRequest) returns (StopFlowResponse);
+  // RestartFlow recreates the flow's runtime without changing its definition.
+  rpc RestartFlow(RestartFlowRequest) returns (RestartFlowResponse);
+  // Run state of every flow (or one), with its problem counts.
+  rpc ListFlowStatus(ListFlowStatusRequest) returns (ListFlowStatusResponse);
+  // Recent problems of one flow (or every flow when flow is empty), most
+  // recently seen first.
+  rpc ListBulletins(ListBulletinsRequest) returns (ListBulletinsResponse);
+  // Acknowledged bulletins stay listed but stop counting as problems until
+  // they happen again.
+  rpc AcknowledgeBulletins(AcknowledgeBulletinsRequest) returns (AcknowledgeBulletinsResponse);
+  // Cleared bulletins are hidden until they happen again.
+  rpc ClearBulletins(ClearBulletinsRequest) returns (ClearBulletinsResponse);
+}
+
+message StartFlowRequest { string name = 1; }
+message StartFlowResponse { FlowStatus status = 1; }
+message StopFlowRequest { string name = 1; }
+message StopFlowResponse { FlowStatus status = 1; }
+message RestartFlowRequest { string name = 1; }
+message RestartFlowResponse { FlowStatus status = 1; }
+
+message ListFlowStatusRequest {
+  // Empty lists every flow.
+  string name = 1;
+}
+message ListFlowStatusResponse {
+  repeated FlowStatus flows = 1;
+  // Unacknowledged error and warning bulletins across every flow.
+  int32 problems = 2;
+}
+
+// FlowStatus is a flow's run state as people see it.
+message FlowStatus {
+  string name = 1;
+  // Declared state: "running" or "stopped".
+  string desired = 2;
+  // Observed phase: "running", "starting", "stopping", "stopped",
+  // "crashed" (the runtime exited and is being restarted), "failed" (it
+  // could not be started), "invalid" (the stored definition does not
+  // validate), or "unknown".
+  string phase = 3;
+  // How many times the controller restarted the runtime after it exited on
+  // its own, since the controller started.
+  int32 restarts = 4;
+  google.protobuf.Timestamp last_restart_at = 5;
+  // Runtime status reported by the driver ("Running", "Pending", "exited", ...).
+  string runtime_status = 6;
+  google.protobuf.Timestamp started_at = 7;
+  // Why the runtime is not running, when known.
+  string message = 8;
+  // Unacknowledged error and warning bulletins of this flow.
+  int32 problems = 9;
+  int32 errors = 10;
+  int32 warnings = 11;
+}
+
+// Bulletin is one problem a flow reported, aggregated by component and
+// message: every occurrence counts toward one entry.
+message Bulletin {
+  // Stable across processes for the same flow, component, and message.
+  string id = 1;
+  string flow = 2;
+  // "error", "warning", or "info".
+  string severity = 3;
+  // "source", "framer", "parser", "stage:<id>", "sink:<index>" (0-based),
+  // "deadLetter", "runtime", or "tap".
+  string component = 4;
+  string message = 5;
+  int64 count = 6;
+  google.protobuf.Timestamp first_seen = 7;
+  google.protobuf.Timestamp last_seen = 8;
+  bool acknowledged = 9;
+}
+
+message ListBulletinsRequest {
+  // Empty lists every flow's bulletins.
+  string flow = 1;
+  // Include acknowledged bulletins (default: only open ones).
+  bool include_acknowledged = 2;
+}
+message ListBulletinsResponse {
+  repeated Bulletin bulletins = 1;
+}
+message AcknowledgeBulletinsRequest {
+  string flow = 1;
+  // Empty acknowledges every bulletin of the flow.
+  repeated string ids = 2;
+}
+message AcknowledgeBulletinsResponse {}
+message ClearBulletinsRequest {
+  string flow = 1;
+  // Empty clears every bulletin of the flow.
+  repeated string ids = 2;
+}
+message ClearBulletinsResponse {}

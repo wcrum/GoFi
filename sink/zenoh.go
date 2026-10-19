@@ -3,17 +3,16 @@ package sink
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
+	"github.com/wcrum/gofi/message"
 	"github.com/wcrum/gofi/spec"
 )
 
 // zenohSink publishes through the Zenoh router's REST plugin. It intentionally
-// shares HTTP auth/body handling while fixing the operation to PUT on one key.
+// shares HTTP auth/body handling while fixing the operation to PUT (or
+// DELETE, which removes the key) on one concrete key.
 type zenohSink struct{ *httpSink }
 
 func newZenoh(cfg spec.SinkCfg) (*zenohSink, error) {
@@ -30,7 +29,7 @@ func newZenoh(cfg spec.SinkCfg) (*zenohSink, error) {
 	}
 	sink.c = &http.Client{
 		Timeout:   10 * time.Second,
-		Transport: http.DefaultTransport.(*http.Transport).Clone(),
+		Transport: newTransport(),
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("zenoh REST: router redirects are not supported")
 		},
@@ -39,35 +38,36 @@ func newZenoh(cfg spec.SinkCfg) (*zenohSink, error) {
 }
 func (s *zenohSink) Close() error { s.c.CloseIdleConnections(); return nil }
 
+// Send publishes the message with PUT, or removes the key with DELETE (no
+// body: the router ignores one).
+func (s *zenohSink) Send(msg *message.Message) error {
+	if s.method == http.MethodDelete {
+		empty := *msg
+		empty.Payload = []byte{}
+		msg = &empty
+	}
+	return s.httpSink.Send(msg)
+}
+
 func zenohHTTPConfig(cfg spec.SinkCfg) (spec.SinkCfg, error) {
-	origin, err := url.Parse(cfg.URL)
-	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Hostname() == "" || origin.User != nil || origin.RawQuery != "" || origin.ForceQuery || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") {
-		return cfg, fmt.Errorf("zenoh REST: URL must be an absolute HTTP or HTTPS router origin")
+	if err := spec.ValidateZenohOrigin(cfg.URL); err != nil {
+		return cfg, fmt.Errorf("zenoh REST: URL %w", err)
 	}
-	if cfg.Method != "" && strings.ToUpper(strings.TrimSpace(cfg.Method)) != http.MethodPut {
-		return cfg, fmt.Errorf("zenoh REST: method must be PUT")
+	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
+	if method == "" {
+		method = http.MethodPut
 	}
-	key := cfg.Subject
-	if key == "" || !utf8.ValidString(key) || strings.ContainsAny(key, "*$?#@\\%") {
-		return cfg, fmt.Errorf("zenoh REST: subject must be a concrete key without wildcards, query syntax, or admin paths")
+	if method != http.MethodPut && method != http.MethodDelete {
+		return cfg, fmt.Errorf("zenoh REST: method must be PUT or DELETE")
 	}
-	for _, r := range key {
-		if unicode.IsControl(r) {
-			return cfg, fmt.Errorf("zenoh REST: key contains a control character")
-		}
-	}
-	segments := strings.Split(key, "/")
-	escaped := make([]string, len(segments))
-	for i, segment := range segments {
-		if segment == "" || segment == "." || segment == ".." {
-			return cfg, fmt.Errorf("zenoh REST: key segments must be nonempty and cannot be . or ..")
-		}
-		escaped[i] = url.PathEscape(segment)
+	path, err := spec.ZenohKeyPath(cfg.Subject, false)
+	if err != nil {
+		return cfg, fmt.Errorf("zenoh REST: subject %w", err)
 	}
 	cfg.Type = "http"
-	cfg.URL = strings.TrimRight(cfg.URL, "/") + "/" + strings.Join(escaped, "/")
+	cfg.URL = strings.TrimRight(cfg.URL, "/") + "/" + path
 	cfg.Subject = ""
-	cfg.Method = http.MethodPut
+	cfg.Method = method
 	if cfg.BodyMode == "" {
 		cfg.BodyMode = "raw"
 	}

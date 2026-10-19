@@ -10,8 +10,11 @@ metadata:
   {{- end }}
 spec:
   type: {{ .Values.service.type }}
-  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.loadBalancerIP }}
-  loadBalancerIP: {{ .Values.service.loadBalancerIP | quote }}
+  {{- if eq .Values.service.type "LoadBalancer" }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . | quote }}
+  {{- end }}
+  allocateLoadBalancerNodePorts: {{ .Values.service.allocateLoadBalancerNodePorts }}
   {{- end }}
   {{- with .Values.service.loadBalancerSourceRanges }}
   loadBalancerSourceRanges:
@@ -25,6 +28,12 @@ spec:
       {{- if and (has .Values.service.type (list "NodePort" "LoadBalancer")) .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}
       {{- end }}
+    # The AI proxy for Python libraries with AI on; worker NetworkPolicies
+    # admit the controller Pods on this port only.
+    - port: {{ .Values.llmProxy.port }}
+      targetPort: llm
+      protocol: TCP
+      name: llm
   selector:
     {{- include "gofi.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: controller

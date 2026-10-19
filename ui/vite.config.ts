@@ -17,8 +17,26 @@ export default defineConfig({
     https,
     allowedHosts,
     proxy: {
-      '/gofi.v1.': process.env.GOFI_API_PROXY ?? 'http://localhost:9090',
+      '/gofi.v1.': {
+        target: process.env.GOFI_API_PROXY ?? 'http://localhost:9090',
+        // When the controller dies mid-stream (restart, crash), http-proxy
+        // only answers 502 if the headers were not sent yet; a server stream
+        // whose body was already flowing would otherwise stay open on the
+        // browser side forever, and the portal's reconnect loop never ran.
+        // Close the client response when the upstream one ends incomplete.
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, _req, res) => {
+            proxyRes.on('close', () => { if (!proxyRes.complete && !res.writableEnded) res.destroy() })
+          })
+        },
+      },
     },
+  },
+  // src/lib/monaco.ts imports monaco-editor directly (shared with
+  // @grafana/ui); pre-bundle it up front so lazily loaded editor pages don't
+  // trigger a mid-session re-optimization that 504s stale module requests.
+  optimizeDeps: {
+    include: ['monaco-editor'],
   },
   build: {
     outDir: 'dist',

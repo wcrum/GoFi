@@ -1,0 +1,3 @@
+# Private tooling worker only (format/validate RPCs); not installed in the
+# slim Sandbox worker image. Keep in step with python/gofi/tooling.py.
+ruff==0.17.1

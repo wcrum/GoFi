@@ -23,6 +23,10 @@ tasks:
       - task: ui:build
       - go build -o bin/gofi .
 
+  cli:build:
+    desc: Build the gofictl CLI (apply, get, start/stop, history, top) into bin/
+    cmd: CGO_ENABLED=0 go build -trimpath -o bin/gofictl ./cmd/gofictl
+
   test:
     desc: Run Go tests
     cmd: go test ./...
@@ -51,3 +55,104 @@ tasks:
     desc: Install UI dependencies
     dir: ui
     cmd: npm ci
+
+  # ---- Edge / cross builds -------------------------------------------------
+  # Static binaries for every supported target. CGO is off, symbols stripped,
+  # paths trimmed. EDGE_TAGS drops heavy integrations from the edge binary;
+  # the dropped sources return "not available in this build" at runtime.
+  build:cross:
+    desc: Cross-build static gofi binaries for linux/amd64, arm64 and arm/v7 into bin/
+    vars:
+      EDGE_TAGS: '{{default "gofi_nosql,gofi_nokafka,gofi_nos3" .EDGE_TAGS}}'
+    env:
+      CGO_ENABLED: '0'
+    cmds:
+      - mkdir -p bin
+      - GOOS=linux GOARCH=amd64        go build -trimpath -ldflags="-s -w" -o bin/gofi-linux-amd64 .
+      - GOOS=linux GOARCH=arm64        go build -trimpath -ldflags="-s -w" -o bin/gofi-linux-arm64 .
+      - GOOS=linux GOARCH=arm GOARM=7  go build -trimpath -ldflags="-s -w" -o bin/gofi-linux-armv7 .
+      - GOOS=linux GOARCH=amd64        go build -trimpath -ldflags="-s -w" -tags '{{.EDGE_TAGS}}' -o bin/gofi-edge-linux-amd64 .
+      - GOOS=linux GOARCH=arm64        go build -trimpath -ldflags="-s -w" -tags '{{.EDGE_TAGS}}' -o bin/gofi-edge-linux-arm64 .
+      - GOOS=linux GOARCH=arm GOARM=7  go build -trimpath -ldflags="-s -w" -tags '{{.EDGE_TAGS}}' -o bin/gofi-edge-linux-armv7 .
+      - task: build:sizes
+
+  build:edge:
+    desc: Build the slim edge binary for this host (drops SQL, Kafka and S3 sources)
+    vars:
+      EDGE_TAGS: '{{default "gofi_nosql,gofi_nokafka,gofi_nos3" .EDGE_TAGS}}'
+    env:
+      CGO_ENABLED: '0'
+    cmd: go build -trimpath -ldflags="-s -w" -tags '{{.EDGE_TAGS}}' -o bin/gofi-edge .
+
+  build:sizes:
+    desc: Print a size report of the binaries in bin/
+    cmd: |
+      printf '%-28s %10s\n' BINARY BYTES
+      for f in bin/gofi-*; do [ -f "$f" ] && printf '%-28s %10s  (%s)\n' "$(basename "$f")" "$(stat -c %s "$f")" "$(numfmt --to=iec --suffix=B "$(stat -c %s "$f")")"; done
+
+  docker:buildx:
+    desc: Build a multi-arch image (linux/amd64, linux/arm64, linux/arm/v7); set PUSH=true to push
+    vars:
+      PLATFORMS: '{{default "linux/amd64,linux/arm64,linux/arm/v7" .PLATFORMS}}'
+      PUSH: '{{default "false" .PUSH}}'
+    cmd: docker buildx build --platform '{{.PLATFORMS}}' -t '{{.GOFI_IMAGE}}' {{if eq .PUSH "true"}}--push{{else}}--load{{end}} .
+
+  edge:footprint:
+    desc: Measure RSS/CPU/startup of the edge profile under docker --memory=128m --cpus=0.5
+    cmd: scripts/edge-footprint.sh
+
+  # --- test pyramid (docs/testing.md) --------------------------------------
+
+  test:unit:
+    desc: Fast unit tests (default go test ./...)
+    cmd: go test ./...
+
+  test:race:
+    desc: Unit tests under the race detector
+    cmd: go test -race -count=1 ./...
+
+  test:integration:
+    desc: Controller convergence tests against the flow file and an envtest kube-apiserver (downloads envtest binaries into .envtest/ on first run)
+    env:
+      GOFI_ENVTEST_DIR: '{{.ROOT_DIR}}/.envtest'
+    cmds:
+      - |
+        if [ ! -d .envtest/k8s ]; then
+          GOBIN={{.ROOT_DIR}}/.envtest/bin go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+          {{.ROOT_DIR}}/.envtest/bin/setup-envtest use -p path --bin-dir {{.ROOT_DIR}}/.envtest >/dev/null
+        fi
+      - go test -tags integration -count=1 -timeout 20m ./tests/integration/...
+
+  test:e2e:
+    desc: End-to-end chaos scenarios against the binary (GOFI_E2E_MODE=compose for the Docker shape; needs GOFI_E2E_IMAGE)
+    cmd: go test -tags e2e -count=1 -timeout 40m -v ./tests/e2e/ -run '{{default "." .RUN}}'
+
+  test:e2e:k3d:
+    desc: End-to-end scenarios on a throwaway k3d cluster (3 agents); creates and deletes the cluster
+    cmds:
+      - scripts/load/k3d-up.sh
+      - defer: scripts/load/k3d-up.sh down
+      - bash -c 'source testenv/reports/k3d-gofi-e2e.env && go test -tags e2e -count=1 -timeout 60m -v ./tests/e2e/'
+
+  test:chaos:
+    desc: Binary chaos scenarios plus the edge profile (docker --memory=128m) with JSON reports under testenv/reports/
+    cmds:
+      - go test -tags e2e -count=1 -timeout 40m -v ./tests/e2e/ -run 'TestControllerRestartUnderLoad|TestSlowAndBlackholedSink|TestIdleConnectionsBounded|TestUDPBurstLossCurve|TestFlowEditDuringTraffic|TestStopStartRestart|TestRollbackRestoresDefinition|TestSlowStreamClient|TestKillDuringSaves|TestManyFlowsConverge|TestEdgeProfile'
+
+  test:scale:
+    desc: Scale ladder (10→100→500 flows) against a running controller; GOFI_SERVER selects it
+    cmd: scripts/load/scale-ladder.sh '{{default "10,100,500" .LADDER}}'
+
+  test:ui:e2e:
+    desc: Portal smoke (Playwright) against the dev server :5180 and backend :19190; OWN=1 spawns its own backend and Vite
+    dir: ui
+    cmd: '{{if eq (default "" .OWN) "1"}}GOFI_UI_E2E_OWN_BACKEND=1 GOFI_BINARY={{.ROOT_DIR}}/bin/gofi-e2e {{end}}node e2e/run.mjs'
+
+  test:ui:i18n:
+    desc: i18n layout sweep (Playwright) against the dev server :5180 — every route in en-US, uk-UA, zh-Hant and the pseudo-locale at desktop and phone widths; fails on console errors, horizontal overflow or clipped text
+    dir: ui
+    cmd: node e2e/i18n-sweep.mjs
+
+  test:bench:
+    desc: Data-plane benchmarks (framing, codec, parser, filter, pipeline, sink) into testenv/reports/bench.txt
+    cmd: go test -run '^$' -bench . -benchmem -count '{{default "6" .COUNT}}' ./framing/... ./codec/... ./parser/... ./filter/... ./pipeline/... ./sink/... ./listener/... | tee testenv/reports/bench.txt

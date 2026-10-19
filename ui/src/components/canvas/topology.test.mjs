@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { flowsToTopology, destinationKey } from './topology.ts'
+import { t } from '../../i18n/index.ts'
 const flow = (name, port) => ({ name, source: { listen: { network: 'tcp', port, service: { type: 'NodePort', nodePort: port + 20000 } } }, framing: { mode: 'line' }, parser: { format: 'json', decoders: ['base64', 'gzip'] }, stages: [{ id: 'filter', kind: 'filter', type: 'cel', expression: 'true' }], sinks: [{ type: 'tcp', url: 'tcp://collector:9001' }] })
 test('all flows remain visible with isolated stage ids and shared direct destinations', () => {
   const graph = flowsToTopology([flow('one', 9000), flow('two', 9001)])
@@ -19,8 +20,9 @@ test('conditional and dead-letter paths remain configured paths, and topic route
   def.deadLetterSink = { type: 'stdout' }
   const graph = flowsToTopology([def])
   assert.equal(graph.nodes.filter(n => n.data.role === 'destination').length, 3)
-  assert.ok(graph.edges.some(e => e.label === 'When: fields["accepted"]'))
-  assert.ok(graph.edges.some(e => e.data.deadLetter && e.label === 'Rejected events' && e.style.strokeDasharray))
+  // Labels are localized: compare against the same message the UI renders.
+  assert.ok(graph.edges.some(e => e.label === t('gofi.canvas.topology.when-label', 'When: {{expression}}', { expression: 'fields["accepted"]' })))
+  assert.ok(graph.edges.some(e => e.data.deadLetter && e.label === t('gofi.canvas.topology.rejected-events', 'Rejected events') && e.style.strokeDasharray))
   assert.notEqual(destinationKey(def.sinks[0]), destinationKey(def.sinks[1]))
 })
 test('empty inventory produces no invented routes', () => assert.deepEqual(flowsToTopology([]), { nodes: [], edges: [] }))

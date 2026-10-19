@@ -13,18 +13,27 @@ import (
 const FlowSpecEnv = "FLOW_SPEC"
 
 // FlowSource says how data arrives in a flow. Exactly one source is set
-// (docs/flows.md; Python sources are planned).
+// (docs/flows.md).
 type FlowSource struct {
 	Listen    *ListenSource    `json:"listen,omitempty"`
 	Fetch     *FetchSource     `json:"fetch,omitempty"`
 	Subscribe *SubscribeSource `json:"subscribe,omitempty"`
+	Python    *PythonSource    `json:"python,omitempty"` // python_source.go
 }
 
-// FetchSource pulls on an interval. Each response body is one frame, or one
-// frame per element of the JSON array Split selects.
+// FetchSource pulls on an interval; exactly one of HTTP, S3, or SQL is set.
+// Each response body (or S3 object) is one frame, or one frame per element of
+// the JSON array Split selects. SQL emits one frame per row.
 type FetchSource struct {
 	HTTP  *HTTPFetch `json:"http,omitempty"`
+	S3    *S3Fetch   `json:"s3,omitempty"`    // fetch_sources.go
+	SQL   *SQLFetch  `json:"sql,omitempty"`   // fetch_sources.go
 	Split string     `json:"split,omitempty"` // "$.items[*]", "$[*]"
+	// LeaderOnly declares that, with more than one replica of this flow,
+	// only one should poll (every replica polling fetches each response N
+	// times). Leader election is not implemented yet: the flag is accepted
+	// and recorded, and every replica still polls, with a warning at start.
+	LeaderOnly bool `json:"leaderOnly,omitempty"`
 }
 
 // HTTPFetch requests a URL every interval; polls never overlap.
@@ -45,6 +54,13 @@ type SubscribeSource struct {
 	MQTT      *MQTTSubscribe   `json:"mqtt,omitempty"`
 	WebSocket *StreamSubscribe `json:"websocket,omitempty"`
 	SSE       *StreamSubscribe `json:"sse,omitempty"`
+	// Brokers with consumer acknowledgement (subscribe_streams.go).
+	Kafka     *KafkaSubscribe     `json:"kafka,omitempty"`
+	AMQP      *AMQPSubscribe      `json:"amqp,omitempty"`
+	JetStream *JetStreamSubscribe `json:"jetstream,omitempty"`
+	Redis     *RedisSubscribe     `json:"redis,omitempty"`
+	// Zenoh key expression through the router's REST plugin (zenoh.go).
+	Zenoh *ZenohSubscribe `json:"zenoh,omitempty"`
 }
 
 // NATSSubscribe is a core NATS subscription (no JetStream cursor).
@@ -57,12 +73,28 @@ type NATSSubscribe struct {
 
 // MQTTSubscribe subscribes to an MQTT topic (QoS 0 or 1).
 type MQTTSubscribe struct {
-	URL      string `json:"url"` // tcp://, ssl://, ws://, or wss://
-	Topic    string `json:"topic"`
-	QoS      int    `json:"qos,omitempty"`
-	ClientID string `json:"clientId,omitempty"` // default gofi-<flow>
+	URL   string `json:"url"` // tcp://, ssl://, ws://, or wss://
+	Topic string `json:"topic"`
+	QoS   int    `json:"qos,omitempty"`
+	// ClientID defaults to gofi-<flow>-<hostname>: brokers disconnect the
+	// previous session when a client ID is reused, so replicas must differ.
+	ClientID string `json:"clientId,omitempty"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
+	// SharedGroup subscribes through an MQTT 5 shared subscription
+	// ($share/<group>/<topic>): the broker delivers each message to one
+	// member of the group, so replicas split the topic instead of each
+	// receiving everything. Requires an MQTT 5 broker (Mosquitto 2, EMQX,
+	// HiveMQ); older brokers reject the subscription.
+	SharedGroup string `json:"sharedGroup,omitempty"`
+}
+
+// SubscribeTopic is the topic filter actually sent to the broker.
+func (m *MQTTSubscribe) SubscribeTopic() string {
+	if g := strings.TrimSpace(m.SharedGroup); g != "" {
+		return "$share/" + g + "/" + m.Topic
+	}
+	return m.Topic
 }
 
 // StreamSubscribe is a WebSocket or Server-Sent Events stream.
@@ -74,8 +106,9 @@ type StreamSubscribe struct {
 }
 
 // flatSourceFields maps each field of the removed flat Listener source to
-// its place under source.listen.
-var flatSourceFields = map[string]string{"port": "port", "network": "network", "service": "service", "python": "hook"}
+// its place under source.listen. The flat "python" hook is gone too, but
+// source.python is now the Python source (R4), so it is not listed.
+var flatSourceFields = map[string]string{"port": "port", "network": "network", "service": "service"}
 
 // UnmarshalJSON accepts only the current shape ({"listen": {...}}). The flat
 // Listener shape is rejected with an explicit error rather than an unknown
@@ -110,7 +143,8 @@ func (s FlowSource) Listening() ListenSource {
 	return *s.Listen
 }
 
-// Kind names the configured source: "listen", "fetch", "subscribe", or "".
+// Kind names the configured source: "listen", "fetch", "subscribe",
+// "python", or "".
 func (s FlowSource) Kind() string {
 	switch {
 	case s.Listen != nil:
@@ -119,6 +153,8 @@ func (s FlowSource) Kind() string {
 		return "fetch"
 	case s.Subscribe != nil:
 		return "subscribe"
+	case s.Python != nil:
+		return "python"
 	}
 	return ""
 }
@@ -126,19 +162,21 @@ func (s FlowSource) Kind() string {
 // Validate requires exactly one configured source.
 func (s FlowSource) Validate() error {
 	set := 0
-	for _, present := range []bool{s.Listen != nil, s.Fetch != nil, s.Subscribe != nil} {
+	for _, present := range []bool{s.Listen != nil, s.Fetch != nil, s.Subscribe != nil, s.Python != nil} {
 		if present {
 			set++
 		}
 	}
 	if set != 1 {
-		return fmt.Errorf("source must set exactly one of listen, fetch, or subscribe")
+		return fmt.Errorf("source must set exactly one of listen, fetch, subscribe, or python")
 	}
 	switch {
 	case s.Listen != nil:
 		return s.Listen.Validate()
 	case s.Fetch != nil:
 		return s.Fetch.Validate()
+	case s.Python != nil:
+		return s.Python.Validate()
 	default:
 		return s.Subscribe.Validate()
 	}
@@ -146,8 +184,20 @@ func (s FlowSource) Validate() error {
 
 // Validate checks a fetch source.
 func (f *FetchSource) Validate() error {
-	if f.HTTP == nil {
-		return fmt.Errorf("source.fetch.http is required")
+	set := 0
+	for _, present := range []bool{f.HTTP != nil, f.S3 != nil, f.SQL != nil} {
+		if present {
+			set++
+		}
+	}
+	if set != 1 {
+		return fmt.Errorf("source.fetch must set exactly one of http, s3, or sql")
+	}
+	switch {
+	case f.S3 != nil:
+		return f.validateS3()
+	case f.SQL != nil:
+		return f.validateSQL()
 	}
 	h := f.HTTP
 	if err := pulledURL("source.fetch.http.url", h.URL, "http", "https"); err != nil {
@@ -175,15 +225,25 @@ func (f *FetchSource) Validate() error {
 // Validate checks a subscribe source.
 func (s *SubscribeSource) Validate() error {
 	set := 0
-	for _, present := range []bool{s.NATS != nil, s.MQTT != nil, s.WebSocket != nil, s.SSE != nil} {
+	for _, present := range []bool{s.NATS != nil, s.MQTT != nil, s.WebSocket != nil, s.SSE != nil, s.Kafka != nil, s.AMQP != nil, s.JetStream != nil, s.Redis != nil, s.Zenoh != nil} {
 		if present {
 			set++
 		}
 	}
 	if set != 1 {
-		return fmt.Errorf("source.subscribe must set exactly one of nats, mqtt, websocket, or sse")
+		return fmt.Errorf("source.subscribe must set exactly one of nats, mqtt, websocket, sse, kafka, amqp, jetstream, redis, or zenoh")
 	}
 	switch {
+	case s.Kafka != nil:
+		return s.Kafka.Validate()
+	case s.AMQP != nil:
+		return s.AMQP.Validate()
+	case s.JetStream != nil:
+		return s.JetStream.Validate()
+	case s.Redis != nil:
+		return s.Redis.Validate()
+	case s.Zenoh != nil:
+		return s.Zenoh.Validate()
 	case s.NATS != nil:
 		if err := pulledURL("source.subscribe.nats.url", s.NATS.URL, "nats", "tls"); err != nil {
 			return err
@@ -200,6 +260,9 @@ func (s *SubscribeSource) Validate() error {
 		}
 		if s.MQTT.QoS < 0 || s.MQTT.QoS > 1 {
 			return fmt.Errorf("source.subscribe.mqtt.qos must be 0 or 1")
+		}
+		if g := s.MQTT.SharedGroup; strings.ContainsAny(g, "/#+ \t\r\n") {
+			return fmt.Errorf("source.subscribe.mqtt.sharedGroup must not contain /, #, +, or whitespace")
 		}
 	case s.WebSocket != nil:
 		return pulledURL("source.subscribe.websocket.url", s.WebSocket.URL, "ws", "wss")

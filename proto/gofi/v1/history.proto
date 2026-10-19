@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package gofi.v1;
+
+import "gofi/v1/gofi.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/wcrum/gofi/gen/gofi/v1;gofiv1";
+
+// FlowHistoryService reads each flow's revision history and restores earlier
+// revisions. Every saved change to a flow becomes an immutable, numbered
+// revision: portal saves, rollbacks, and changes made outside GoFi (kubectl,
+// GitOps, a hand-edited flow file). A save that does not change the
+// definition's content hash records nothing. docs/versioning.md.
+service FlowHistoryService {
+  // Revision summaries (no definitions), newest first. A deleted flow's
+  // history stays listed for the deleted-flow retention window.
+  rpc ListFlowRevisions(ListFlowRevisionsRequest) returns (ListFlowRevisionsResponse);
+  // One revision with its full definition.
+  rpc GetFlowRevision(GetFlowRevisionRequest) returns (GetFlowRevisionResponse);
+  // Saves a revision's definition as the flow's current definition through
+  // the normal save path (validation and admission apply) and records it as
+  // a new "rollback" revision. Restoring a deleted flow re-creates it.
+  rpc RollbackFlow(RollbackFlowRequest) returns (RollbackFlowResponse);
+}
+
+message FlowRevision {
+  string flow = 1;
+  // Monotonic per flow, starting at 1.
+  int64 revision = 2;
+  google.protobuf.Timestamp created_at = 3;
+  // The authenticated identity that made the change, or "unknown".
+  string author = 4;
+  string message = 5;
+  // "portal", "external", "rollback", or "import" (first seen by GoFi).
+  string source = 6;
+  // Hex SHA-256 of the canonical definition; empty for a deletion.
+  string hash = 7;
+  // A tombstone: the flow was deleted at this revision.
+  bool deleted = 8;
+  // Set by GetFlowRevision only.
+  Flow definition = 9;
+}
+
+message ListFlowRevisionsRequest {
+  string flow = 1;
+  // Maximum revisions to return (newest first); 0 returns all retained.
+  int32 limit = 2;
+}
+message ListFlowRevisionsResponse {
+  repeated FlowRevision revisions = 1;
+  // How many revisions each flow keeps.
+  int32 retention_limit = 2;
+  // Where history is stored: "file:<dir>" or "kubernetes:<namespace>".
+  string backend = 3;
+}
+
+message GetFlowRevisionRequest {
+  string flow = 1;
+  int64 revision = 2;
+}
+message GetFlowRevisionResponse { FlowRevision revision = 1; }
+
+message RollbackFlowRequest {
+  string flow = 1;
+  int64 revision = 2;
+  // Optional; defaults to "Restore revision N".
+  string message = 3;
+}
+message RollbackFlowResponse {
+  // The new revision, or the current one when the flow already matched.
+  FlowRevision revision = 1;
+  // False when the flow already had this definition (nothing recorded).
+  bool created = 2;
+}

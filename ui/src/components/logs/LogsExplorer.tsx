@@ -9,28 +9,20 @@ import { useGoFi } from '../../state'
 import { FrameDebugDrawer } from '../python/debugger/FrameDebugDrawer'
 import { pythonSteps } from '../python/debugger/navigation'
 import { PanelEmpty } from '../PanelEmpty'
+import { formatNumber, t } from '../../i18n'
+import { Batcher, VOLUME_LEVELS, appendBounded, capture, matches, volumeLevel, windowRows, type CapturedEvent, type VolumeLevel } from './log-buffer'
 
-const MAX_EVENTS = 200
+const MAX_EVENTS = 1000
 const VOLUME_SECONDS = 60
-type Level = 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'unknown'
-type VolumeLevel = 'error' | 'warn' | 'info' | 'debug' | 'unknown'
-const VOLUME_LEVELS: VolumeLevel[] = ['error', 'warn', 'info', 'debug', 'unknown']
-interface CapturedEvent { id: number; flow: string; event: TapEvent }
+/** Collapsed rows have one fixed height so the list can be windowed. */
+const ROW_HEIGHT = 30
 type Detail = 'fields' | 'metadata' | 'raw' | 'json'
 
-function level(event: TapEvent): Level {
-  const value = String(event.fields.level ?? event.fields.severity ?? '').toLowerCase()
-  if (['fatal', 'critical', 'error', 'err'].includes(value)) return 'error'
-  if (['warning', 'warn'].includes(value)) return 'warn'
-  if (value === 'debug' || value === 'trace' || value === 'info') return value
-  return event.meta.parseError ? 'error' : event.dropped ? 'warn' : 'info'
-}
-const volumeLevel = (value: Level): VolumeLevel => value === 'trace' ? 'debug' : value
 function source(event: TapEvent): string { return event.meta.source || event.meta.remoteAddr || String(event.fields.source ?? '—') }
 function summary(event: TapEvent): string {
   const message = event.fields.message ?? event.fields.msg ?? event.fields.event
   if (typeof message === 'string') return message
-  return Object.entries(event.fields).slice(0, 6).map(([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value) : String(value)}`).join('  ') || event.raw || '(empty frame)'
+  return Object.entries(event.fields).slice(0, 6).map(([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value) : String(value)}`).join('  ') || event.raw || t('gofi.logs.explorer.empty-frame', '(empty frame)')
 }
 
 // Grafana log-level colors. Orange/green fail protan separation, so warnings
@@ -40,7 +32,12 @@ function levelColors(theme: GrafanaTheme2): Record<VolumeLevel, string> {
   return { error: named('red'), warn: named('semi-dark-yellow'), info: named('semi-dark-green'), debug: named('blue'), unknown: theme.colors.text.disabled }
 }
 
-/** Grafana Explore-style live log view for one flow ('' = all). */
+/**
+ * Grafana Explore-style live log view for one flow ('' = all). Events are
+ * batched per animation frame (at most one re-render per frame under load),
+ * searched against text lowercased once on arrival, and only the rows in
+ * view are rendered.
+ */
 export function LogsExplorer({ flow }: { flow: string }) {
   const styles = useStyles2(getStyles)
   const all = flow === ''
@@ -51,9 +48,17 @@ export function LogsExplorer({ flow }: { flow: string }) {
   const [query, setQuery] = useState('')
   const [severity, setSeverity] = useState('all')
   const [status, setStatus] = useState('all')
-  const scrollRef = useRef<HTMLDivElement>(null)
+  // Events the controller skipped for this stream because this tab fell behind.
+  const [dropped, setDropped] = useState(0)
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
+  const [extras, setExtras] = useState<Map<number, number>>(() => new Map())
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewport, setViewport] = useState(0)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const viewportObserver = useRef<ResizeObserver | null>(null)
   const pausedRef = useRef(false)
   const nextId = useRef(0)
+  const pendingDrops = useRef(0)
   // Per-second observed counts, recorded even while paused so the volume
   // reflects the stream rather than the visible buffer. Bounded to 60 seconds.
   const volume = useRef(new Map<number, Record<VolumeLevel, number>>())
@@ -61,17 +66,24 @@ export function LogsExplorer({ flow }: { flow: string }) {
   pausedRef.current = paused
 
   useEffect(() => {
-    setConnected(false); setEvents([]); volume.current.clear()
+    setConnected(false); setEvents([]); setDropped(0); setExpanded(new Set()); setExtras(new Map()); volume.current.clear(); pendingDrops.current = 0
+    const batcher = new Batcher<CapturedEvent>(batch => {
+      setEvents(previous => appendBounded(previous, batch, MAX_EVENTS))
+      if (pendingDrops.current) { const drops = pendingDrops.current; pendingDrops.current = 0; setDropped(value => value + drops) }
+    })
     const receive = (name: string, event: TapEvent) => {
+      const item = capture(nextId.current++, name, event)
       const second = Math.floor(Date.now() / 1000)
       const bucket = volume.current.get(second) ?? { error: 0, warn: 0, info: 0, debug: 0, unknown: 0 }
-      bucket[volumeLevel(level(event))]++
+      bucket[volumeLevel(item.level)]++
       volume.current.set(second, bucket)
-      if (!pausedRef.current) setEvents(previous => [...previous.slice(-(MAX_EVENTS - 1)), { id: nextId.current++, flow: name, event }])
+      if (!pausedRef.current) batcher.push(item)
     }
     const onError = () => setConnected(false)
     const onOpen = () => setConnected(true)
-    return all ? streamAllFlows(receive, onError, onOpen) : streamFlow(flow, event => receive(flow, event), onError, onOpen)
+    const onDropped = (count: number) => { pendingDrops.current += count; if (pausedRef.current) { setDropped(value => value + pendingDrops.current); pendingDrops.current = 0 } }
+    const stop = all ? streamAllFlows(receive, onError, onOpen, onDropped) : streamFlow(flow, event => receive(flow, event), onError, onOpen, onDropped)
+    return () => { stop(); batcher.clear() }
   }, [flow, all])
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -82,54 +94,88 @@ export function LogsExplorer({ flow }: { flow: string }) {
     return () => window.clearInterval(timer)
   }, [])
 
-  const filtered = useMemo(() => events.filter(({ event, flow: name }) => {
-    if (severity !== 'all' && level(event) !== severity) return false
-    if (status === 'accepted' && event.dropped || status === 'rejected' && !event.dropped || status === 'parse-error' && !event.meta.parseError) return false
-    return !query || `${name} ${event.ts} ${event.droppedBy || ''} ${event.raw} ${JSON.stringify(event.fields)} ${JSON.stringify(event.meta)}`.toLowerCase().includes(query.toLowerCase())
-  }), [events, query, severity, status])
+  const filters = useMemo(() => ({ query, severity, status }), [query, severity, status])
+  const filtered = useMemo(() => { const lower = query.toLowerCase(); return events.filter(item => matches(item, filters, lower)) }, [events, filters, query])
+  // Expanded rows keep their measured extra height by id; windowing wants it by index.
+  const extraByIndex = useMemo(() => {
+    const map = new Map<number, number>()
+    if (!extras.size) return map
+    filtered.forEach((item, index) => { const extra = extras.get(item.id); if (extra) map.set(index, extra) })
+    return map
+  }, [filtered, extras])
+  const window_ = useMemo(() => windowRows(filtered.length, scrollTop, viewport, ROW_HEIGHT, extraByIndex), [filtered.length, scrollTop, viewport, extraByIndex])
   useLayoutEffect(() => { if (autoScroll && !paused && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [filtered, autoScroll, paused])
+  // The scroller mounts only once the panel has measured itself, after this
+  // component's own mount, so the viewport is read when the element appears
+  // (a callback ref), not in a one-time effect that found no element and
+  // left the window at its overscan of a few rows.
+  const setScroller = useCallback((element: HTMLDivElement | null) => {
+    viewportObserver.current?.disconnect()
+    viewportObserver.current = null
+    scrollRef.current = element
+    if (!element) return
+    setViewport(element.clientHeight)
+    const observer = new ResizeObserver(([entry]) => setViewport(Math.floor(entry.contentRect.height)))
+    observer.observe(element)
+    viewportObserver.current = observer
+  }, [])
+  useEffect(() => () => viewportObserver.current?.disconnect(), [])
 
+  const toggle = useCallback((id: number) => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) { next.delete(id) } else next.add(id); return next }), [])
+  const measure = useCallback((id: number, extra: number) => setExtras(previous => {
+    if ((previous.get(id) ?? 0) === extra) return previous
+    const next = new Map(previous)
+    if (extra) next.set(id, extra); else next.delete(id)
+    return next
+  }), [])
   const scrollToNewest = () => { setAutoScroll(true); if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }
+  const clear = () => { setEvents([]); setDropped(0); setExpanded(new Set()); setExtras(new Map()) }
   const columns = all ? styles.columnsAll : styles.columns
 
   return <div className={styles.root}>
-    <div className={styles.toolbar} role="toolbar" aria-label="Log controls">
-      <RadioButtonGroup aria-label="Stream mode" value={paused ? 'paused' : 'live'} onChange={value => setPaused(value === 'paused')}
-        options={[{ value: 'live', label: 'Live', icon: 'play' }, { value: 'paused', label: 'Paused', icon: 'pause' }]} />
-      <div className={styles.search}><FilterInput aria-label="Search traffic logs" value={query} onChange={setQuery} placeholder="Search fields, metadata, or raw traffic" /></div>
-      <Combobox aria-label="Level filter" width={18} value={severity} onChange={option => setSeverity(option.value)}
-        options={['all', 'error', 'warn', 'info', 'debug', 'trace'].map(value => ({ value, label: value === 'all' ? 'All levels' : value.toUpperCase() }))} />
-      <Combobox aria-label="Status filter" width={18} value={status} onChange={option => setStatus(option.value)}
-        options={[{ value: 'all', label: 'All traffic' }, { value: 'accepted', label: 'Accepted' }, { value: 'rejected', label: 'Rejected' }, { value: 'parse-error', label: 'Parse errors' }]} />
-      <Button variant="secondary" fill="outline" icon="trash-alt" onClick={() => setEvents([])}>Clear</Button>
+    <div className={styles.toolbar} role="toolbar" aria-label={t('gofi.logs.explorer.controls-label', 'Log controls')}>
+      <RadioButtonGroup aria-label={t('gofi.logs.explorer.stream-mode-label', 'Stream mode')} value={paused ? 'paused' : 'live'} onChange={value => setPaused(value === 'paused')}
+        options={[{ value: 'live', label: t('gofi.logs.explorer.mode-live', 'Live'), icon: 'play' }, { value: 'paused', label: t('gofi.logs.explorer.mode-paused', 'Paused'), icon: 'pause' }]} />
+      <div className={styles.search}><FilterInput aria-label={t('gofi.logs.explorer.search-label', 'Search traffic logs')} value={query} onChange={setQuery} placeholder={t('gofi.logs.explorer.search-placeholder', 'Search fields, metadata, or raw traffic')} /></div>
+      <Combobox aria-label={t('gofi.logs.explorer.level-filter-label', 'Level filter')} width={18} value={severity} onChange={option => setSeverity(option.value)}
+        options={['all', 'error', 'warn', 'info', 'debug', 'trace'].map(value => ({ value, label: value === 'all' ? t('gofi.logs.explorer.all-levels', 'All levels') : value.toUpperCase() }))} />
+      <Combobox aria-label={t('gofi.logs.explorer.status-filter-label', 'Status filter')} width={18} value={status} onChange={option => setStatus(option.value)}
+        options={[{ value: 'all', label: t('gofi.logs.explorer.status-all', 'All traffic') }, { value: 'accepted', label: t('gofi.logs.explorer.status-accepted', 'Accepted') }, { value: 'rejected', label: t('gofi.logs.explorer.status-rejected', 'Rejected') }, { value: 'parse-error', label: t('gofi.logs.explorer.status-parse-errors', 'Parse errors') }]} />
+      <Button variant="secondary" fill="outline" icon="trash-alt" onClick={clear}>{t('gofi.logs.explorer.clear', 'Clear')}</Button>
     </div>
 
     <Sized className={styles.volumePanel}>{(width, height) =>
-      <PanelChrome width={width} height={height} padding="md" title="Logs volume" subtitle="Observed events per second over the last 60 seconds of this session">
+      <PanelChrome width={width} height={height} padding="md" title={t('gofi.logs.explorer.volume-title', 'Logs volume')} subtitle={t('gofi.logs.explorer.volume-subtitle', 'Observed events per second over the last {{seconds}} seconds of this session', { seconds: VOLUME_SECONDS })}>
         {(_innerWidth, innerHeight) => <div style={{ height: innerHeight }}><LogsVolume volume={volume.current} now={now} /></div>}
       </PanelChrome>}
     </Sized>
 
     <Sized className={styles.logsPanel}>{(width, height) =>
-      <PanelChrome width={width} height={height} padding="none" title="Logs"
-        subtitle={`${filtered.length} shown / ${events.length} buffered · latest ${MAX_EVENTS} events`}
+      <PanelChrome width={width} height={height} padding="none" title={t('gofi.logs.explorer.logs-title', 'Logs')}
+        subtitle={t('gofi.logs.explorer.logs-subtitle', '{{shown}} shown / {{buffered}} buffered · latest {{max}} events', { shown: formatNumber(filtered.length), buffered: formatNumber(events.length), max: formatNumber(MAX_EVENTS) })}
         actions={<Stack gap={2} alignItems="center">
-          <span className={styles.stream} role="status" title={connected ? 'The traffic stream is connected' : 'Reconnecting to the traffic stream'}>
+          {dropped > 0 && <span className={cx(styles.stream, styles.droppedBadge)} role="status"
+            title={t('gofi.logs.explorer.dropped-title', 'The controller skipped these events for this view because the browser could not keep up. Counters and destinations are unaffected; narrow the view to one flow or pause to catch up.')}>
+            <Icon name="exclamation-triangle" size="sm" /> {t('gofi.logs.explorer.dropped-count', '{{n}} events dropped', { count: dropped, n: formatNumber(dropped), defaultValue_one: '{{n}} event dropped' })}
+          </span>}
+          <span className={styles.stream} role="status" title={connected ? t('gofi.logs.explorer.stream-connected-title', 'The traffic stream is connected') : t('gofi.logs.explorer.stream-reconnecting-title', 'Reconnecting to the traffic stream')}>
             <span className={cx(styles.dot, !connected ? styles.dotWarn : paused ? styles.dotIdle : styles.dotLive)} />
-            {!connected ? 'Reconnecting…' : paused ? 'Paused' : 'Streaming'}
+            {!connected ? t('gofi.logs.explorer.state-reconnecting', 'Reconnecting…') : paused ? t('gofi.logs.explorer.state-paused', 'Paused') : t('gofi.logs.explorer.state-streaming', 'Streaming')}
           </span>
-          {!autoScroll && <Button size="sm" variant="secondary" icon="arrow-down" onClick={scrollToNewest}>Scroll to newest</Button>}
+          {!autoScroll && <Button size="sm" variant="secondary" icon="arrow-down" onClick={scrollToNewest}>{t('gofi.logs.explorer.scroll-to-newest', 'Scroll to newest')}</Button>}
         </Stack>}>
         {(_innerWidth, innerHeight) => <div className={styles.logsBody} style={{ height: innerHeight }}>
           <div className={cx(styles.headerRow, columns)} aria-hidden="true">
-            <span /><span>Time (UTC)</span><span>Level</span><span>Status</span>{all && <span>Flow</span>}<span>Source</span><span>Message</span><span />
+            <span /><span>{t('gofi.logs.explorer.column-time', 'Time (UTC)')}</span><span>{t('gofi.logs.explorer.column-level', 'Level')}</span><span>{t('gofi.logs.explorer.column-status', 'Status')}</span>{all && <span>{t('gofi.logs.explorer.column-flow', 'Flow')}</span>}<span>{t('gofi.logs.explorer.column-source', 'Source')}</span><span>{t('gofi.logs.explorer.column-message', 'Message')}</span><span />
           </div>
-          <div ref={scrollRef} className={styles.rows}
-            onScroll={event => { const target = event.currentTarget; const away = target.scrollHeight - target.scrollTop - target.clientHeight > 40; if (away && autoScroll) setAutoScroll(false) }}>
-            {!filtered.length && <PanelEmpty icon={!events.length ? 'signal' : 'filter'} text={!events.length ? 'Waiting for observed traffic…' : 'No buffered events match these filters.'} detail={!events.length ? 'Frames appear here as soon as the flow receives them.' : undefined} />}
-            {filtered.map(({ id, event, flow: name }) => <LogRow key={id} ev={event} flow={name} showFlow={all} columns={columns} />)}
+          <div ref={setScroller} className={styles.rows}
+            onScroll={event => { const target = event.currentTarget; setScrollTop(target.scrollTop); const away = target.scrollHeight - target.scrollTop - target.clientHeight > 40; if (away && autoScroll) setAutoScroll(false) }}>
+            {!filtered.length && <PanelEmpty icon={!events.length ? 'signal' : 'filter'} text={!events.length ? t('gofi.logs.explorer.empty-waiting', 'Waiting for observed traffic…') : t('gofi.logs.explorer.empty-no-match', 'No buffered events match these filters.')} detail={!events.length ? t('gofi.logs.explorer.empty-waiting-detail', 'Frames appear here as soon as the flow receives them.') : undefined} />}
+            {filtered.length > 0 && <div style={{ height: window_.top, flexShrink: 0 }} aria-hidden="true" />}
+            {filtered.slice(window_.start, window_.end).map(item => <LogRow key={item.id} item={item} showFlow={all} columns={columns} expanded={expanded.has(item.id)} onToggle={toggle} onMeasure={measure} />)}
+            {filtered.length > 0 && <div style={{ height: window_.bottom, flexShrink: 0 }} aria-hidden="true" />}
           </div>
-          <div className={styles.footer}><Text variant="bodySmall" color="secondary">{paused ? 'Paused · incoming events are not appended' : 'Observed traffic; destination processing is not confirmed'}</Text></div>
+          <div className={styles.footer}><Text variant="bodySmall" color="secondary">{paused ? t('gofi.logs.explorer.footer-paused', 'Paused · incoming events are not appended') : t('gofi.logs.explorer.footer-observed', 'Observed traffic; destination processing is not confirmed')}</Text></div>
         </div>}
       </PanelChrome>}
     </Sized>
@@ -164,7 +210,7 @@ function LogsVolume({ volume, now }: { volume: Map<number, Record<VolumeLevel, n
   const hovered = hover === null ? null : { second: seconds[hover], bucket: buckets[hover], total: totals[hover] }
   return <div className={styles.volume}>
     <div className={styles.volumeChart} onMouseLeave={() => setHover(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height="100%" role="img" aria-label={`Logs volume: ${totals.reduce((a, b) => a + b, 0)} events in the last ${VOLUME_SECONDS} seconds`}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height="100%" role="img" aria-label={t('gofi.logs.explorer.volume-chart-label', 'Logs volume: {{total}} events in the last {{seconds}} seconds', { total: formatNumber(totals.reduce((a, b) => a + b, 0)), seconds: VOLUME_SECONDS })}>
         <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} stroke={theme.colors.border.weak} vectorEffect="non-scaling-stroke" />
         {buckets.map((bucket, index) => {
           if (!bucket) return null
@@ -180,65 +226,79 @@ function LogsVolume({ volume, now }: { volume: Map<number, Record<VolumeLevel, n
         {seconds.map((second, index) => <rect key={`hit-${second}`} x={index * slot} y={0} width={slot} height={H} fill="transparent" onMouseEnter={() => setHover(index)} />)}
       </svg>
       {hovered && <div className={styles.tooltip} style={{ left: `${Math.min(80, Math.max(0, (hover! / VOLUME_SECONDS) * 100))}%` }}>
-        <Text variant="bodySmall" weight="medium">{new Date(hovered.second * 1000).toISOString().slice(11, 19)} UTC · {hovered.total} event{hovered.total === 1 ? '' : 's'}</Text>
-        {VOLUME_LEVELS.filter(key => hovered.bucket?.[key]).map(key => <div key={key} className={styles.tooltipRow}><span className={styles.swatch} style={{ background: colors[key] }} /><Text variant="bodySmall" color="secondary">{key}</Text><Text variant="bodySmall" tabular>{hovered.bucket![key]}</Text></div>)}
+        <Text variant="bodySmall" weight="medium">{t('gofi.logs.explorer.volume-tooltip', '{{time}} UTC · {{n}} events', { time: new Date(hovered.second * 1000).toISOString().slice(11, 19), count: hovered.total, n: formatNumber(hovered.total), defaultValue_one: '{{time}} UTC · {{n}} event' })}</Text>
+        {VOLUME_LEVELS.filter(key => hovered.bucket?.[key]).map(key => <div key={key} className={styles.tooltipRow}><span className={styles.swatch} style={{ background: colors[key] }} /><Text variant="bodySmall" color="secondary">{key}</Text><Text variant="bodySmall" tabular>{formatNumber(hovered.bucket![key])}</Text></div>)}
       </div>}
     </div>
-    <div className={styles.volumeAxis}><Text variant="bodySmall" color="secondary">-60s</Text><Text variant="bodySmall" color="secondary">peak {totals.some(Boolean) ? max : 0}/s</Text><Text variant="bodySmall" color="secondary">now</Text></div>
+    <div className={styles.volumeAxis}><Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.axis-start', '-{{seconds}}s', { seconds: VOLUME_SECONDS })}</Text><Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.axis-peak', 'peak {{rate}}/s', { rate: formatNumber(totals.some(Boolean) ? max : 0) })}</Text><Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.axis-now', 'now')}</Text></div>
     <Stack gap={2} wrap="wrap">{(present.length ? present : VOLUME_LEVELS.slice(0, 4)).map(key => <span key={key} className={styles.legendItem}><span className={styles.swatch} style={{ background: colors[key] }} /><Text variant="bodySmall" color="secondary">{key}</Text></span>)}</Stack>
   </div>
 }
 
-function LogRow({ ev, flow, showFlow, columns }: { ev: TapEvent; flow: string; showFlow: boolean; columns: string }) {
+interface LogRowProps { item: CapturedEvent; showFlow: boolean; columns: string; expanded: boolean; onToggle: (id: number) => void; onMeasure: (id: number, extra: number) => void }
+
+function LogRow({ item, showFlow, columns, expanded, onToggle, onMeasure }: LogRowProps) {
+  const { event: ev, flow, id, level: severity } = item
   const styles = useStyles2(getStyles)
   const theme = useTheme2()
   const colors = levelColors(theme)
-  const [expanded, setExpanded] = useState(false)
   const [detail, setDetail] = useState<Detail>('fields')
   const [simResult, setSimResult] = useState<SimulateResult | null>(null)
   const [simError, setSimError] = useState<string | null>(null)
   const [simLoading, setSimLoading] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
+  const ref = useRef<HTMLElement>(null)
   // "Debug this frame" only applies to flows with Python steps.
   const definition = useGoFi().flows.find(item => item.name === flow)
   const debuggable = !!definition && pythonSteps(definition).length > 0
-  const severity = level(ev)
   const text = summary(ev)
+  // The window needs each expanded row's height beyond the fixed row.
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!expanded || !element) { onMeasure(id, 0); return }
+    const report = () => onMeasure(id, Math.max(0, element.offsetHeight - ROW_HEIGHT))
+    report()
+    const observer = new ResizeObserver(report)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [expanded, id, onMeasure, detail, simResult, simError, simLoading])
   const handleReplay = useCallback(async () => {
-    setExpanded(true); setSimError(null); setSimLoading(true)
+    setSimError(null); setSimLoading(true)
     try { setSimResult(await simulateFlow(await getFlow(flow), ev.raw)) }
     catch (error) { setSimError(String(error)); setSimResult(null) }
     finally { setSimLoading(false) }
   }, [flow, ev.raw])
   const levelText = severity === 'error' ? styles.errorText : severity === 'warn' ? styles.warnText : undefined
-  return <article className={cx(styles.row, expanded && styles.rowExpanded)}>
-    <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} className={cx(styles.rowButton, columns)}>
+  return <article ref={ref} className={cx(styles.row, expanded && styles.rowExpanded)}>
+    <button type="button" onClick={() => onToggle(id)} aria-expanded={expanded} className={cx(styles.rowButton, columns)}>
       <span className={styles.levelBar} style={{ background: colors[volumeLevel(severity)] }} />
       <time className={styles.muted} title={ev.ts}>{ev.ts?.slice(11, 23) || '—'}</time>
       <span className={levelText}>{severity.toUpperCase()}</span>
-      <span className={ev.dropped ? styles.errorText : styles.successText}>{ev.dropped ? 'REJECTED' : 'ACCEPTED'}</span>
+      <span className={ev.dropped ? styles.errorText : styles.successText}>{ev.dropped ? t('gofi.logs.explorer.row-rejected', 'REJECTED') : t('gofi.logs.explorer.row-accepted', 'ACCEPTED')}</span>
       {showFlow && <span className={styles.truncate} title={flow}>{flow}</span>}
       <span className={cx(styles.truncate, styles.muted)} title={source(ev)}>{source(ev)}</span>
-      <span className={styles.message}>
-        <span className={styles.truncate} title={text}>{text}</span>
-        {ev.droppedBy && <span className={cx(styles.subline, styles.errorText)}>Rejected by {ev.droppedBy}</span>}
-        {ev.meta.parseError && <span className={cx(styles.subline, styles.warnText, styles.truncate)} title={ev.meta.parseError}>{ev.meta.parseError}</span>}
+      <span className={cx(styles.truncate, styles.message)} title={text}>
+        {text}
+        {ev.droppedBy && <span className={cx(styles.inline, styles.errorText)}>{t('gofi.logs.explorer.row-rejected-by', '· Rejected by {{stage}}', { stage: ev.droppedBy })}</span>}
+        {ev.meta.parseError && <span className={cx(styles.inline, styles.warnText)} title={ev.meta.parseError}>· {ev.meta.parseError}</span>}
+        {ev.truncated && <span className={cx(styles.inline, styles.muted)} title={t('gofi.logs.explorer.row-truncated-title', 'The runtime cut this event to its per-event size limit (GOFI_TAP_MAX_BYTES) before streaming it.')}>{t('gofi.logs.explorer.row-truncated', '· truncated')}</span>}
       </span>
       <Icon name={expanded ? 'angle-down' : 'angle-right'} className={styles.muted} />
     </button>
     {expanded && <div className={styles.details}>
       <div className={styles.detailBar}>
-        <RadioButtonGroup size="sm" aria-label="Detail view" value={detail} onChange={setDetail}
-          options={[{ value: 'fields', label: 'Fields' }, { value: 'metadata', label: 'Metadata' }, { value: 'raw', label: 'Raw' }, { value: 'json', label: 'JSON' }]} />
-        <Button size="sm" variant="secondary" icon="play" disabled={simLoading} onClick={() => void handleReplay()}>{simLoading ? 'Testing…' : 'Test captured frame'}</Button>
-        {debuggable && <Button size="sm" variant="secondary" icon="bug" onClick={() => setDebugOpen(true)} tooltip="Simulate this frame up to a Python step and step through it. Nothing is sent.">Debug this frame</Button>}
+        <RadioButtonGroup size="sm" aria-label={t('gofi.logs.explorer.detail-view-label', 'Detail view')} value={detail} onChange={setDetail}
+          options={[{ value: 'fields', label: t('gofi.logs.explorer.detail-fields', 'Fields') }, { value: 'metadata', label: t('gofi.logs.explorer.detail-metadata', 'Metadata') }, { value: 'raw', label: t('gofi.logs.explorer.detail-raw', 'Raw') }, { value: 'json', label: t('gofi.logs.explorer.detail-json', 'JSON') }]} />
+        <Button size="sm" variant="secondary" icon="play" disabled={simLoading} onClick={() => void handleReplay()}>{simLoading ? t('gofi.logs.explorer.testing', 'Testing…') : t('gofi.logs.explorer.test-frame', 'Test captured frame')}</Button>
+        {debuggable && <Button size="sm" variant="secondary" icon="bug" onClick={() => setDebugOpen(true)} tooltip={t('gofi.logs.explorer.debug-frame-tooltip', 'Simulate this frame up to a Python step and step through it. Nothing is sent.')}>{t('gofi.logs.explorer.debug-frame', 'Debug this frame')}</Button>}
       </div>
+      {ev.truncated && <Alert severity="info" title={t('gofi.logs.explorer.truncated-title', 'Truncated event')} bottomSpacing={0}>{t('gofi.logs.explorer.truncated-body', 'The runtime cut long values to its per-event limit before streaming. Raise GOFI_TAP_MAX_BYTES on the flow runtime to stream more of each event.')}</Alert>}
       {debugOpen && definition && <FrameDebugDrawer flowName={flow} flow={definition} raw={ev.raw} onClose={() => setDebugOpen(false)} />}
       {detail === 'fields' || detail === 'metadata' ? <FieldTable values={detail === 'fields' ? ev.fields : ev.meta} />
         : <pre className={styles.pre}>{detail === 'raw' ? ev.raw : JSON.stringify({ fields: ev.fields, meta: ev.meta }, null, 2)}</pre>}
-      {simError && <Alert severity="error" title="Simulation failed" bottomSpacing={0}>{simError}</Alert>}
+      {simError && <Alert severity="error" title={t('gofi.logs.explorer.simulation-failed', 'Simulation failed')} bottomSpacing={0}>{simError}</Alert>}
       {simLoading && <Spinner />}
-      {simResult && <div className={styles.simulation}><Text variant="bodySmall" color="secondary">Simulation of the captured frame. No traffic was sent.</Text><MockTraceView result={simResult} /></div>}
+      {simResult && <div className={styles.simulation}><Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.simulation-note', 'Simulation of the captured frame. No traffic was sent.')}</Text><MockTraceView result={simResult} /></div>}
     </div>}
   </article>
 }
@@ -246,7 +306,7 @@ function LogRow({ ev, flow, showFlow, columns }: { ev: TapEvent; flow: string; s
 function FieldTable({ values }: { values: Record<string, unknown> }) {
   const styles = useStyles2(getStyles)
   const entries = Object.entries(values)
-  if (!entries.length) return <Text variant="bodySmall" color="secondary">No fields in this section.</Text>
+  if (!entries.length) return <Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.no-fields', 'No fields in this section.')}</Text>
   return <table className={styles.fieldTable}><tbody>{entries.map(([key, value]) => <tr key={key}>
     <th scope="row">{key}</th>
     <td>{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}</td>
@@ -260,6 +320,7 @@ const getStyles = (theme: GrafanaTheme2) => {
     toolbar: css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing(1), flexShrink: 0 }),
     search: css({ flex: '1 1 260px', minWidth: 200 }),
     stream: css({ display: 'inline-flex', alignItems: 'center', gap: theme.spacing(0.75), fontSize: theme.typography.bodySmall.fontSize, color: theme.colors.text.secondary, paddingRight: theme.spacing(1) }),
+    droppedBadge: css({ color: theme.colors.warning.text }),
     dot: css({ width: 8, height: 8, borderRadius: theme.shape.radius.circle, flexShrink: 0 }),
     dotLive: css({ background: theme.colors.success.main, boxShadow: `0 0 0 3px ${theme.colors.success.transparent}` }),
     dotIdle: css({ background: theme.colors.text.disabled }),
@@ -277,11 +338,11 @@ const getStyles = (theme: GrafanaTheme2) => {
     rows: css({ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }),
     empty: css({ padding: theme.spacing(4, 2) }),
     footer: css({ flexShrink: 0, padding: theme.spacing(0.5, 1), borderTop: `1px solid ${theme.colors.border.weak}` }),
-    row: css({ borderBottom: `1px solid ${theme.colors.border.weak}` }),
+    row: css({ borderBottom: `1px solid ${theme.colors.border.weak}`, flexShrink: 0, boxSizing: 'border-box' }),
     rowExpanded: css({ background: theme.colors.background.secondary }),
     rowButton: css({
-      ...mono, display: 'grid', alignItems: 'start', gap: theme.spacing(1.5), width: '100%', textAlign: 'left',
-      padding: theme.spacing(0.5, 1), background: 'transparent', border: 'none', borderRadius: 0, color: theme.colors.text.primary,
+      ...mono, display: 'grid', alignItems: 'center', gap: theme.spacing(1.5), width: '100%', textAlign: 'left', height: ROW_HEIGHT - 1, boxSizing: 'border-box',
+      padding: theme.spacing(0, 1), background: 'transparent', border: 'none', borderRadius: 0, color: theme.colors.text.primary,
       '&:hover': { background: theme.colors.action.hover },
     }),
     levelBar: css({ alignSelf: 'stretch', width: 3, borderRadius: theme.shape.radius.default }),
@@ -291,7 +352,7 @@ const getStyles = (theme: GrafanaTheme2) => {
     successText: css({ color: theme.colors.success.text }),
     truncate: css({ display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
     message: css({ minWidth: 0 }),
-    subline: css({ display: 'block', marginTop: theme.spacing(0.25) }),
+    inline: css({ marginLeft: theme.spacing(1) }),
     details: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(1.5), padding: theme.spacing(1, 2, 2, 3) }),
     detailBar: css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing(1), flexWrap: 'wrap' }),
     pre: css({ ...mono, margin: 0, padding: theme.spacing(1), whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: theme.colors.background.canvas, border: `1px solid ${theme.colors.border.weak}`, borderRadius: theme.shape.radius.default, maxHeight: 360, overflow: 'auto' }),

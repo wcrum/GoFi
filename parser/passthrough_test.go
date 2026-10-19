@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/wcrum/gofi/message"
+	"github.com/wcrum/gofi/spec"
 )
 
 func TestPassthroughParser_RawString(t *testing.T) {
@@ -66,5 +67,27 @@ func TestPassthroughParser_NonUTF8Bytes(t *testing.T) {
 	}
 	if len(v) != len(raw) {
 		t.Fatalf("len(Fields[raw]) = %d, want %d (byte-for-byte preservation)", len(v), len(raw))
+	}
+}
+
+// TestTextFormatIsThePassthroughParser: the top-level parser accepts
+// format "text", the parse stage's name for "the decoded frame as a string
+// in fields.raw", as a synonym of "none".
+func TestTextFormatIsThePassthroughParser(t *testing.T) {
+	for _, format := range []string{"text", "none", ""} {
+		p, err := New(spec.ParserCfg{Format: format})
+		if err != nil {
+			t.Fatalf("format %q rejected: %v", format, err)
+		}
+		msg := message.New([]byte("plain line"), "test", "test")
+		if err := p.Parse(msg); err != nil {
+			t.Fatal(err)
+		}
+		if msg.Fields["raw"] != "plain line" {
+			t.Fatalf("format %q: fields = %v", format, msg.Fields)
+		}
+	}
+	if _, err := New(spec.ParserCfg{Format: "txt"}); err == nil {
+		t.Fatal("unknown format accepted")
 	}
 }

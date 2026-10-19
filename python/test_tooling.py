@@ -47,3 +47,19 @@ class ToolingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MissingRuffTest(unittest.TestCase):
+    def test_missing_ruff_is_a_clear_error_not_a_json_failure(self):
+        from unittest import mock
+
+        import gofi.tooling as tooling
+
+        with mock.patch.object(tooling.importlib.util, "find_spec", return_value=None):
+            with self.assertRaises(RuntimeError) as caught:
+                tooling.validate_source("x = 1\n")
+        self.assertIn("ruff is not installed", str(caught.exception))
+        with mock.patch.object(tooling, "_ruff", return_value=mock.Mock(returncode=1, stdout="", stderr="No module named ruff")):
+            with self.assertRaises(RuntimeError) as caught:
+                tooling.validate_source("x = 1\n")
+        self.assertIn("No module named ruff", str(caught.exception))

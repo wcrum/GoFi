@@ -1,0 +1,59 @@
+suite: python workers
+templates:
+  - templates/workers.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: renders nothing for single bare-Pod workers
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: adds a PDB when workers run as Deployments
+    set:
+      workers.replicas: 2
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: gofi-python
+  - it: requires libraries to autoscale
+    set:
+      workers.autoscaling.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: libraries
+  - it: renders one HPA per shared library
+    set:
+      workers.autoscaling.enabled: true
+      workers.autoscaling.libraries: [shared, enrich]
+    asserts:
+      - hasDocuments:
+          count: 3
+      - documentSelector:
+          path: metadata.name
+          value: gofi-python-shared
+        equal:
+          path: spec.scaleTargetRef
+          value:
+            apiVersion: apps/v1
+            kind: Deployment
+            name: gofi-python-shared
+      - documentSelector:
+          path: metadata.name
+          value: gofi-python-enrich
+        equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 70
+      - documentSelector:
+          path: metadata.name
+          value: gofi-python-enrich
+        equal:
+          path: spec.minReplicas
+          value: 2

@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
 	"github.com/wcrum/gofi/spec"
@@ -58,12 +60,68 @@ const udsFieldManager = "gofi"
 
 var udsPackages = schema.GroupVersionResource{Group: "uds.dev", Version: "v1alpha1", Resource: "packages"}
 
-// ReconcileFlowSet keeps the namespace's UDS Package in step with the flows.
+// ReconcileFlowSet keeps the objects derived from the whole flow set in step:
+// exposure objects of flows that no longer exist are removed, and the
+// namespace's UDS Package is updated with the flows' network allows.
 func (k *Kube) ReconcileFlowSet(ctx context.Context, defs []spec.FlowDefinition) error {
+	if err := k.collectOrphans(ctx, defs); err != nil {
+		return err
+	}
 	if k.cluster == nil || !k.cluster.Opts.ManageUDSAllows || k.dyn == nil {
 		return nil
 	}
 	return k.reconcileUDSAllows(ctx, defs)
+}
+
+// collectOrphans removes Pods, Services, and routes labeled for flows that are
+// not in the desired set. Exposure objects are owned by the Flow resource
+// (or by nobody, outside Kubernetes-backed desired state) rather than by the
+// runtime Pod, so this is what cleans up after a flow deleted while its Pod
+// was already gone, or after a crash left a Service behind.
+func (k *Kube) collectOrphans(ctx context.Context, defs []spec.FlowDefinition) error {
+	desired := make(map[string]bool, len(defs))
+	for _, def := range defs {
+		desired[def.Name] = true
+	}
+	orphans := map[string]bool{}
+	pods, err := k.read().pods(ctx, map[string]string{kubeLabelManaged: "true"})
+	if err != nil {
+		return fmt.Errorf("kube driver: list pods: %w", err)
+	}
+	for _, pod := range pods {
+		if name := pod.Labels[kubeLabelListener]; name != "" && !desired[name] && pod.DeletionTimestamp == nil {
+			orphans[name] = true
+		}
+	}
+	services, err := k.read().services(ctx, map[string]string{kubeLabelManaged: "true"})
+	if err != nil {
+		return fmt.Errorf("kube driver: list services: %w", err)
+	}
+	for _, svc := range services {
+		if name := svc.Labels[kubeLabelListener]; name != "" && !desired[name] && svc.DeletionTimestamp == nil {
+			orphans[name] = true
+		}
+	}
+	var problems []error
+	for name := range orphans {
+		if err := k.Delete(ctx, name); err != nil {
+			problems = append(problems, err)
+		} else {
+			slog.Info("kube driver: removed objects of a flow that no longer exists", "flow", name)
+		}
+	}
+	return errors.Join(problems...)
+}
+
+// annotationAllowsHash records on the Package the hash of the spec GoFi last
+// applied, so an unchanged flow set costs no dry run and no Apply.
+const annotationAllowsHash = "gofi.wcrum.dev/allows-hash"
+
+// udsPackageHash identifies a desired Package's spec.
+func udsPackageHash(desired *unstructured.Unstructured) string {
+	desiredSpec, _, _ := unstructured.NestedMap(desired.Object, "spec")
+	sum := sha256.Sum256([]byte(normalizeJSON([]any{desiredSpec})))
+	return hex.EncodeToString(sum[:8])
 }
 
 // reconcileUDSAllows owns the namespace's UDS Package: the base the chart
@@ -79,35 +137,77 @@ func (k *Kube) reconcileUDSAllows(ctx context.Context, defs []spec.FlowDefinitio
 	return k.applyUDSPackage(ctx, desired)
 }
 
-// applyUDSPackage makes desired GoFi's live Package.
+// applyUDSPackage makes desired GoFi's live Package. The hash of the spec
+// GoFi applied last is kept in memory and on the Package: an unchanged
+// desired Package whose live copy still carries that hash is left alone
+// without a dry run; one that changed is dry-run (Pepr's verdict) and applied.
 func (k *Kube) applyUDSPackage(ctx context.Context, desired *unstructured.Unstructured) error {
+	hash := udsPackageHash(desired)
+	annotations := desired.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[annotationAllowsHash] = hash
+	desired.SetAnnotations(annotations)
+
 	packages := k.dyn.Resource(udsPackages).Namespace(k.namespace)
+	k.udsMu.Lock()
+	recent := k.udsLastHash == hash && time.Since(k.udsLastSeen) < routeDiscoveryTTL
+	k.udsMu.Unlock()
+	if recent {
+		return nil
+	}
 	// Earlier GoFi versions created a separate gofi-flows Package when none
 	// existed; UDS allows one per namespace, so remove it.
-	if stale, err := packages.List(ctx, metav1.ListOptions{LabelSelector: kubeLabelManaged + "=true"}); err == nil {
+	listCtx, cancel := apiCall(ctx)
+	stale, err := packages.List(listCtx, metav1.ListOptions{LabelSelector: kubeLabelManaged + "=true"})
+	cancel()
+	if err == nil {
 		for _, item := range stale.Items {
 			if item.GetName() != desired.GetName() {
-				if err := packages.Delete(ctx, item.GetName(), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				deleteCtx, cancel := apiCall(ctx)
+				err := packages.Delete(deleteCtx, item.GetName(), metav1.DeleteOptions{})
+				cancel()
+				if err != nil && !apierrors.IsNotFound(err) {
 					return wrapUDS(err)
 				}
 			}
 		}
 	}
-	if current, err := packages.Get(ctx, desired.GetName(), metav1.GetOptions{}); err == nil {
+	getCtx, cancel := apiCall(ctx)
+	current, err := packages.Get(getCtx, desired.GetName(), metav1.GetOptions{})
+	cancel()
+	if err == nil {
 		owned := false
 		for _, entry := range current.GetManagedFields() {
 			owned = owned || entry.Manager == udsFieldManager && entry.Operation == metav1.ManagedFieldsOperationApply
 		}
+		if owned && current.GetAnnotations()[annotationAllowsHash] == hash {
+			k.rememberUDS(hash)
+			return nil
+		}
 		if owned {
-			if applied, err := k.dryRunUDSPackage(ctx, desired); err == nil && sameSpec(current, applied) {
+			if applied, err := k.dryRunUDSPackage(ctx, desired); err == nil && sameSpec(current, applied) && current.GetAnnotations()[annotationAllowsHash] == hash {
+				k.rememberUDS(hash)
 				return nil
 			}
 		}
 	}
 	// Force takes the fields over once from whoever applied the Package before
 	// (an earlier chart version rendered it directly).
-	_, err := packages.Apply(ctx, desired.GetName(), desired, metav1.ApplyOptions{FieldManager: udsFieldManager, Force: true})
+	applyCtx, cancel := apiCall(ctx)
+	defer cancel()
+	_, err = packages.Apply(applyCtx, desired.GetName(), desired, metav1.ApplyOptions{FieldManager: udsFieldManager, Force: true})
+	if err == nil {
+		k.rememberUDS(hash)
+	}
 	return wrapUDS(err)
+}
+
+func (k *Kube) rememberUDS(hash string) {
+	k.udsMu.Lock()
+	k.udsLastHash, k.udsLastSeen = hash, time.Now()
+	k.udsMu.Unlock()
 }
 
 // desiredUDSPackage is the Package GoFi applies for a flow set: the chart's
@@ -198,10 +298,7 @@ func UDSAllows(defs []spec.FlowDefinition) []any {
 	for _, def := range defs {
 		selector := map[string]any{kubeLabelListener: def.Name}
 		if listen := def.Source.Listen; listen != nil && listen.Service != nil {
-			protocol := strings.ToUpper(listen.Network)
-			if protocol == "" {
-				protocol = "TCP"
-			}
+			protocol := string(transportOf(listen.Network)) // "" and tcp: TCP; udp and quic: UDP
 			entry := map[string]any{"direction": "Ingress", "selector": selector, "port": int64(listen.Port), "remoteProtocol": protocol}
 			switch listen.Service.Type {
 			case "NodePort", "LoadBalancer":
@@ -237,6 +334,10 @@ func UDSAllows(defs []spec.FlowDefinition) []any {
 			}
 		}
 		if entry := sourceEgress(def.Name, def.Source); entry != nil {
+			entry["selector"] = selector
+			allows = append(allows, entry)
+		}
+		for _, entry := range moreSourceEgress(def.Name, def.Source) {
 			entry["selector"] = selector
 			allows = append(allows, entry)
 		}
@@ -276,10 +377,7 @@ func peerName(peer spec.PeerRef) string {
 // egressAllow is the egress a destination outside the GoFi namespace needs,
 // or nil when none is needed (in-namespace targets, stdout, Python).
 func egressAllow(flow string, sink spec.SinkCfg) map[string]any {
-	protocol := "TCP"
-	if sink.Type == "udp" {
-		protocol = "UDP"
-	}
+	protocol := string(transportOf(sink.Type)) // udp and quic sinks: UDP; every other sink type: TCP
 	if target := sink.Kubernetes; target != nil {
 		if target.Namespace == "" {
 			return nil
@@ -298,7 +396,7 @@ func egressAllow(flow string, sink spec.SinkCfg) map[string]any {
 var defaultPorts = map[string]int{"http": 80, "https": 443, "ws": 80, "wss": 443, "nats": 4222, "tls": 4222, "tcp": 1883, "ssl": 8883, "mqtt": 1883, "mqtts": 8883}
 
 // tlsSchemes carry TLS, so UDS can allow them by host name (remoteHost).
-var tlsSchemes = map[string]bool{"https": true, "wss": true, "tls": true, "ssl": true, "mqtts": true}
+var tlsSchemes = map[string]bool{"https": true, "wss": true, "tls": true, "ssl": true, "mqtts": true, "amqps": true, "rediss": true}
 
 // urlEgress is the allow for an outbound connection to rawURL: a namespace
 // for in-cluster Service DNS, a CIDR for an IP, a host for TLS or HTTP, and
@@ -350,6 +448,12 @@ func sourceEgress(flow string, source spec.FlowSource) map[string]any {
 	switch {
 	case source.Fetch != nil && source.Fetch.HTTP != nil:
 		return urlEgress(prefix, source.Fetch.HTTP.URL, "TCP")
+	case source.Fetch != nil && source.Fetch.S3 != nil:
+		// Ambient credentials (IRSA/instance metadata) also need STS or
+		// metadata egress, which this allow does not cover.
+		return urlEgress(prefix, source.Fetch.S3.EndpointURL(), "TCP")
+	case source.Fetch != nil && source.Fetch.SQL != nil:
+		return urlEgress(prefix, source.Fetch.SQL.EndpointURL(), "TCP")
 	case source.Subscribe != nil && source.Subscribe.NATS != nil:
 		return urlEgress(prefix, source.Subscribe.NATS.URL, "TCP")
 	case source.Subscribe != nil && source.Subscribe.MQTT != nil:
@@ -358,8 +462,27 @@ func sourceEgress(flow string, source spec.FlowSource) map[string]any {
 		return urlEgress(prefix, source.Subscribe.WebSocket.URL, "TCP")
 	case source.Subscribe != nil && source.Subscribe.SSE != nil:
 		return urlEgress(prefix, source.Subscribe.SSE.URL, "TCP")
+	case source.Subscribe != nil && source.Subscribe.Zenoh != nil:
+		return urlEgress(prefix, source.Subscribe.Zenoh.URL, "TCP") // the router's REST port
+	case len(source.Subscribe.Endpoints()) > 0: // kafka, amqp, jetstream, redis
+		return urlEgress(prefix, source.Subscribe.Endpoints()[0], "TCP")
 	}
 	return nil
+}
+
+// moreSourceEgress is one allow per further endpoint of a broker source
+// (Kafka seed brokers after the first). Brokers a Kafka cluster advertises
+// beyond its seeds need their own allows.
+func moreSourceEgress(flow string, source spec.FlowSource) []map[string]any {
+	var out []map[string]any
+	if endpoints := source.Subscribe.Endpoints(); len(endpoints) > 1 {
+		for _, endpoint := range endpoints[1:] {
+			if entry := urlEgress(fmt.Sprintf("GoFi flow %s source", flow), endpoint, "TCP"); entry != nil {
+				out = append(out, entry)
+			}
+		}
+	}
+	return out
 }
 
 // PackageRefusal is an ApplyUDSPackage GoFi will not perform: it does not

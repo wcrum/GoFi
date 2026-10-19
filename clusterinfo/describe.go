@@ -69,7 +69,7 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 		return ""
 	}
 
-	classes, err := c.listClusterScoped(ctx, versions, "gateway.networking.k8s.io", "gatewayclasses")
+	classes, err := c.listClusterScoped(ctx, versions, "gateway.networking.k8s.io", "gatewayclasses", &out.Warnings)
 	if err != nil {
 		out.Warnings = append(out.Warnings, warning("GatewayClasses", err))
 	}
@@ -90,7 +90,7 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 		return names
 	}
 
-	gateways, err := c.list(ctx, versions, "gateway.networking.k8s.io", "gateways", "")
+	gateways, err := c.list(ctx, versions, "gateway.networking.k8s.io", "gateways", "", &out.Warnings)
 	if err != nil {
 		out.Warnings = append(out.Warnings, warning("Gateways", err))
 	}
@@ -101,7 +101,7 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 		return out.Gateways[i].Namespace+"/"+out.Gateways[i].Name < out.Gateways[j].Namespace+"/"+out.Gateways[j].Name
 	})
 
-	pools, err := c.list(ctx, versions, "metallb.io", "ipaddresspools", "")
+	pools, err := c.list(ctx, versions, "metallb.io", "ipaddresspools", "", &out.Warnings)
 	if err != nil {
 		out.Warnings = append(out.Warnings, warning("IPAddressPools", err))
 	}
@@ -121,11 +121,11 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 	if !c.Opts.ClusterWide {
 		serviceNamespace = c.Opts.Namespace
 	}
-	services, err := c.CS.CoreV1().Services(serviceNamespace).List(ctx, metav1.ListOptions{Limit: 500})
+	services, err := c.listServices(ctx, serviceNamespace, &out.Warnings)
 	if err != nil {
 		out.Warnings = append(out.Warnings, warning("Services", err))
 	} else {
-		for _, svc := range services.Items {
+		for _, svc := range services {
 			if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
 				continue
 			}
@@ -149,10 +149,10 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 	sort.Strings(out.LoadBalancerClasses)
 
 	if c.Opts.ClusterWide {
-		if list, err := c.CS.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 500}); err != nil {
+		if list, err := c.listNamespaces(ctx, &out.Warnings); err != nil {
 			out.Warnings = append(out.Warnings, warning("Namespaces", err))
 		} else {
-			for _, ns := range list.Items {
+			for _, ns := range list {
 				out.Namespaces = append(out.Namespaces, ns.Name)
 			}
 		}

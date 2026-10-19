@@ -105,17 +105,32 @@ func EvalCEL(program cel.Program, msg *message.Message) (interface{}, error) {
 	return val, err
 }
 
+// messageActivation binds the CEL variables to a message without copying:
+// fields and meta are the message's maps, and raw is converted to a string
+// only when an expression reads it (and then once per message, through
+// Message.RawString, however many programs evaluate against it).
+type messageActivation struct{ msg *message.Message }
+
+func (a messageActivation) ResolveName(name string) (any, bool) {
+	switch name {
+	case "fields":
+		return a.msg.Fields, true
+	case "meta":
+		return a.msg.Meta, true
+	case "raw":
+		return a.msg.RawString(), true
+	}
+	return nil, false
+}
+
+func (a messageActivation) Parent() cel.Activation { return nil }
+
 // EvalCELDetailed evaluates under the shared deadline and also reports the
 // actual evaluation cost.
 func EvalCELDetailed(ctx context.Context, program cel.Program, msg *message.Message) (interface{}, uint64, error) {
-	activation := map[string]interface{}{
-		"fields": msg.Fields,
-		"meta":   msg.Meta,
-		"raw":    string(msg.Raw),
-	}
 	ctx, cancel := context.WithTimeout(ctx, EvalTimeout)
 	defer cancel()
-	out, details, err := program.ContextEval(ctx, activation)
+	out, details, err := program.ContextEval(ctx, messageActivation{msg})
 	var cost uint64
 	if details != nil && details.ActualCost() != nil {
 		cost = *details.ActualCost()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/wcrum/gofi/spec"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestKubeNodePortServiceLifecycleAndDrift(t *testing.T) {
 	if _, err := cs.CoreV1().Services("default").Update(ctx, svc, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	pod, _ := cs.CoreV1().Pods("default").Get(ctx, podName(def.Name), metav1.GetOptions{})
+	pod := flowPod(t, cs, "default", def.Name)
 	pod.Status.Phase = corev1.PodRunning
 	if _, err := cs.CoreV1().Pods("default").UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
@@ -65,7 +66,7 @@ func TestKubeCreateRollsBackPodOnServiceConflict(t *testing.T) {
 	if err := k.Create(ctx, def); err == nil {
 		t.Fatal("expected unmanaged service conflict")
 	}
-	if _, err := cs.CoreV1().Pods("default").Get(ctx, podName(def.Name), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+	if pods, _ := cs.CoreV1().Pods("default").List(ctx, metav1.ListOptions{}); len(pods.Items) != 0 {
 		t.Fatal("partially created pod not rolled back")
 	}
 }
@@ -88,7 +89,21 @@ func TestKubeDiscoversLoadBalancerEndpoints(t *testing.T) {
 
 func newTestKube(namespace string) (*Kube, *fake.Clientset) {
 	cs := fake.NewSimpleClientset()
-	return &Kube{cs: cs, namespace: namespace, image: "gofi:test"}, cs
+	return &Kube{cs: cs, namespace: namespace, image: "gofi:test", reader: apiReader{cs: cs, namespace: namespace}}, cs
+}
+
+// flowPod returns the (single) Pod of a flow by its listener label; Pod names
+// carry a spec hash, so tests do not derive them.
+func flowPod(t *testing.T, cs *fake.Clientset, namespace, flow string) *corev1.Pod {
+	t.Helper()
+	list, err := cs.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: kubeLabelListener + "=" + flow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("flow %q has %d pods, want 1", flow, len(list.Items))
+	}
+	return &list.Items[0]
 }
 
 func TestKubeCreateSetsLabelsAndEnv(t *testing.T) {
@@ -99,9 +114,9 @@ func TestKubeCreateSetsLabelsAndEnv(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	pod, err := cs.CoreV1().Pods("default").Get(context.Background(), "gofi-listener-cot-ingest", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get pod: %v", err)
+	pod := flowPod(t, cs, "default", "cot-ingest")
+	if !strings.HasPrefix(pod.Name, "gofi-listener-cot-ingest-") || pod.Annotations[annotationSpecHash] == "" {
+		t.Fatalf("pod name %q must be the flow name plus its spec hash", pod.Name)
 	}
 	if pod.Labels[kubeLabelListener] != "cot-ingest" {
 		t.Errorf("label %s = %q, want cot-ingest", kubeLabelListener, pod.Labels[kubeLabelListener])
@@ -143,10 +158,7 @@ func TestKubeListenerPodTemplate(t *testing.T) {
 	if err := k.Create(ctx, testDef("with-agent", 9000)); err != nil {
 		t.Fatal(err)
 	}
-	pod, err := cs.CoreV1().Pods("default").Get(ctx, podName("with-agent"), metav1.GetOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	pod := flowPod(t, cs, "default", "with-agent")
 	if len(pod.Spec.Containers) != 2 || pod.Spec.Containers[0].Name != "gofi-listener" || pod.Spec.Containers[1].Name != "aster-agent" || len(pod.Spec.Volumes) != 1 {
 		t.Fatalf("template not injected: %+v", pod.Spec)
 	}
@@ -167,10 +179,7 @@ func TestKubeListFiltersByLabelAndPhase(t *testing.T) {
 	}
 	// fake clientset doesn't set a Phase by default; set it to Running so
 	// List's phase filter includes it.
-	pod, err := cs.CoreV1().Pods("default").Get(ctx, "gofi-listener-cot-ingest", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get pod: %v", err)
-	}
+	pod := flowPod(t, cs, "default", "cot-ingest")
 	pod.Status.Phase = corev1.PodRunning
 	pod.Status.PodIP = "10.0.0.5"
 	if _, err := cs.CoreV1().Pods("default").UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
@@ -193,10 +202,7 @@ func TestKubeListFiltersByLabelAndPhase(t *testing.T) {
 	if err := k.Create(ctx, pendingDef); err != nil {
 		t.Fatalf("Create pending: %v", err)
 	}
-	pendingPod, err := cs.CoreV1().Pods("default").Get(ctx, podName("pending-one"), metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get pending pod: %v", err)
-	}
+	pendingPod := flowPod(t, cs, "default", "pending-one")
 	pendingPod.Status.Phase = corev1.PodPending
 	if _, err := cs.CoreV1().Pods("default").UpdateStatus(ctx, pendingPod, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("UpdateStatus pending pod: %v", err)
@@ -207,10 +213,7 @@ func TestKubeListFiltersByLabelAndPhase(t *testing.T) {
 	if err := k.Create(ctx, failedDef); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	failedPod, err := cs.CoreV1().Pods("default").Get(ctx, podName("failed-one"), metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get failed pod: %v", err)
-	}
+	failedPod := flowPod(t, cs, "default", "failed-one")
 	failedPod.Status.Phase = corev1.PodFailed
 	if _, err := cs.CoreV1().Pods("default").UpdateStatus(ctx, failedPod, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("UpdateStatus failed pod: %v", err)
@@ -252,9 +255,8 @@ func TestKubeDeleteWaitsForRemoval(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	_, err := k.cs.CoreV1().Pods("default").Get(ctx, podName("cot-ingest"), metav1.GetOptions{})
-	if !apierrors.IsNotFound(err) {
-		t.Errorf("expected pod to be gone after Delete, got err=%v", err)
+	if pods, _ := k.cs.CoreV1().Pods("default").List(ctx, metav1.ListOptions{}); len(pods.Items) != 0 {
+		t.Errorf("expected pods to be gone after Delete, got %d", len(pods.Items))
 	}
 }
 
@@ -283,10 +285,7 @@ func TestKubeTapReturnsPodIPWhenRunning(t *testing.T) {
 		t.Error("expected Tap to report not-ok before pod is Running")
 	}
 
-	pod, err := cs.CoreV1().Pods("default").Get(ctx, podName("cot-ingest"), metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get pod: %v", err)
-	}
+	pod := flowPod(t, cs, "default", "cot-ingest")
 	pod.Status.Phase = corev1.PodRunning
 	pod.Status.PodIP = "10.1.2.3"
 	if _, err := cs.CoreV1().Pods("default").UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
@@ -322,10 +321,7 @@ func TestKubeRuntimeStatusReportsPhaseAndNode(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	pod, err := cs.CoreV1().Pods("default").Get(ctx, podName("cot-ingest"), metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get pod: %v", err)
-	}
+	pod := flowPod(t, cs, "default", "cot-ingest")
 	startTime := metav1.NewTime(time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC))
 	pod.Status.Phase = corev1.PodRunning
 	pod.Status.PodIP = "10.0.0.7"
@@ -336,10 +332,7 @@ func TestKubeRuntimeStatusReportsPhaseAndNode(t *testing.T) {
 	}
 	// NodeName is part of Spec, not Status; UpdateStatus won't persist it, so
 	// set it via a full Update instead.
-	pod2, err := cs.CoreV1().Pods("default").Get(ctx, podName("cot-ingest"), metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get pod: %v", err)
-	}
+	pod2 := flowPod(t, cs, "default", "cot-ingest")
 	pod2.Spec.NodeName = "node-a"
 	if _, err := cs.CoreV1().Pods("default").Update(ctx, pod2, metav1.UpdateOptions{}); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -358,8 +351,8 @@ func TestKubeRuntimeStatusReportsPhaseAndNode(t *testing.T) {
 	if info.Status != string(corev1.PodRunning) {
 		t.Errorf("Status = %q, want %q", info.Status, corev1.PodRunning)
 	}
-	if info.ID != podName("cot-ingest") {
-		t.Errorf("ID = %q, want %q", info.ID, podName("cot-ingest"))
+	if info.ID != pod.Name {
+		t.Errorf("ID = %q, want %q", info.ID, pod.Name)
 	}
 	if info.Node != "node-a" {
 		t.Errorf("Node = %q, want node-a", info.Node)

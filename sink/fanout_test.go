@@ -14,7 +14,7 @@ import (
 func TestFanoutSendsToEveryPod(t *testing.T) {
 	// Pods of a headless Service share a port; locally each listener needs its
 	// own port, so the peers are installed directly instead of through DNS.
-	f := newFanout("udp", "target", "", func(address string) *networkSink {
+	f := newFanout("udp", "target", "", func(address string) Sink {
 		return &networkSink{network: "udp", address: address, bodyMode: "raw"}
 	})
 	var listeners []net.PacketConn
@@ -49,7 +49,7 @@ func TestFanoutRefreshDropsGonePods(t *testing.T) {
 	defer pc.Close()
 	_, port, _ := net.SplitHostPort(pc.LocalAddr().String())
 	ips := []string{"127.0.0.1", "127.0.0.2"}
-	f := newFanout("udp", "target", port, func(address string) *networkSink {
+	f := newFanout("udp", "target", port, func(address string) Sink {
 		return &networkSink{network: "udp", address: address, bodyMode: "raw"}
 	})
 	f.lookup = func(context.Context, string) ([]string, error) { return ips, nil }

@@ -27,6 +27,34 @@ type Message struct {
 	// that sink's configured Encoding. Sinks send it verbatim instead of
 	// their default serialization.
 	Payload []byte
+
+	// DecodedBytes totals the output of every decoder step run for this
+	// message: the flow's decode step and each parse stage's decoders. The
+	// codec package adds to it and rejects a step that would push it past
+	// the per-message budget, so a small frame cannot expand without bound
+	// across stages.
+	DecodedBytes int
+
+	// rawString caches RawString for the Raw slice it was taken from, so
+	// every CEL program evaluated against one message shares a single copy.
+	rawString    string
+	rawStringFor []byte
+}
+
+// RawString is Raw as a string, converted at most once per distinct Raw
+// slice: stages that replace Raw get a fresh conversion, repeated
+// evaluations (several filters, sink conditions) reuse the cached one. A
+// message is processed by one goroutine at a time, like Fields and Meta.
+func (m *Message) RawString() string {
+	if len(m.Raw) == 0 {
+		return ""
+	}
+	if len(m.rawStringFor) == len(m.Raw) && &m.rawStringFor[0] == &m.Raw[0] {
+		return m.rawString
+	}
+	m.rawString = string(m.Raw)
+	m.rawStringFor = m.Raw
+	return m.rawString
 }
 
 func New(raw []byte, listenerName, remoteAddr string) *Message {

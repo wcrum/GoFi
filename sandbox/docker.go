@@ -112,7 +112,13 @@ func (d *Docker) Start(ctx context.Context, def Definition, token string) (strin
 	if def.Scratch {
 		env = append(env, "GOFI_LAZY_LOAD=1")
 	}
-	created, e := d.cli.ContainerCreate(ctx, &container.Config{Image: d.cfg.Image, User: "65532:65532", Env: env, ExposedPorts: nat.PortSet{port: struct{}{}}, Labels: map[string]string{"gofi.managed-by": "gofi", "gofi.sandbox": def.Name}}, hc, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{d.cfg.Network: {Aliases: []string{name}}}}, nil, name)
+	// The AI endpoint of a library with AI set (GOFI_LLM_*).
+	env = append(env, sortedEnv(def.Env)...)
+	image := d.cfg.Image
+	if def.Image != "" {
+		image = def.Image
+	}
+	created, e := d.cli.ContainerCreate(ctx, &container.Config{Image: image, User: "65532:65532", Env: env, ExposedPorts: nat.PortSet{port: struct{}{}}, Labels: map[string]string{"gofi.managed-by": "gofi", "gofi.sandbox": def.Name}}, hc, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{d.cfg.Network: {Aliases: []string{name}}}}, nil, name)
 	if e != nil {
 		return "", e
 	}
@@ -275,3 +281,54 @@ func checkRPC(ctx context.Context, b Binding) error {
 	return err
 }
 func (d *Docker) Health(ctx context.Context, b Binding) error { return checkRPC(ctx, b) }
+
+// sandboxAddress is the controller's address on the internal sandbox
+// network: its own interface there when it runs as a container (Compose),
+// else the network's gateway (the host side of the bridge). Workers reach
+// it without any egress rule (the network is internal and already carries
+// the controller; a rule would attach the egress network, which grants all
+// outbound access), and the AI proxy binds this address alone.
+func (d *Docker) sandboxAddress(ctx context.Context) (string, error) {
+	if e := d.ensureNetwork(ctx); e != nil {
+		return "", e
+	}
+	if d.cfg.InContainer {
+		info, e := d.cli.ContainerInspect(ctx, os.Getenv("HOSTNAME"))
+		if e != nil {
+			return "", e
+		}
+		if ep := info.NetworkSettings.Networks[d.cfg.Network]; ep != nil && ep.IPAddress != "" {
+			return ep.IPAddress, nil
+		}
+		return "", fmt.Errorf("the controller container has no address on the %s network", d.cfg.Network)
+	}
+	n, e := d.cli.NetworkInspect(ctx, d.cfg.Network, network.InspectOptions{})
+	if e != nil {
+		return "", e
+	}
+	for _, cfg := range n.IPAM.Config {
+		if cfg.Gateway != "" {
+			return cfg.Gateway, nil
+		}
+	}
+	return "", fmt.Errorf("the %s network has no gateway address", d.cfg.Network)
+}
+
+// ControllerAddress is how a worker reaches the AI proxy (sandboxAddress).
+func (d *Docker) ControllerAddress(ctx context.Context, proxyPort int) (string, []EgressRule, error) {
+	ip, e := d.sandboxAddress(ctx)
+	if e != nil {
+		return "", nil, e
+	}
+	return net.JoinHostPort(ip, fmt.Sprint(proxyPort)), nil, nil
+}
+
+// ProxyBindAddress is where the AI proxy listens: the sandbox network's
+// address only, so nothing outside that network can reach it.
+func (d *Docker) ProxyBindAddress(ctx context.Context, proxyPort int) (string, error) {
+	ip, e := d.sandboxAddress(ctx)
+	if e != nil {
+		return "", e
+	}
+	return net.JoinHostPort(ip, fmt.Sprint(proxyPort)), nil
+}

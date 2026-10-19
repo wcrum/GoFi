@@ -60,3 +60,18 @@ type Driver interface {
 	// "kubernetes"), surfaced by the GetMode RPC.
 	Kind() string
 }
+
+// Replacer is a driver that can update a running listener without an
+// outage: Replace starts the new runtime beside the old one and the driver
+// retires the old one once the new one runs (the Kubernetes driver). The
+// controller uses it instead of Delete followed by Create. A driver may
+// return ErrPending when the previous runtime is still being removed.
+type Replacer interface {
+	Replace(ctx context.Context, def spec.FlowDefinition) error
+}
+
+// FlowLookup is List for a single flow, for event-driven reconciliation of
+// one flow at a time: ok is false when the flow has no live runtime.
+type FlowLookup interface {
+	Lookup(ctx context.Context, name string) (def spec.FlowDefinition, ok bool, err error)
+}

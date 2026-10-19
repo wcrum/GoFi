@@ -1,13 +1,16 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2, IconName } from '@grafana/data'
-import { Icon, IconButton, Portal, useStyles2 } from '@grafana/ui'
+import { Icon, Portal, ToolbarButton, useStyles2 } from '@grafana/ui'
 import { navigate, paths } from '../router'
 import { rank, type Ranked } from './search-match'
 import type { NavNode } from './AppChrome'
+import { LOCALES, t, useLocale, type SupportedLocale } from '../i18n'
 
 type Section = 'Pages' | 'Flows' | 'Actions'
-interface Entry { id: string; section: Section; label: string; icon?: IconName; href: string; keywords?: string }
+const sectionLabel = (section: Section) => section === 'Pages' ? t('gofi.shell.search.section-pages', 'Pages') : section === 'Flows' ? t('gofi.shell.search.section-flows', 'Flows') : t('gofi.shell.search.section-actions', 'Actions')
+/** A destination (href) or an action to run (run), e.g. switching language. */
+interface Entry { id: string; section: Section; label: string; icon?: IconName; href?: string; run?: () => void; keywords?: string }
 interface Group { section: Section; rows: Ranked<Entry>[] }
 
 /** Per-group cap while filtering; the empty query lists everything. */
@@ -16,11 +19,24 @@ const LIMIT = 8
 const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
 
 /** The same destinations as the top-bar "New" menu. */
-const ACTIONS: Entry[] = [
-  { id: 'action:new-flow', section: 'Actions', label: 'New flow', icon: 'exchange-alt', href: paths.newFlow(), keywords: 'create add flow' },
-  { id: 'action:new-library', section: 'Actions', label: 'New Python library', icon: 'brackets-curly', href: paths.libraries(), keywords: 'create add python library' },
-  { id: 'action:new-cel', section: 'Actions', label: 'New CEL expression', icon: 'book-open', href: paths.expressions('new'), keywords: 'create add cel expression' },
+const actions = (): Entry[] => [
+  { id: 'action:new-flow', section: 'Actions', label: t('gofi.shell.search.action-new-flow', 'New flow'), icon: 'exchange-alt', href: paths.newFlow(), keywords: t('gofi.shell.search.action-new-flow-keywords', 'create add flow') },
+  { id: 'action:new-library', section: 'Actions', label: t('gofi.shell.search.action-new-function-library', 'New function library'), icon: 'brackets-curly', href: paths.libraries(), keywords: t('gofi.shell.search.action-new-python-library-keywords', 'create add python library') },
+  { id: 'action:new-cel', section: 'Actions', label: t('gofi.shell.search.action-new-cel-expression', 'New CEL expression'), icon: 'book-open', href: paths.expressions('new'), keywords: t('gofi.shell.search.action-new-cel-expression-keywords', 'create add cel expression') },
 ]
+
+/** "Language: Українська" for every locale but the active one; the native
+ * name is the label so it is findable whatever the current language, the
+ * English name and tag are search keywords. */
+const languageActions = (current: SupportedLocale, setLocale: (locale: SupportedLocale) => Promise<void>): Entry[] =>
+  LOCALES.filter(option => option.tag !== current).map(option => ({
+    id: `action:language:${option.tag}`,
+    section: 'Actions',
+    icon: 'globe',
+    label: t('gofi.shell.search.action-language', 'Language: {{name}}', { name: option.nativeName }),
+    keywords: `${option.englishName} ${option.tag} ${t('gofi.shell.search.action-language-keywords', 'language locale translate switch')}`,
+    run: () => { void setLocale(option.tag) },
+  }))
 
 /** Flattens the main menu: flows into their own section, other children
  * labelled with their parent ("Cluster › Networking"). */
@@ -29,11 +45,11 @@ function entries(tree: NavNode[]): Entry[] {
   for (const node of tree) {
     out.push({ id: node.id, section: 'Pages', label: node.text, icon: node.icon, href: node.href })
     for (const child of node.children ?? []) {
-      if (node.id === 'flows') out.push({ id: child.id, section: 'Flows', label: child.text, icon: 'exchange-alt', href: child.href, keywords: 'flow' })
-      else out.push({ id: child.id, section: 'Pages', label: `${node.text} › ${child.text}`, icon: child.icon ?? node.icon, href: child.href })
+      if (node.id === 'flows') out.push({ id: child.id, section: 'Flows', label: child.text, icon: 'exchange-alt', href: child.href, keywords: t('gofi.shell.search.flow-keywords', 'flow') })
+      else out.push({ id: child.id, section: 'Pages', label: t('gofi.shell.search.nested-page-label', '{{parent}} › {{child}}', { parent: node.text, child: child.text }), icon: child.icon ?? node.icon, href: child.href })
     }
   }
-  return [...out, ...ACTIONS]
+  return [...out, ...actions()]
 }
 
 function search(all: Entry[], query: string): Group[] {
@@ -51,7 +67,7 @@ function search(all: Entry[], query: string): Group[] {
 }
 const ORDER: Section[] = ['Pages', 'Flows', 'Actions']
 
-/** Top-bar "Search or jump to..." trigger plus the ⌘/Ctrl+K command palette. */
+/** Top-bar search button plus the ⌘/Ctrl+K command palette. */
 export function SearchCommand({ tree }: { tree: NavNode[] }) {
   const styles = useStyles2(getStyles)
   const [open, setOpen] = useState(false)
@@ -72,16 +88,7 @@ export function SearchCommand({ tree }: { tree: NavNode[] }) {
   }, [])
   const show = (text = '') => { setInitial(text); setOpen(true) }
   return <>
-    <button type="button" className={styles.trigger} aria-haspopup="dialog" aria-label="Search or jump to" onClick={() => show()}
-      onKeyDown={event => {
-        // Typing on the focused trigger opens the palette with that text.
-        if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey && event.key !== ' ') { event.preventDefault(); show(event.key) }
-      }}>
-      <Icon name="search" className={styles.triggerIcon} />
-      <span className={styles.triggerText}>Search or jump to...</span>
-      <kbd className={styles.kbd}>{mac ? '⌘K' : 'ctrl+k'}</kbd>
-    </button>
-    <IconButton name="search" size="lg" className={styles.narrowOnly} tooltip={`Search (${mac ? '⌘K' : 'Ctrl+K'})`} aria-haspopup="dialog" onClick={() => show()} />
+    <ToolbarButton icon="search" aria-label={t('gofi.shell.search.search-or-jump-to', 'Search or jump to')} tooltip={t('gofi.shell.search.search-or-jump-to-shortcut', 'Search or jump to ({{shortcut}})', { shortcut: mac ? '⌘K' : 'Ctrl+K' })} aria-haspopup="dialog" onClick={() => show()} />
     {open && <SearchModal tree={tree} initialQuery={initial} onClose={() => setOpen(false)} />}
   </>
 }
@@ -95,7 +102,8 @@ function SearchModal({ tree, initialQuery, onClose }: { tree: NavNode[]; initial
   const ids = useId()
   const optionId = (index: number) => `${ids}-option-${index}`
   const listId = `${ids}-listbox`
-  const all = useMemo(() => entries(tree), [tree])
+  const [locale, setLocale] = useLocale()
+  const all = useMemo(() => [...entries(tree), ...languageActions(locale, setLocale)], [tree, locale, setLocale])
   const groups = useMemo(() => search(all, query), [all, query])
   const rows = useMemo(() => groups.flatMap(group => group.rows), [groups])
 
@@ -110,7 +118,11 @@ function SearchModal({ tree, initialQuery, onClose }: { tree: NavNode[]; initial
     list.current?.querySelector<HTMLElement>(`[id="${CSS.escape(optionId(active))}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [active, groups])
 
-  const go = (entry: Entry) => { onClose(); navigate(entry.href) }
+  const go = (entry: Entry) => {
+    onClose()
+    if (entry.run) entry.run()
+    else if (entry.href) navigate(entry.href)
+  }
   const onKeyDown = (event: ReactKeyboardEvent) => {
     const count = rows.length
     switch (event.key) {
@@ -128,20 +140,20 @@ function SearchModal({ tree, initialQuery, onClose }: { tree: NavNode[]; initial
   let index = -1
   return <Portal>
     <div className={styles.backdrop} onMouseDown={onClose} />
-    <div className={styles.dialog} role="dialog" aria-modal="true" aria-label="Search or jump to" onKeyDown={onKeyDown}>
+    <div className={styles.dialog} role="dialog" aria-modal="true" aria-label={t('gofi.shell.search.search-or-jump-to', 'Search or jump to')} onKeyDown={onKeyDown}>
       <div className={styles.inputRow}>
         <Icon name="search" size="lg" className={styles.inputIcon} />
         <input ref={input} className={styles.input} value={query} onChange={event => setQuery(event.currentTarget.value)}
-          placeholder="Search pages, flows and actions..." spellCheck={false} autoComplete="off"
+          placeholder={t('gofi.shell.search.placeholder', 'Search pages, flows and actions...')} spellCheck={false} autoComplete="off"
           role="combobox" aria-expanded="true" aria-controls={listId} aria-autocomplete="list"
           aria-activedescendant={rows.length ? optionId(active) : undefined} />
         <kbd className={styles.kbd}>esc</kbd>
       </div>
-      <div ref={list} id={listId} role="listbox" aria-label="Results" className={styles.results}>
-        {rows.length === 0 && <div className={styles.empty}>No results for “{query.trim()}”</div>}
+      <div ref={list} id={listId} role="listbox" aria-label={t('gofi.shell.search.results', 'Results')} className={styles.results}>
+        {rows.length === 0 && <div className={styles.empty}>{t('gofi.shell.search.no-results', 'No results for “{{query}}”', { query: query.trim() })}</div>}
         {groups.map(group => <Fragment key={group.section}>
           <div role="group" aria-labelledby={`${ids}-${group.section}`}>
-            <div id={`${ids}-${group.section}`} className={styles.groupHeader} role="presentation">{group.section}</div>
+            <div id={`${ids}-${group.section}`} className={styles.groupHeader} role="presentation">{sectionLabel(group.section)}</div>
             {group.rows.map(row => {
               const i = ++index
               const selected = i === active
@@ -159,9 +171,9 @@ function SearchModal({ tree, initialQuery, onClose }: { tree: NavNode[]; initial
         </Fragment>)}
       </div>
       <div className={styles.footer} aria-hidden>
-        <span><kbd className={styles.kbd}>↑</kbd><kbd className={styles.kbd}>↓</kbd> to navigate</span>
-        <span><kbd className={styles.kbd}>↵</kbd> to select</span>
-        <span><kbd className={styles.kbd}>esc</kbd> to close</span>
+        <span><kbd className={styles.kbd}>↑</kbd><kbd className={styles.kbd}>↓</kbd> {t('gofi.shell.search.hint-navigate', 'to navigate')}</span>
+        <span><kbd className={styles.kbd}>↵</kbd> {t('gofi.shell.search.hint-select', 'to select')}</span>
+        <span><kbd className={styles.kbd}>esc</kbd> {t('gofi.shell.search.hint-close', 'to close')}</span>
       </div>
     </div>
   </Portal>
@@ -181,17 +193,6 @@ function Highlight({ text, indices, className }: { text: string; indices: number
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  trigger: css({
-    display: 'flex', alignItems: 'center', gap: theme.spacing(1), width: 'min(36vw, 420px)', height: theme.spacing(theme.components.height.md),
-    padding: theme.spacing(0, 1), background: theme.components.input.background, border: `1px solid ${theme.components.input.borderColor}`,
-    borderRadius: theme.shape.radius.default, color: theme.colors.text.disabled, fontSize: theme.typography.body.fontSize, cursor: 'text', textAlign: 'left',
-    '&:hover': { borderColor: theme.components.input.borderHover },
-    '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 1 },
-    [theme.breakpoints.down('md')]: { display: 'none' },
-  }),
-  triggerIcon: css({ color: theme.colors.text.secondary, flexShrink: 0 }),
-  triggerText: css({ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
-  narrowOnly: css({ display: 'none', [theme.breakpoints.down('md')]: { display: 'inline-flex' } }),
   kbd: css({
     fontFamily: theme.typography.fontFamily, fontSize: theme.typography.bodySmall.fontSize, lineHeight: 1.4, color: theme.colors.text.secondary,
     border: `1px solid ${theme.colors.border.weak}`, borderRadius: theme.shape.radius.default, padding: theme.spacing(0, 0.5), whiteSpace: 'nowrap',

@@ -12,7 +12,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file gofi/v1/sandbox.proto.
  */
 export const file_gofi_v1_sandbox: GenFile = /*@__PURE__*/
-  fileDesc("ChVnb2ZpL3YxL3NhbmRib3gucHJvdG8SB2dvZmkudjEipgIKFERlYnVnRnVuY3Rpb25SZXF1ZXN0Eg8KB2xpYnJhcnkYASABKAkSDgoGc291cmNlGAIgASgJEgwKBG5hbWUYAyABKAkSDAoEa2luZBgEIAEoCRILCgNyYXcYBSABKAwSJwoGZmllbGRzGAYgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRtZXRhGAcgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBInCgZjb25maWcYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg8KB3dhdGNoZXMYCSADKAkSEQoJbWF4X3N0ZXBzGAogASgFEg4KBnJ1bl9pZBgLIAEoCRIXCg90aW1lb3V0X3NlY29uZHMYDCABKAUi5AEKDkRlYnVnUmVjb3JkaW5nEiEKBXN0ZXBzGAEgAygLMhIuZ29maS52MS5EZWJ1Z1N0ZXASLAoGcmVzdWx0GAIgASgLMhwuZ29maS52MS5SdW5GdW5jdGlvblJlc3BvbnNlEi8KD2luaXRpYWxfZ2xvYmFscxgDIAMoCzIWLmdvZmkudjEuRGVidWdWYXJpYWJsZRIRCgl0cnVuY2F0ZWQYBCABKAgSGQoRdHJ1bmNhdGlvbl9yZWFzb24YBSABKAkSEgoKZW50cnlfbGluZRgGIAEoBRIOCgZydW5faWQYByABKAki0wIKCURlYnVnU3RlcBINCgVpbmRleBgBIAEoBRINCgVldmVudBgCIAEoCRIMCgRsaW5lGAMgASgFEhAKCGZ1bmN0aW9uGAQgASgJEg0KBWRlcHRoGAUgASgFEiIKBXN0YWNrGAYgAygLMhMuZ29maS52MS5EZWJ1Z0ZyYW1lEiYKBmxvY2FscxgHIAMoCzIWLmdvZmkudjEuRGVidWdWYXJpYWJsZRIvCg9jaGFuZ2VkX2dsb2JhbHMYCCADKAsyFi5nb2ZpLnYxLkRlYnVnVmFyaWFibGUSJAoHd2F0Y2hlcxgJIAMoCzITLmdvZmkudjEuRGVidWdXYXRjaBIVCg1zdGRvdXRfbGVuZ3RoGAogASgFEiwKDHJldHVybl92YWx1ZRgLIAEoCzIWLmdvZmkudjEuRGVidWdWYXJpYWJsZRIRCglleGNlcHRpb24YDCABKAkiLAoKRGVidWdGcmFtZRIQCghmdW5jdGlvbhgBIAEoCRIMCgRsaW5lGAIgASgFIocBCg1EZWJ1Z1ZhcmlhYmxlEgwKBG5hbWUYASABKAkSDAoEdHlwZRgCIAEoCRIMCgRyZXByGAMgASgJEigKCGNoaWxkcmVuGAQgAygLMhYuZ29maS52MS5EZWJ1Z1ZhcmlhYmxlEg8KB2NoYW5nZWQYBSABKAgSEQoJdHJ1bmNhdGVkGAYgASgIIj0KCkRlYnVnV2F0Y2gSEgoKZXhwcmVzc2lvbhgBIAEoCRIMCgRyZXByGAIgASgJEg0KBWVycm9yGAMgASgJIk0KFldhdGNoV29ya2VyTG9nc1JlcXVlc3QSDwoHbGlicmFyeRgBIAEoCRIOCgZydW5faWQYAiABKAkSEgoKdGFpbF9saW5lcxgDIAEoBSKeAQoOV29ya2VyTG9nRW50cnkSKAoEdGltZRgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc3RyZWFtGAIgASgJEgwKBGxpbmUYAyABKAkSFQoNaW52b2NhdGlvbl9pZBgEIAEoCRIQCghmdW5jdGlvbhgFIAEoCRIMCgRraW5kGAYgASgJEg0KBWxldmVsGAcgASgJIsIBChFTYW5kYm94RGVmaW5pdGlvbhIMCgRuYW1lGAEgASgJEhMKC3NvdXJjZV9jb2RlGAIgASgJEhcKD3RpbWVvdXRfc2Vjb25kcxgDIAEoBRISCgptZW1vcnlfbWliGAQgASgFEiQKBXRlc3RzGAUgAygLMhUuZ29maS52MS5GdW5jdGlvblRlc3QSEgoKbWFuYWdlZF9ieRgGIAEoCRIjCgZlZ3Jlc3MYByADKAsyEy5nb2ZpLnYxLkVncmVzc1J1bGUi0gEKCkVncmVzc1J1bGUSDAoEY2lkchgBIAEoCRIMCgRwb3J0GAIgASgFEhAKCHByb3RvY29sGAMgASgJEhEKCW5hbWVzcGFjZRgEIAEoCRI6Cgxwb2Rfc2VsZWN0b3IYBSADKAsyJC5nb2ZpLnYxLkVncmVzc1J1bGUuUG9kU2VsZWN0b3JFbnRyeRITCgtkZXNjcmlwdGlvbhgGIAEoCRoyChBQb2RTZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEinAIKDEZ1bmN0aW9uVGVzdBIMCgRuYW1lGAEgASgJEhAKCGZ1bmN0aW9uGAIgASgJEgwKBGtpbmQYAyABKAkSCwoDcmF3GAQgASgMEicKBmZpZWxkcxgFIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJQoEbWV0YRgGIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJwoGY29uZmlnGAcgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIuCg1leHBlY3RfZmllbGRzGAggASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIYCgtleHBlY3RfZHJvcBgJIAEoCEgAiAEBQg4KDF9leHBlY3RfZHJvcCI7Cg1TYW5kYm94U3RhdHVzEgwKBG5hbWUYASABKAkSDQoFcGhhc2UYAiABKAkSDQoFZXJyb3IYAyABKAkiFgoUTGlzdFNhbmRib3hlc1JlcXVlc3QicAoVTGlzdFNhbmRib3hlc1Jlc3BvbnNlEi0KCXNhbmRib3hlcxgBIAMoCzIaLmdvZmkudjEuU2FuZGJveERlZmluaXRpb24SKAoIc3RhdHVzZXMYAiADKAsyFi5nb2ZpLnYxLlNhbmRib3hTdGF0dXMiIQoRR2V0U2FuZGJveFJlcXVlc3QSDAoEbmFtZRgBIAEoCSJpChJHZXRTYW5kYm94UmVzcG9uc2USKwoHc2FuZGJveBgBIAEoCzIaLmdvZmkudjEuU2FuZGJveERlZmluaXRpb24SJgoGc3RhdHVzGAIgASgLMhYuZ29maS52MS5TYW5kYm94U3RhdHVzIkIKE0FwcGx5U2FuZGJveFJlcXVlc3QSKwoHc2FuZGJveBgBIAEoCzIaLmdvZmkudjEuU2FuZGJveERlZmluaXRpb24iawoUQXBwbHlTYW5kYm94UmVzcG9uc2USKwoHc2FuZGJveBgBIAEoCzIaLmdvZmkudjEuU2FuZGJveERlZmluaXRpb24SJgoGc3RhdHVzGAIgASgLMhYuZ29maS52MS5TYW5kYm94U3RhdHVzIiQKFERlbGV0ZVNhbmRib3hSZXF1ZXN0EgwKBG5hbWUYASABKAkiFwoVRGVsZXRlU2FuZGJveFJlc3BvbnNlIi4KG0xpc3RMaWJyYXJ5RnVuY3Rpb25zUmVxdWVzdBIPCgdsaWJyYXJ5GAEgASgJIp4BCg9MaWJyYXJ5RnVuY3Rpb24SDwoHbGlicmFyeRgBIAEoCRIMCgRuYW1lGAIgASgJEgwKBGtpbmQYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSJgoGcGFyYW1zGAYgAygLMhYuZ29maS52MS5GdW5jdGlvblBhcmFtEhIKCm1hbmFnZWRfYnkYByABKAlKBAgFEAZSB2luZ3Jlc3MiewoNRnVuY3Rpb25QYXJhbRIMCgRuYW1lGAEgASgJEgwKBHR5cGUYAiABKAkSJwoHZGVmYXVsdBgDIAEoCzIWLmdvb2dsZS5wcm90b2J1Zi5WYWx1ZRIQCghyZXF1aXJlZBgEIAEoCBITCgtkZXNjcmlwdGlvbhgFIAEoCSJLChxMaXN0TGlicmFyeUZ1bmN0aW9uc1Jlc3BvbnNlEisKCWZ1bmN0aW9ucxgBIAMoCzIYLmdvZmkudjEuTGlicmFyeUZ1bmN0aW9uIvEBChJXb3JrZXJEZWJ1Z1JlcXVlc3QSDAoEbmFtZRgBIAEoCRIMCgRraW5kGAIgASgJEgsKA3JhdxgDIAEoDBInCgZmaWVsZHMYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiUKBG1ldGEYBSABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EicKBmNvbmZpZxgGIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSDwoHd2F0Y2hlcxgHIAMoCRIRCgltYXhfc3RlcHMYCCABKAUSFQoNaW52b2NhdGlvbl9pZBgJIAEoCSJ4Cg5Xb3JrZXJGdW5jdGlvbhIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSJgoGcGFyYW1zGAUgAygLMhYuZ29maS52MS5GdW5jdGlvblBhcmFtSgQIBBAFUgdpbmdyZXNzIhwKGldvcmtlckxpc3RGdW5jdGlvbnNSZXF1ZXN0IkkKG1dvcmtlckxpc3RGdW5jdGlvbnNSZXNwb25zZRIqCglmdW5jdGlvbnMYASADKAsyFy5nb2ZpLnYxLldvcmtlckZ1bmN0aW9uIuMBChNXb3JrZXJJbnZva2VSZXF1ZXN0EgwKBG5hbWUYASABKAkSDAoEa2luZBgCIAEoCRILCgNyYXcYAyABKAwSJwoGZmllbGRzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRtZXRhGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBInCgZjb25maWcYBiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EhUKDWludm9jYXRpb25faWQYByABKAkSEwoLdHJhY2VfbGluZXMYCCABKAgioQIKFFdvcmtlckludm9rZVJlc3BvbnNlEicKBmZpZWxkcxgBIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSEAoDcmF3GAIgASgMSACIAQESDAoEZHJvcBgDIAEoCBIOCgZzdGRvdXQYBCABKAkSDgoGc3RkZXJyGAUgASgJEhMKC2R1cmF0aW9uX3VzGAYgASgDEg0KBWVycm9yGAcgASgJEjEKDmVycm9yX2xvY2F0aW9uGAggASgLMhkuZ29maS52MS5Tb3VyY2VEaWFnbm9zdGljEhIKCmVudHJ5X2xpbmUYCSABKAUSFgoOZXhlY3V0ZWRfbGluZXMYCiADKAUSFQoNaW52b2NhdGlvbl9pZBgLIAEoCUIGCgRfcmF3IiMKE1dvcmtlckxpc3RlblJlcXVlc3QSDAoEbmFtZRgBIAEoCSJzChRXb3JrZXJMaXN0ZW5SZXNwb25zZRILCgNyYXcYASABKAwSJwoGZmllbGRzGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRtZXRhGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCJPChBTb3VyY2VEaWFnbm9zdGljEgwKBGxpbmUYASABKAUSDgoGY29sdW1uGAIgASgFEgwKBGNvZGUYAyABKAkSDwoHbWVzc2FnZRgEIAEoCSIlChNGb3JtYXRTb3VyY2VSZXF1ZXN0Eg4KBnNvdXJjZRgBIAEoCSImChRGb3JtYXRTb3VyY2VSZXNwb25zZRIOCgZzb3VyY2UYASABKAkiJwoVVmFsaWRhdGVTb3VyY2VSZXF1ZXN0Eg4KBnNvdXJjZRgBIAEoCSJXChZWYWxpZGF0ZVNvdXJjZVJlc3BvbnNlEg0KBXZhbGlkGAEgASgIEi4KC2RpYWdub3N0aWNzGAIgAygLMhkuZ29maS52MS5Tb3VyY2VEaWFnbm9zdGljIisKGVdvcmtlckZvcm1hdFNvdXJjZVJlcXVlc3QSDgoGc291cmNlGAEgASgJIiwKGldvcmtlckZvcm1hdFNvdXJjZVJlc3BvbnNlEg4KBnNvdXJjZRgBIAEoCSItChtXb3JrZXJWYWxpZGF0ZVNvdXJjZVJlcXVlc3QSDgoGc291cmNlGAEgASgJIl0KHFdvcmtlclZhbGlkYXRlU291cmNlUmVzcG9uc2USDQoFdmFsaWQYASABKAgSLgoLZGlhZ25vc3RpY3MYAiADKAsyGS5nb2ZpLnYxLlNvdXJjZURpYWdub3N0aWMi7AEKElJ1bkZ1bmN0aW9uUmVxdWVzdBIPCgdsaWJyYXJ5GAEgASgJEgwKBG5hbWUYAiABKAkSDAoEa2luZBgDIAEoCRILCgNyYXcYBCABKAwSJwoGZmllbGRzGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRtZXRhGAYgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBInCgZjb25maWcYByABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg4KBnJ1bl9pZBgIIAEoCRITCgt0cmFjZV9saW5lcxgJIAEoCCKZAgoTUnVuRnVuY3Rpb25SZXNwb25zZRInCgZmaWVsZHMYASABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EhAKA3JhdxgCIAEoDEgAiAEBEgwKBGRyb3AYAyABKAgSDgoGc3Rkb3V0GAQgASgJEg4KBnN0ZGVychgFIAEoCRITCgtkdXJhdGlvbl91cxgGIAEoAxINCgVlcnJvchgHIAEoCRIxCg5lcnJvcl9sb2NhdGlvbhgIIAEoCzIZLmdvZmkudjEuU291cmNlRGlhZ25vc3RpYxISCgplbnRyeV9saW5lGAkgASgFEhYKDmV4ZWN1dGVkX2xpbmVzGAogAygFEg4KBnJ1bl9pZBgLIAEoCUIGCgRfcmF3IpYCChBSdW5Tb3VyY2VSZXF1ZXN0Eg4KBnNvdXJjZRgBIAEoCRIMCgRuYW1lGAIgASgJEgwKBGtpbmQYAyABKAkSCwoDcmF3GAQgASgMEicKBmZpZWxkcxgFIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJQoEbWV0YRgGIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJwoGY29uZmlnGAcgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIXCg90aW1lb3V0X3NlY29uZHMYCCABKAUSEgoKbWVtb3J5X21pYhgJIAEoBRIOCgZydW5faWQYCiABKAkSEwoLdHJhY2VfbGluZXMYCyABKAgiIgogRGVzY3JpYmVQeXRob25FbnZpcm9ubWVudFJlcXVlc3QiPwoNUHl0aG9uUGFja2FnZRIMCgRuYW1lGAEgASgJEg8KB3ZlcnNpb24YAiABKAkSDwoHc3VtbWFyeRgDIAEoCSJHCg9QeXRob25EZWNvcmF0b3ISDAoEbmFtZRgBIAEoCRIRCglzaWduYXR1cmUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAki4AEKIURlc2NyaWJlUHl0aG9uRW52aXJvbm1lbnRSZXNwb25zZRIWCg5weXRob25fdmVyc2lvbhgBIAEoCRIoCghwYWNrYWdlcxgCIAMoCzIWLmdvZmkudjEuUHl0aG9uUGFja2FnZRIsCgpkZWNvcmF0b3JzGAMgAygLMhguZ29maS52MS5QeXRob25EZWNvcmF0b3ISFgoObmV0d29ya19wb2xpY3kYBCABKAkSGwoTbWF4X3RpbWVvdXRfc2Vjb25kcxgFIAEoBRIWCg5tYXhfbWVtb3J5X21pYhgGIAEoBTLYBwoOU2FuZGJveFNlcnZpY2USTgoNTGlzdFNhbmRib3hlcxIdLmdvZmkudjEuTGlzdFNhbmRib3hlc1JlcXVlc3QaHi5nb2ZpLnYxLkxpc3RTYW5kYm94ZXNSZXNwb25zZRJFCgpHZXRTYW5kYm94EhouZ29maS52MS5HZXRTYW5kYm94UmVxdWVzdBobLmdvZmkudjEuR2V0U2FuZGJveFJlc3BvbnNlEksKDEFwcGx5U2FuZGJveBIcLmdvZmkudjEuQXBwbHlTYW5kYm94UmVxdWVzdBodLmdvZmkudjEuQXBwbHlTYW5kYm94UmVzcG9uc2USTgoNRGVsZXRlU2FuZGJveBIdLmdvZmkudjEuRGVsZXRlU2FuZGJveFJlcXVlc3QaHi5nb2ZpLnYxLkRlbGV0ZVNhbmRib3hSZXNwb25zZRJcCg1MaXN0RnVuY3Rpb25zEiQuZ29maS52MS5MaXN0TGlicmFyeUZ1bmN0aW9uc1JlcXVlc3QaJS5nb2ZpLnYxLkxpc3RMaWJyYXJ5RnVuY3Rpb25zUmVzcG9uc2USSwoMRm9ybWF0U291cmNlEhwuZ29maS52MS5Gb3JtYXRTb3VyY2VSZXF1ZXN0Gh0uZ29maS52MS5Gb3JtYXRTb3VyY2VSZXNwb25zZRJRCg5WYWxpZGF0ZVNvdXJjZRIeLmdvZmkudjEuVmFsaWRhdGVTb3VyY2VSZXF1ZXN0Gh8uZ29maS52MS5WYWxpZGF0ZVNvdXJjZVJlc3BvbnNlEkgKC1J1bkZ1bmN0aW9uEhsuZ29maS52MS5SdW5GdW5jdGlvblJlcXVlc3QaHC5nb2ZpLnYxLlJ1bkZ1bmN0aW9uUmVzcG9uc2USRAoJUnVuU291cmNlEhkuZ29maS52MS5SdW5Tb3VyY2VSZXF1ZXN0GhwuZ29maS52MS5SdW5GdW5jdGlvblJlc3BvbnNlEmwKE0Rlc2NyaWJlRW52aXJvbm1lbnQSKS5nb2ZpLnYxLkRlc2NyaWJlUHl0aG9uRW52aXJvbm1lbnRSZXF1ZXN0GiouZ29maS52MS5EZXNjcmliZVB5dGhvbkVudmlyb25tZW50UmVzcG9uc2USTQoPV2F0Y2hXb3JrZXJMb2dzEh8uZ29maS52MS5XYXRjaFdvcmtlckxvZ3NSZXF1ZXN0GhcuZ29maS52MS5Xb3JrZXJMb2dFbnRyeTABEkcKDURlYnVnRnVuY3Rpb24SHS5nb2ZpLnYxLkRlYnVnRnVuY3Rpb25SZXF1ZXN0GhcuZ29maS52MS5EZWJ1Z1JlY29yZGluZzLgBAoNV29ya2VyU2VydmljZRJaCg1MaXN0RnVuY3Rpb25zEiMuZ29maS52MS5Xb3JrZXJMaXN0RnVuY3Rpb25zUmVxdWVzdBokLmdvZmkudjEuV29ya2VyTGlzdEZ1bmN0aW9uc1Jlc3BvbnNlEkUKBkludm9rZRIcLmdvZmkudjEuV29ya2VySW52b2tlUmVxdWVzdBodLmdvZmkudjEuV29ya2VySW52b2tlUmVzcG9uc2USRwoGTGlzdGVuEhwuZ29maS52MS5Xb3JrZXJMaXN0ZW5SZXF1ZXN0Gh0uZ29maS52MS5Xb3JrZXJMaXN0ZW5SZXNwb25zZTABElcKDEZvcm1hdFNvdXJjZRIiLmdvZmkudjEuV29ya2VyRm9ybWF0U291cmNlUmVxdWVzdBojLmdvZmkudjEuV29ya2VyRm9ybWF0U291cmNlUmVzcG9uc2USXQoOVmFsaWRhdGVTb3VyY2USJC5nb2ZpLnYxLldvcmtlclZhbGlkYXRlU291cmNlUmVxdWVzdBolLmdvZmkudjEuV29ya2VyVmFsaWRhdGVTb3VyY2VSZXNwb25zZRJsChNEZXNjcmliZUVudmlyb25tZW50EikuZ29maS52MS5EZXNjcmliZVB5dGhvbkVudmlyb25tZW50UmVxdWVzdBoqLmdvZmkudjEuRGVzY3JpYmVQeXRob25FbnZpcm9ubWVudFJlc3BvbnNlEj0KBURlYnVnEhsuZ29maS52MS5Xb3JrZXJEZWJ1Z1JlcXVlc3QaFy5nb2ZpLnYxLkRlYnVnUmVjb3JkaW5nQipaKGdpdGh1Yi5jb20vd2NydW0vZ29maS9nZW4vZ29maS92MTtnb2ZpdjFiBnByb3RvMw", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("ChVnb2ZpL3YxL3NhbmRib3gucHJvdG8SB2dvZmkudjEisgIKFERlYnVnRnVuY3Rpb25SZXF1ZXN0Eg8KB2xpYnJhcnkYASABKAkSDgoGc291cmNlGAIgASgJEgwKBG5hbWUYAyABKAkSDAoEa2luZBgEIAEoCRILCgNyYXcYBSABKAwSJwoGZmllbGRzGAYgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRtZXRhGAcgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBInCgZjb25maWcYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg8KB3dhdGNoZXMYCSADKAkSEQoJbWF4X3N0ZXBzGAogASgFEg4KBnJ1bl9pZBgLIAEoCRIXCg90aW1lb3V0X3NlY29uZHMYDCABKAUSCgoCYWkYDSABKAgi5AEKDkRlYnVnUmVjb3JkaW5nEiEKBXN0ZXBzGAEgAygLMhIuZ29maS52MS5EZWJ1Z1N0ZXASLAoGcmVzdWx0GAIgASgLMhwuZ29maS52MS5SdW5GdW5jdGlvblJlc3BvbnNlEi8KD2luaXRpYWxfZ2xvYmFscxgDIAMoCzIWLmdvZmkudjEuRGVidWdWYXJpYWJsZRIRCgl0cnVuY2F0ZWQYBCABKAgSGQoRdHJ1bmNhdGlvbl9yZWFzb24YBSABKAkSEgoKZW50cnlfbGluZRgGIAEoBRIOCgZydW5faWQYByABKAki0wIKCURlYnVnU3RlcBINCgVpbmRleBgBIAEoBRINCgVldmVudBgCIAEoCRIMCgRsaW5lGAMgASgFEhAKCGZ1bmN0aW9uGAQgASgJEg0KBWRlcHRoGAUgASgFEiIKBXN0YWNrGAYgAygLMhMuZ29maS52MS5EZWJ1Z0ZyYW1lEiYKBmxvY2FscxgHIAMoCzIWLmdvZmkudjEuRGVidWdWYXJpYWJsZRIvCg9jaGFuZ2VkX2dsb2JhbHMYCCADKAsyFi5nb2ZpLnYxLkRlYnVnVmFyaWFibGUSJAoHd2F0Y2hlcxgJIAMoCzITLmdvZmkudjEuRGVidWdXYXRjaBIVCg1zdGRvdXRfbGVuZ3RoGAogASgFEiwKDHJldHVybl92YWx1ZRgLIAEoCzIWLmdvZmkudjEuRGVidWdWYXJpYWJsZRIRCglleGNlcHRpb24YDCABKAkiLAoKRGVidWdGcmFtZRIQCghmdW5jdGlvbhgBIAEoCRIMCgRsaW5lGAIgASgFIocBCg1EZWJ1Z1ZhcmlhYmxlEgwKBG5hbWUYASABKAkSDAoEdHlwZRgCIAEoCRIMCgRyZXByGAMgASgJEigKCGNoaWxkcmVuGAQgAygLMhYuZ29maS52MS5EZWJ1Z1ZhcmlhYmxlEg8KB2NoYW5nZWQYBSABKAgSEQoJdHJ1bmNhdGVkGAYgASgIIj0KCkRlYnVnV2F0Y2gSEgoKZXhwcmVzc2lvbhgBIAEoCRIMCgRyZXByGAIgASgJEg0KBWVycm9yGAMgASgJIk0KFldhdGNoV29ya2VyTG9nc1JlcXVlc3QSDwoHbGlicmFyeRgBIAEoCRIOCgZydW5faWQYAiABKAkSEgoKdGFpbF9saW5lcxgDIAEoBSKeAQoOV29ya2VyTG9nRW50cnkSKAoEdGltZRgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc3RyZWFtGAIgASgJEgwKBGxpbmUYAyABKAkSFQoNaW52b2NhdGlvbl9pZBgEIAEoCRIQCghmdW5jdGlvbhgFIAEoCRIMCgRraW5kGAYgASgJEg0KBWxldmVsGAcgASgJIs4BChFTYW5kYm94RGVmaW5pdGlvbhIMCgRuYW1lGAEgASgJEhMKC3NvdXJjZV9jb2RlGAIgASgJEhcKD3RpbWVvdXRfc2Vjb25kcxgDIAEoBRISCgptZW1vcnlfbWliGAQgASgFEiQKBXRlc3RzGAUgAygLMhUuZ29maS52MS5GdW5jdGlvblRlc3QSEgoKbWFuYWdlZF9ieRgGIAEoCRIjCgZlZ3Jlc3MYByADKAsyEy5nb2ZpLnYxLkVncmVzc1J1bGUSCgoCYWkYCCABKAgi0gEKCkVncmVzc1J1bGUSDAoEY2lkchgBIAEoCRIMCgRwb3J0GAIgASgFEhAKCHByb3RvY29sGAMgASgJEhEKCW5hbWVzcGFjZRgEIAEoCRI6Cgxwb2Rfc2VsZWN0b3IYBSADKAsyJC5nb2ZpLnYxLkVncmVzc1J1bGUuUG9kU2VsZWN0b3JFbnRyeRITCgtkZXNjcmlwdGlvbhgGIAEoCRoyChBQb2RTZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEinAIKDEZ1bmN0aW9uVGVzdBIMCgRuYW1lGAEgASgJEhAKCGZ1bmN0aW9uGAIgASgJEgwKBGtpbmQYAyABKAkSCwoDcmF3GAQgASgMEicKBmZpZWxkcxgFIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJQoEbWV0YRgGIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJwoGY29uZmlnGAcgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIuCg1leHBlY3RfZmllbGRzGAggASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIYCgtleHBlY3RfZHJvcBgJIAEoCEgAiAEBQg4KDF9leHBlY3RfZHJvcCJRCg1TYW5kYm94U3RhdHVzEgwKBG5hbWUYASABKAkSDQoFcGhhc2UYAiABKAkSDQoFZXJyb3IYAyABKAkSFAoMYWlfYXZhaWxhYmxlGAQgASgIIhYKFExpc3RTYW5kYm94ZXNSZXF1ZXN0InAKFUxpc3RTYW5kYm94ZXNSZXNwb25zZRItCglzYW5kYm94ZXMYASADKAsyGi5nb2ZpLnYxLlNhbmRib3hEZWZpbml0aW9uEigKCHN0YXR1c2VzGAIgAygLMhYuZ29maS52MS5TYW5kYm94U3RhdHVzIiEKEUdldFNhbmRib3hSZXF1ZXN0EgwKBG5hbWUYASABKAkiaQoSR2V0U2FuZGJveFJlc3BvbnNlEisKB3NhbmRib3gYASABKAsyGi5nb2ZpLnYxLlNhbmRib3hEZWZpbml0aW9uEiYKBnN0YXR1cxgCIAEoCzIWLmdvZmkudjEuU2FuZGJveFN0YXR1cyJCChNBcHBseVNhbmRib3hSZXF1ZXN0EisKB3NhbmRib3gYASABKAsyGi5nb2ZpLnYxLlNhbmRib3hEZWZpbml0aW9uImsKFEFwcGx5U2FuZGJveFJlc3BvbnNlEisKB3NhbmRib3gYASABKAsyGi5nb2ZpLnYxLlNhbmRib3hEZWZpbml0aW9uEiYKBnN0YXR1cxgCIAEoCzIWLmdvZmkudjEuU2FuZGJveFN0YXR1cyIkChREZWxldGVTYW5kYm94UmVxdWVzdBIMCgRuYW1lGAEgASgJIhcKFURlbGV0ZVNhbmRib3hSZXNwb25zZSIuChtMaXN0TGlicmFyeUZ1bmN0aW9uc1JlcXVlc3QSDwoHbGlicmFyeRgBIAEoCSKtAQoPTGlicmFyeUZ1bmN0aW9uEg8KB2xpYnJhcnkYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRraW5kGAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJEiYKBnBhcmFtcxgGIAMoCzIWLmdvZmkudjEuRnVuY3Rpb25QYXJhbRISCgptYW5hZ2VkX2J5GAcgASgJEg0KBWV2ZXJ5GAggASgJSgQIBRAGUgdpbmdyZXNzInsKDUZ1bmN0aW9uUGFyYW0SDAoEbmFtZRgBIAEoCRIMCgR0eXBlGAIgASgJEicKB2RlZmF1bHQYAyABKAsyFi5nb29nbGUucHJvdG9idWYuVmFsdWUSEAoIcmVxdWlyZWQYBCABKAgSEwoLZGVzY3JpcHRpb24YBSABKAkiSwocTGlzdExpYnJhcnlGdW5jdGlvbnNSZXNwb25zZRIrCglmdW5jdGlvbnMYASADKAsyGC5nb2ZpLnYxLkxpYnJhcnlGdW5jdGlvbiLxAQoSV29ya2VyRGVidWdSZXF1ZXN0EgwKBG5hbWUYASABKAkSDAoEa2luZBgCIAEoCRILCgNyYXcYAyABKAwSJwoGZmllbGRzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRtZXRhGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBInCgZjb25maWcYBiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg8KB3dhdGNoZXMYByADKAkSEQoJbWF4X3N0ZXBzGAggASgFEhUKDWludm9jYXRpb25faWQYCSABKAkihwEKDldvcmtlckZ1bmN0aW9uEgwKBG5hbWUYASABKAkSDAoEa2luZBgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRImCgZwYXJhbXMYBSADKAsyFi5nb2ZpLnYxLkZ1bmN0aW9uUGFyYW0SDQoFZXZlcnkYBiABKAlKBAgEEAVSB2luZ3Jlc3MiHAoaV29ya2VyTGlzdEZ1bmN0aW9uc1JlcXVlc3QiSQobV29ya2VyTGlzdEZ1bmN0aW9uc1Jlc3BvbnNlEioKCWZ1bmN0aW9ucxgBIAMoCzIXLmdvZmkudjEuV29ya2VyRnVuY3Rpb24i4wEKE1dvcmtlckludm9rZVJlcXVlc3QSDAoEbmFtZRgBIAEoCRIMCgRraW5kGAIgASgJEgsKA3JhdxgDIAEoDBInCgZmaWVsZHMYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiUKBG1ldGEYBSABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EicKBmNvbmZpZxgGIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSFQoNaW52b2NhdGlvbl9pZBgHIAEoCRITCgt0cmFjZV9saW5lcxgIIAEoCCKhAgoUV29ya2VySW52b2tlUmVzcG9uc2USJwoGZmllbGRzGAEgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIQCgNyYXcYAiABKAxIAIgBARIMCgRkcm9wGAMgASgIEg4KBnN0ZG91dBgEIAEoCRIOCgZzdGRlcnIYBSABKAkSEwoLZHVyYXRpb25fdXMYBiABKAMSDQoFZXJyb3IYByABKAkSMQoOZXJyb3JfbG9jYXRpb24YCCABKAsyGS5nb2ZpLnYxLlNvdXJjZURpYWdub3N0aWMSEgoKZW50cnlfbGluZRgJIAEoBRIWCg5leGVjdXRlZF9saW5lcxgKIAMoBRIVCg1pbnZvY2F0aW9uX2lkGAsgASgJQgYKBF9yYXcimQEKE1dvcmtlclNvdXJjZVJlcXVlc3QSDAoEbmFtZRgBIAEoCRInCgZjb25maWcYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EgwKBGZsb3cYAyABKAkSJgoFc3RhdGUYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EhUKDWludm9jYXRpb25faWQYBSABKAkidgoLU291cmNlRnJhbWUSDAoEZGF0YRgBIAEoDBIsCgRtZXRhGAIgAygLMh4uZ29maS52MS5Tb3VyY2VGcmFtZS5NZXRhRW50cnkaKwoJTWV0YUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEi8QEKE1dvcmtlckZldGNoUmVzcG9uc2USJAoGZnJhbWVzGAEgAygLMhQuZ29maS52MS5Tb3VyY2VGcmFtZRImCgVzdGF0ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSDgoGc3Rkb3V0GAMgASgJEg4KBnN0ZGVychgEIAEoCRITCgtkdXJhdGlvbl91cxgFIAEoAxINCgVlcnJvchgGIAEoCRIxCg5lcnJvcl9sb2NhdGlvbhgHIAEoCzIZLmdvZmkudjEuU291cmNlRGlhZ25vc3RpYxIVCg1pbnZvY2F0aW9uX2lkGAggASgJIowBChRXb3JrZXJTdHJlYW1SZXNwb25zZRIkCgZmcmFtZXMYASADKAsyFC5nb2ZpLnYxLlNvdXJjZUZyYW1lEiYKBXN0YXRlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIPCgdzdGFydGVkGAMgASgIEhUKDWludm9jYXRpb25faWQYBCABKAkiTwoQU291cmNlRGlhZ25vc3RpYxIMCgRsaW5lGAEgASgFEg4KBmNvbHVtbhgCIAEoBRIMCgRjb2RlGAMgASgJEg8KB21lc3NhZ2UYBCABKAkiJQoTRm9ybWF0U291cmNlUmVxdWVzdBIOCgZzb3VyY2UYASABKAkiJgoURm9ybWF0U291cmNlUmVzcG9uc2USDgoGc291cmNlGAEgASgJIicKFVZhbGlkYXRlU291cmNlUmVxdWVzdBIOCgZzb3VyY2UYASABKAkiVwoWVmFsaWRhdGVTb3VyY2VSZXNwb25zZRINCgV2YWxpZBgBIAEoCBIuCgtkaWFnbm9zdGljcxgCIAMoCzIZLmdvZmkudjEuU291cmNlRGlhZ25vc3RpYyIrChlXb3JrZXJGb3JtYXRTb3VyY2VSZXF1ZXN0Eg4KBnNvdXJjZRgBIAEoCSIsChpXb3JrZXJGb3JtYXRTb3VyY2VSZXNwb25zZRIOCgZzb3VyY2UYASABKAkiLQobV29ya2VyVmFsaWRhdGVTb3VyY2VSZXF1ZXN0Eg4KBnNvdXJjZRgBIAEoCSJdChxXb3JrZXJWYWxpZGF0ZVNvdXJjZVJlc3BvbnNlEg0KBXZhbGlkGAEgASgIEi4KC2RpYWdub3N0aWNzGAIgAygLMhkuZ29maS52MS5Tb3VyY2VEaWFnbm9zdGljIuwBChJSdW5GdW5jdGlvblJlcXVlc3QSDwoHbGlicmFyeRgBIAEoCRIMCgRuYW1lGAIgASgJEgwKBGtpbmQYAyABKAkSCwoDcmF3GAQgASgMEicKBmZpZWxkcxgFIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJQoEbWV0YRgGIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJwoGY29uZmlnGAcgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIOCgZydW5faWQYCCABKAkSEwoLdHJhY2VfbGluZXMYCSABKAgimQIKE1J1bkZ1bmN0aW9uUmVzcG9uc2USJwoGZmllbGRzGAEgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIQCgNyYXcYAiABKAxIAIgBARIMCgRkcm9wGAMgASgIEg4KBnN0ZG91dBgEIAEoCRIOCgZzdGRlcnIYBSABKAkSEwoLZHVyYXRpb25fdXMYBiABKAMSDQoFZXJyb3IYByABKAkSMQoOZXJyb3JfbG9jYXRpb24YCCABKAsyGS5nb2ZpLnYxLlNvdXJjZURpYWdub3N0aWMSEgoKZW50cnlfbGluZRgJIAEoBRIWCg5leGVjdXRlZF9saW5lcxgKIAMoBRIOCgZydW5faWQYCyABKAlCBgoEX3JhdyKiAgoQUnVuU291cmNlUmVxdWVzdBIOCgZzb3VyY2UYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRraW5kGAMgASgJEgsKA3JhdxgEIAEoDBInCgZmaWVsZHMYBSABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiUKBG1ldGEYBiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EicKBmNvbmZpZxgHIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSFwoPdGltZW91dF9zZWNvbmRzGAggASgFEhIKCm1lbW9yeV9taWIYCSABKAUSDgoGcnVuX2lkGAogASgJEhMKC3RyYWNlX2xpbmVzGAsgASgIEgoKAmFpGAwgASgIIiIKIERlc2NyaWJlUHl0aG9uRW52aXJvbm1lbnRSZXF1ZXN0Ij8KDVB5dGhvblBhY2thZ2USDAoEbmFtZRgBIAEoCRIPCgd2ZXJzaW9uGAIgASgJEg8KB3N1bW1hcnkYAyABKAkiRwoPUHl0aG9uRGVjb3JhdG9yEgwKBG5hbWUYASABKAkSEQoJc2lnbmF0dXJlGAIgASgJEhMKC2Rlc2NyaXB0aW9uGAMgASgJIvYBCiFEZXNjcmliZVB5dGhvbkVudmlyb25tZW50UmVzcG9uc2USFgoOcHl0aG9uX3ZlcnNpb24YASABKAkSKAoIcGFja2FnZXMYAiADKAsyFi5nb2ZpLnYxLlB5dGhvblBhY2thZ2USLAoKZGVjb3JhdG9ycxgDIAMoCzIYLmdvZmkudjEuUHl0aG9uRGVjb3JhdG9yEhYKDm5ldHdvcmtfcG9saWN5GAQgASgJEhsKE21heF90aW1lb3V0X3NlY29uZHMYBSABKAUSFgoObWF4X21lbW9yeV9taWIYBiABKAUSFAoMYWlfYXZhaWxhYmxlGAcgASgIMtgHCg5TYW5kYm94U2VydmljZRJOCg1MaXN0U2FuZGJveGVzEh0uZ29maS52MS5MaXN0U2FuZGJveGVzUmVxdWVzdBoeLmdvZmkudjEuTGlzdFNhbmRib3hlc1Jlc3BvbnNlEkUKCkdldFNhbmRib3gSGi5nb2ZpLnYxLkdldFNhbmRib3hSZXF1ZXN0GhsuZ29maS52MS5HZXRTYW5kYm94UmVzcG9uc2USSwoMQXBwbHlTYW5kYm94EhwuZ29maS52MS5BcHBseVNhbmRib3hSZXF1ZXN0Gh0uZ29maS52MS5BcHBseVNhbmRib3hSZXNwb25zZRJOCg1EZWxldGVTYW5kYm94Eh0uZ29maS52MS5EZWxldGVTYW5kYm94UmVxdWVzdBoeLmdvZmkudjEuRGVsZXRlU2FuZGJveFJlc3BvbnNlElwKDUxpc3RGdW5jdGlvbnMSJC5nb2ZpLnYxLkxpc3RMaWJyYXJ5RnVuY3Rpb25zUmVxdWVzdBolLmdvZmkudjEuTGlzdExpYnJhcnlGdW5jdGlvbnNSZXNwb25zZRJLCgxGb3JtYXRTb3VyY2USHC5nb2ZpLnYxLkZvcm1hdFNvdXJjZVJlcXVlc3QaHS5nb2ZpLnYxLkZvcm1hdFNvdXJjZVJlc3BvbnNlElEKDlZhbGlkYXRlU291cmNlEh4uZ29maS52MS5WYWxpZGF0ZVNvdXJjZVJlcXVlc3QaHy5nb2ZpLnYxLlZhbGlkYXRlU291cmNlUmVzcG9uc2USSAoLUnVuRnVuY3Rpb24SGy5nb2ZpLnYxLlJ1bkZ1bmN0aW9uUmVxdWVzdBocLmdvZmkudjEuUnVuRnVuY3Rpb25SZXNwb25zZRJECglSdW5Tb3VyY2USGS5nb2ZpLnYxLlJ1blNvdXJjZVJlcXVlc3QaHC5nb2ZpLnYxLlJ1bkZ1bmN0aW9uUmVzcG9uc2USbAoTRGVzY3JpYmVFbnZpcm9ubWVudBIpLmdvZmkudjEuRGVzY3JpYmVQeXRob25FbnZpcm9ubWVudFJlcXVlc3QaKi5nb2ZpLnYxLkRlc2NyaWJlUHl0aG9uRW52aXJvbm1lbnRSZXNwb25zZRJNCg9XYXRjaFdvcmtlckxvZ3MSHy5nb2ZpLnYxLldhdGNoV29ya2VyTG9nc1JlcXVlc3QaFy5nb2ZpLnYxLldvcmtlckxvZ0VudHJ5MAESRwoNRGVidWdGdW5jdGlvbhIdLmdvZmkudjEuRGVidWdGdW5jdGlvblJlcXVlc3QaFy5nb2ZpLnYxLkRlYnVnUmVjb3JkaW5nMqUFCg1Xb3JrZXJTZXJ2aWNlEloKDUxpc3RGdW5jdGlvbnMSIy5nb2ZpLnYxLldvcmtlckxpc3RGdW5jdGlvbnNSZXF1ZXN0GiQuZ29maS52MS5Xb3JrZXJMaXN0RnVuY3Rpb25zUmVzcG9uc2USRQoGSW52b2tlEhwuZ29maS52MS5Xb3JrZXJJbnZva2VSZXF1ZXN0Gh0uZ29maS52MS5Xb3JrZXJJbnZva2VSZXNwb25zZRJDCgVGZXRjaBIcLmdvZmkudjEuV29ya2VyU291cmNlUmVxdWVzdBocLmdvZmkudjEuV29ya2VyRmV0Y2hSZXNwb25zZRJHCgZTdHJlYW0SHC5nb2ZpLnYxLldvcmtlclNvdXJjZVJlcXVlc3QaHS5nb2ZpLnYxLldvcmtlclN0cmVhbVJlc3BvbnNlMAESVwoMRm9ybWF0U291cmNlEiIuZ29maS52MS5Xb3JrZXJGb3JtYXRTb3VyY2VSZXF1ZXN0GiMuZ29maS52MS5Xb3JrZXJGb3JtYXRTb3VyY2VSZXNwb25zZRJdCg5WYWxpZGF0ZVNvdXJjZRIkLmdvZmkudjEuV29ya2VyVmFsaWRhdGVTb3VyY2VSZXF1ZXN0GiUuZ29maS52MS5Xb3JrZXJWYWxpZGF0ZVNvdXJjZVJlc3BvbnNlEmwKE0Rlc2NyaWJlRW52aXJvbm1lbnQSKS5nb2ZpLnYxLkRlc2NyaWJlUHl0aG9uRW52aXJvbm1lbnRSZXF1ZXN0GiouZ29maS52MS5EZXNjcmliZVB5dGhvbkVudmlyb25tZW50UmVzcG9uc2USPQoFRGVidWcSGy5nb2ZpLnYxLldvcmtlckRlYnVnUmVxdWVzdBoXLmdvZmkudjEuRGVidWdSZWNvcmRpbmdCKlooZ2l0aHViLmNvbS93Y3J1bS9nb2ZpL2dlbi9nb2ZpL3YxO2dvZml2MWIGcHJvdG8z", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message gofi.v1.DebugFunctionRequest
@@ -88,6 +88,13 @@ export type DebugFunctionRequest = Message<"gofi.v1.DebugFunctionRequest"> & {
    * @generated from field: int32 timeout_seconds = 12;
    */
   timeoutSeconds: number;
+
+  /**
+   * deprecated: ignored (AssistantConfiguration.allow_functions decides)
+   *
+   * @generated from field: bool ai = 13;
+   */
+  ai: boolean;
 };
 
 /**
@@ -466,6 +473,16 @@ export type SandboxDefinition = Message<"gofi.v1.SandboxDefinition"> & {
    * @generated from field: repeated gofi.v1.EgressRule egress = 7;
    */
   egress: EgressRule[];
+
+  /**
+   * Deprecated: ignored. Whether libraries may use the deployment's AI
+   * endpoint through gofi.llm is one switch under Administration › AI
+   * assistant (AssistantConfiguration.allow_functions); GoFi supplies the
+   * endpoint, model, key, and egress rules to every worker while it is on.
+   *
+   * @generated from field: bool ai = 8;
+   */
+  ai: boolean;
 };
 
 /**
@@ -599,6 +616,14 @@ export type SandboxStatus = Message<"gofi.v1.SandboxStatus"> & {
    * @generated from field: string error = 3;
    */
   error: string;
+
+  /**
+   * Whether the deployment currently provides an AI endpoint to libraries
+   * with `ai` set (explains an unavailable gofi.llm).
+   *
+   * @generated from field: bool ai_available = 4;
+   */
+  aiAvailable: boolean;
 };
 
 /**
@@ -806,6 +831,13 @@ export type LibraryFunction = Message<"gofi.v1.LibraryFunction"> & {
    * @generated from field: string managed_by = 7;
    */
   managedBy: string;
+
+  /**
+   * @gofi.fetcher(every=...): the default poll interval (Go duration).
+   *
+   * @generated from field: string every = 8;
+   */
+  every: string;
 };
 
 /**
@@ -951,6 +983,13 @@ export type WorkerFunction = Message<"gofi.v1.WorkerFunction"> & {
    * @generated from field: repeated gofi.v1.FunctionParam params = 5;
    */
   params: FunctionParam[];
+
+  /**
+   * @gofi.fetcher(every=...): the default poll interval (Go duration).
+   *
+   * @generated from field: string every = 6;
+   */
+  every: string;
 };
 
 /**
@@ -1120,48 +1159,161 @@ export const WorkerInvokeResponseSchema: GenMessage<WorkerInvokeResponse> = /*@_
   messageDesc(file_gofi_v1_sandbox, 29);
 
 /**
- * @generated from message gofi.v1.WorkerListenRequest
+ * A Python flow source call: the function, its configuration, and the state
+ * the previous call (or stream) left in ctx.state.
+ *
+ * @generated from message gofi.v1.WorkerSourceRequest
  */
-export type WorkerListenRequest = Message<"gofi.v1.WorkerListenRequest"> & {
+export type WorkerSourceRequest = Message<"gofi.v1.WorkerSourceRequest"> & {
   /**
    * @generated from field: string name = 1;
    */
   name: string;
+
+  /**
+   * @generated from field: google.protobuf.Struct config = 2;
+   */
+  config?: JsonObject | undefined;
+
+  /**
+   * @generated from field: string flow = 3;
+   */
+  flow: string;
+
+  /**
+   * @generated from field: google.protobuf.Struct state = 4;
+   */
+  state?: JsonObject | undefined;
+
+  /**
+   * @generated from field: string invocation_id = 5;
+   */
+  invocationId: string;
 };
 
 /**
- * Describes the message gofi.v1.WorkerListenRequest.
- * Use `create(WorkerListenRequestSchema)` to create a new message.
+ * Describes the message gofi.v1.WorkerSourceRequest.
+ * Use `create(WorkerSourceRequestSchema)` to create a new message.
  */
-export const WorkerListenRequestSchema: GenMessage<WorkerListenRequest> = /*@__PURE__*/
+export const WorkerSourceRequestSchema: GenMessage<WorkerSourceRequest> = /*@__PURE__*/
   messageDesc(file_gofi_v1_sandbox, 30);
 
 /**
- * @generated from message gofi.v1.WorkerListenResponse
+ * One frame a fetcher returned or a streamer yielded, with optional metadata
+ * from gofi.Frame(data, meta=...).
+ *
+ * @generated from message gofi.v1.SourceFrame
  */
-export type WorkerListenResponse = Message<"gofi.v1.WorkerListenResponse"> & {
+export type SourceFrame = Message<"gofi.v1.SourceFrame"> & {
   /**
-   * @generated from field: bytes raw = 1;
+   * @generated from field: bytes data = 1;
    */
-  raw: Uint8Array;
+  data: Uint8Array;
 
   /**
-   * @generated from field: google.protobuf.Struct fields = 2;
+   * @generated from field: map<string, string> meta = 2;
    */
-  fields?: JsonObject | undefined;
-
-  /**
-   * @generated from field: google.protobuf.Struct meta = 3;
-   */
-  meta?: JsonObject | undefined;
+  meta: { [key: string]: string };
 };
 
 /**
- * Describes the message gofi.v1.WorkerListenResponse.
- * Use `create(WorkerListenResponseSchema)` to create a new message.
+ * Describes the message gofi.v1.SourceFrame.
+ * Use `create(SourceFrameSchema)` to create a new message.
  */
-export const WorkerListenResponseSchema: GenMessage<WorkerListenResponse> = /*@__PURE__*/
+export const SourceFrameSchema: GenMessage<SourceFrame> = /*@__PURE__*/
   messageDesc(file_gofi_v1_sandbox, 31);
+
+/**
+ * @generated from message gofi.v1.WorkerFetchResponse
+ */
+export type WorkerFetchResponse = Message<"gofi.v1.WorkerFetchResponse"> & {
+  /**
+   * @generated from field: repeated gofi.v1.SourceFrame frames = 1;
+   */
+  frames: SourceFrame[];
+
+  /**
+   * ctx.state after the call; send it back with the next call.
+   *
+   * @generated from field: google.protobuf.Struct state = 2;
+   */
+  state?: JsonObject | undefined;
+
+  /**
+   * @generated from field: string stdout = 3;
+   */
+  stdout: string;
+
+  /**
+   * @generated from field: string stderr = 4;
+   */
+  stderr: string;
+
+  /**
+   * @generated from field: int64 duration_us = 5;
+   */
+  durationUs: bigint;
+
+  /**
+   * A user-code exception (the RPC still succeeds, like Invoke).
+   *
+   * @generated from field: string error = 6;
+   */
+  error: string;
+
+  /**
+   * @generated from field: gofi.v1.SourceDiagnostic error_location = 7;
+   */
+  errorLocation?: SourceDiagnostic | undefined;
+
+  /**
+   * @generated from field: string invocation_id = 8;
+   */
+  invocationId: string;
+};
+
+/**
+ * Describes the message gofi.v1.WorkerFetchResponse.
+ * Use `create(WorkerFetchResponseSchema)` to create a new message.
+ */
+export const WorkerFetchResponseSchema: GenMessage<WorkerFetchResponse> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_sandbox, 32);
+
+/**
+ * @generated from message gofi.v1.WorkerStreamResponse
+ */
+export type WorkerStreamResponse = Message<"gofi.v1.WorkerStreamResponse"> & {
+  /**
+   * @generated from field: repeated gofi.v1.SourceFrame frames = 1;
+   */
+  frames: SourceFrame[];
+
+  /**
+   * Set when ctx.state changed since the previous message.
+   *
+   * @generated from field: google.protobuf.Struct state = 2;
+   */
+  state?: JsonObject | undefined;
+
+  /**
+   * The first message: the streamer process started.
+   *
+   * @generated from field: bool started = 3;
+   */
+  started: boolean;
+
+  /**
+   * @generated from field: string invocation_id = 4;
+   */
+  invocationId: string;
+};
+
+/**
+ * Describes the message gofi.v1.WorkerStreamResponse.
+ * Use `create(WorkerStreamResponseSchema)` to create a new message.
+ */
+export const WorkerStreamResponseSchema: GenMessage<WorkerStreamResponse> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_sandbox, 33);
 
 /**
  * Formatting and validation run only in the private tooling worker. They never
@@ -1196,7 +1348,7 @@ export type SourceDiagnostic = Message<"gofi.v1.SourceDiagnostic"> & {
  * Use `create(SourceDiagnosticSchema)` to create a new message.
  */
 export const SourceDiagnosticSchema: GenMessage<SourceDiagnostic> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 32);
+  messageDesc(file_gofi_v1_sandbox, 34);
 
 /**
  * @generated from message gofi.v1.FormatSourceRequest
@@ -1213,7 +1365,7 @@ export type FormatSourceRequest = Message<"gofi.v1.FormatSourceRequest"> & {
  * Use `create(FormatSourceRequestSchema)` to create a new message.
  */
 export const FormatSourceRequestSchema: GenMessage<FormatSourceRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 33);
+  messageDesc(file_gofi_v1_sandbox, 35);
 
 /**
  * @generated from message gofi.v1.FormatSourceResponse
@@ -1230,7 +1382,7 @@ export type FormatSourceResponse = Message<"gofi.v1.FormatSourceResponse"> & {
  * Use `create(FormatSourceResponseSchema)` to create a new message.
  */
 export const FormatSourceResponseSchema: GenMessage<FormatSourceResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 34);
+  messageDesc(file_gofi_v1_sandbox, 36);
 
 /**
  * @generated from message gofi.v1.ValidateSourceRequest
@@ -1247,7 +1399,7 @@ export type ValidateSourceRequest = Message<"gofi.v1.ValidateSourceRequest"> & {
  * Use `create(ValidateSourceRequestSchema)` to create a new message.
  */
 export const ValidateSourceRequestSchema: GenMessage<ValidateSourceRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 35);
+  messageDesc(file_gofi_v1_sandbox, 37);
 
 /**
  * @generated from message gofi.v1.ValidateSourceResponse
@@ -1269,7 +1421,7 @@ export type ValidateSourceResponse = Message<"gofi.v1.ValidateSourceResponse"> &
  * Use `create(ValidateSourceResponseSchema)` to create a new message.
  */
 export const ValidateSourceResponseSchema: GenMessage<ValidateSourceResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 36);
+  messageDesc(file_gofi_v1_sandbox, 38);
 
 /**
  * @generated from message gofi.v1.WorkerFormatSourceRequest
@@ -1286,7 +1438,7 @@ export type WorkerFormatSourceRequest = Message<"gofi.v1.WorkerFormatSourceReque
  * Use `create(WorkerFormatSourceRequestSchema)` to create a new message.
  */
 export const WorkerFormatSourceRequestSchema: GenMessage<WorkerFormatSourceRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 37);
+  messageDesc(file_gofi_v1_sandbox, 39);
 
 /**
  * @generated from message gofi.v1.WorkerFormatSourceResponse
@@ -1303,7 +1455,7 @@ export type WorkerFormatSourceResponse = Message<"gofi.v1.WorkerFormatSourceResp
  * Use `create(WorkerFormatSourceResponseSchema)` to create a new message.
  */
 export const WorkerFormatSourceResponseSchema: GenMessage<WorkerFormatSourceResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 38);
+  messageDesc(file_gofi_v1_sandbox, 40);
 
 /**
  * @generated from message gofi.v1.WorkerValidateSourceRequest
@@ -1320,7 +1472,7 @@ export type WorkerValidateSourceRequest = Message<"gofi.v1.WorkerValidateSourceR
  * Use `create(WorkerValidateSourceRequestSchema)` to create a new message.
  */
 export const WorkerValidateSourceRequestSchema: GenMessage<WorkerValidateSourceRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 39);
+  messageDesc(file_gofi_v1_sandbox, 41);
 
 /**
  * @generated from message gofi.v1.WorkerValidateSourceResponse
@@ -1342,7 +1494,7 @@ export type WorkerValidateSourceResponse = Message<"gofi.v1.WorkerValidateSource
  * Use `create(WorkerValidateSourceResponseSchema)` to create a new message.
  */
 export const WorkerValidateSourceResponseSchema: GenMessage<WorkerValidateSourceResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 40);
+  messageDesc(file_gofi_v1_sandbox, 42);
 
 /**
  * RunFunction invokes a registered function in its saved library worker.
@@ -1403,7 +1555,7 @@ export type RunFunctionRequest = Message<"gofi.v1.RunFunctionRequest"> & {
  * Use `create(RunFunctionRequestSchema)` to create a new message.
  */
 export const RunFunctionRequestSchema: GenMessage<RunFunctionRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 41);
+  messageDesc(file_gofi_v1_sandbox, 43);
 
 /**
  * @generated from message gofi.v1.RunFunctionResponse
@@ -1470,7 +1622,7 @@ export type RunFunctionResponse = Message<"gofi.v1.RunFunctionResponse"> & {
  * Use `create(RunFunctionResponseSchema)` to create a new message.
  */
 export const RunFunctionResponseSchema: GenMessage<RunFunctionResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 42);
+  messageDesc(file_gofi_v1_sandbox, 44);
 
 /**
  * @generated from message gofi.v1.RunSourceRequest
@@ -1532,6 +1684,13 @@ export type RunSourceRequest = Message<"gofi.v1.RunSourceRequest"> & {
    * @generated from field: bool trace_lines = 11;
    */
   traceLines: boolean;
+
+  /**
+   * Run with the deployment's AI endpoint, as a library with `ai` set would.
+   *
+   * @generated from field: bool ai = 12;
+   */
+  ai: boolean;
 };
 
 /**
@@ -1539,7 +1698,7 @@ export type RunSourceRequest = Message<"gofi.v1.RunSourceRequest"> & {
  * Use `create(RunSourceRequestSchema)` to create a new message.
  */
 export const RunSourceRequestSchema: GenMessage<RunSourceRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 43);
+  messageDesc(file_gofi_v1_sandbox, 45);
 
 /**
  * @generated from message gofi.v1.DescribePythonEnvironmentRequest
@@ -1552,7 +1711,7 @@ export type DescribePythonEnvironmentRequest = Message<"gofi.v1.DescribePythonEn
  * Use `create(DescribePythonEnvironmentRequestSchema)` to create a new message.
  */
 export const DescribePythonEnvironmentRequestSchema: GenMessage<DescribePythonEnvironmentRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 44);
+  messageDesc(file_gofi_v1_sandbox, 46);
 
 /**
  * @generated from message gofi.v1.PythonPackage
@@ -1579,7 +1738,7 @@ export type PythonPackage = Message<"gofi.v1.PythonPackage"> & {
  * Use `create(PythonPackageSchema)` to create a new message.
  */
 export const PythonPackageSchema: GenMessage<PythonPackage> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 45);
+  messageDesc(file_gofi_v1_sandbox, 47);
 
 /**
  * @generated from message gofi.v1.PythonDecorator
@@ -1606,7 +1765,7 @@ export type PythonDecorator = Message<"gofi.v1.PythonDecorator"> & {
  * Use `create(PythonDecoratorSchema)` to create a new message.
  */
 export const PythonDecoratorSchema: GenMessage<PythonDecorator> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 46);
+  messageDesc(file_gofi_v1_sandbox, 48);
 
 /**
  * @generated from message gofi.v1.DescribePythonEnvironmentResponse
@@ -1641,6 +1800,14 @@ export type DescribePythonEnvironmentResponse = Message<"gofi.v1.DescribePythonE
    * @generated from field: int32 max_memory_mib = 6;
    */
   maxMemoryMib: number;
+
+  /**
+   * Whether the deployment provides an AI endpoint (gofi.llm) to libraries
+   * that opt in with SandboxDefinition.ai.
+   *
+   * @generated from field: bool ai_available = 7;
+   */
+  aiAvailable: boolean;
 };
 
 /**
@@ -1648,7 +1815,7 @@ export type DescribePythonEnvironmentResponse = Message<"gofi.v1.DescribePythonE
  * Use `create(DescribePythonEnvironmentResponseSchema)` to create a new message.
  */
 export const DescribePythonEnvironmentResponseSchema: GenMessage<DescribePythonEnvironmentResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_sandbox, 47);
+  messageDesc(file_gofi_v1_sandbox, 49);
 
 /**
  * Sandboxes are durable Python function libraries executed in separate workers.
@@ -1792,12 +1959,28 @@ export const WorkerService: GenService<{
     output: typeof WorkerInvokeResponseSchema;
   },
   /**
-   * @generated from rpc gofi.v1.WorkerService.Listen
+   * Fetch calls one @gofi.fetcher poll under the library's deadline and
+   * returns the frames it produced (Flow source.python, docs/flows.md).
+   *
+   * @generated from rpc gofi.v1.WorkerService.Fetch
    */
-  listen: {
+  fetch: {
+    methodKind: "unary";
+    input: typeof WorkerSourceRequestSchema;
+    output: typeof WorkerFetchResponseSchema;
+  },
+  /**
+   * Stream runs one @gofi.streamer until it ends, fails, or the caller
+   * cancels. The first message (started = true) carries no frames; later
+   * messages carry frames. The worker produces at most a small window of
+   * messages ahead of the caller (bounded backpressure).
+   *
+   * @generated from rpc gofi.v1.WorkerService.Stream
+   */
+  stream: {
     methodKind: "server_streaming";
-    input: typeof WorkerListenRequestSchema;
-    output: typeof WorkerListenResponseSchema;
+    input: typeof WorkerSourceRequestSchema;
+    output: typeof WorkerStreamResponseSchema;
   },
   /**
    * @generated from rpc gofi.v1.WorkerService.FormatSource

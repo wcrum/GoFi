@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { useStyles2 } from '@grafana/ui'
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from '@xyflow/react'
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position, type Edge, type EdgeProps } from '@xyflow/react'
 import { formatRate, particlesFor } from './traffic'
 
 export type TrafficEdgeData = {
@@ -10,6 +10,8 @@ export type TrafficEdgeData = {
   rate?: number
   /** Rejected-traffic edge (dead letter): drawn dashed and in the error color. */
   rejected?: boolean
+  /** Another flow is focused: the label fades with its edge. */
+  dimmed?: boolean
   [key: string]: unknown
 }
 export type TrafficEdgeType = Edge<TrafficEdgeData, 'traffic'>
@@ -26,13 +28,23 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
+/** Ports draw a 2px canvas-colored ring outside their measured bounds
+ * (flow-theme.css); edges end this far outside the port so the arrowhead
+ * stays clear of it. */
+const PORT_CLEARANCE = 4
+const PORT_OUTWARD: Record<Position, [number, number]> = {
+  [Position.Left]: [-1, 0], [Position.Right]: [1, 0], [Position.Top]: [0, -1], [Position.Bottom]: [0, 1],
+}
+
 /** A directional edge: a bezier curve, always arrowed, and while traffic
  * flows it highlights and carries dots along the same curve from source to
  * target at a pace that follows the rate. */
 export function TrafficEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, style, label, selected }: EdgeProps<TrafficEdgeType>) {
   const styles = useStyles2(getStyles)
   const reduced = useReducedMotion()
-  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
+  // Stop short of the target port so its canvas ring doesn't cover the arrowhead.
+  const [dx, dy] = PORT_OUTWARD[targetPosition]
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX: targetX + dx * PORT_CLEARANCE, targetY: targetY + dy * PORT_CLEARANCE, sourcePosition, targetPosition })
   const rate = data?.rate ?? 0
   const active = rate > 0
   const rejected = !!data?.rejected
@@ -48,7 +60,7 @@ export function TrafficEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosi
       </circle>
     ))}
     {(active || label) && <EdgeLabelRenderer>
-      <div className={cx('nodrag', 'nopan', styles.label, active && (rejected ? styles.labelRejected : styles.labelActive))}
+      <div className={cx('nodrag', 'nopan', styles.label, active && (rejected ? styles.labelRejected : styles.labelActive), data?.dimmed && styles.labelDimmed)}
         // Sits just above the line so short edges keep their arrow and dots visible.
         style={{ transform: `translate(-50%, calc(-100% - 6px)) translate(${labelX}px, ${labelY}px)` }}>
         {label && <span>{label}</span>}
@@ -69,9 +81,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     position: 'absolute', pointerEvents: 'none', display: 'flex', gap: theme.spacing(0.5), alignItems: 'center',
     padding: theme.spacing(0, 0.5), borderRadius: theme.shape.radius.default, fontSize: 10, lineHeight: '16px', whiteSpace: 'nowrap',
     background: theme.colors.background.primary, border: `1px solid ${theme.colors.border.weak}`, color: theme.colors.text.secondary,
+    transition: 'opacity 180ms ease', '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
   }),
   labelActive: css({ borderColor: theme.colors.primary.border, color: theme.colors.primary.text }),
   labelRejected: css({ borderColor: theme.colors.error.border, color: theme.colors.error.text }),
+  labelDimmed: css({ opacity: 0.25 }),
   rate: css({ fontFamily: theme.typography.fontFamilyMonospace, fontVariantNumeric: 'tabular-nums', fontWeight: theme.typography.fontWeightMedium }),
 })
 

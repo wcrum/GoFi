@@ -1,0 +1,41 @@
+suite: priority classes
+templates:
+  - templates/priorityclasses.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: creates nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: creates the control-plane and data-plane classes
+    set:
+      priorityClasses.create: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentSelector:
+          path: metadata.name
+          value: gofi-control-plane
+        equal:
+          path: value
+          value: 1000000
+      - documentSelector:
+          path: metadata.name
+          value: gofi-dataplane
+        equal:
+          path: value
+          value: 100000
+      - documentSelector:
+          path: metadata.name
+          value: gofi-dataplane
+        equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - documentSelector:
+          path: metadata.name
+          value: gofi-control-plane
+        equal:
+          path: globalDefault
+          value: false

@@ -1,0 +1,49 @@
+{{- /*
+Python worker Deployments (gofi-python-<library>) are created by the
+controller when workers.replicas > 1 or autoscaling is on. The chart adds the
+disruption budget and autoscalers around them.
+*/ -}}
+{{- $w := .Values.workers }}
+{{- if and $w.podDisruptionBudget.enabled (or (gt (int $w.replicas) 1) $w.autoscaling.enabled) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gofi.fullname" . }}-workers
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workers
+spec:
+  maxUnavailable: {{ $w.podDisruptionBudget.maxUnavailable }}
+  selector:
+    {{- include "gofi.workerPodSelector" . | nindent 4 }}
+{{- end }}
+{{- if $w.autoscaling.enabled }}
+{{- if not $w.autoscaling.libraries }}
+{{- fail "workers.autoscaling.libraries must list the Sandbox libraries to autoscale" }}
+{{- end }}
+{{- range $w.autoscaling.libraries }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gofi-python-{{ . }}
+  labels:
+    {{- include "gofi.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: workers
+    gofi.sandbox: {{ . | quote }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gofi-python-{{ . }}
+  minReplicas: {{ $w.autoscaling.minReplicas }}
+  maxReplicas: {{ $w.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $w.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}

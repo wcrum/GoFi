@@ -5,142 +5,204 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/wcrum/gofi/controller"
 	"github.com/wcrum/gofi/driver"
 	gofiv1 "github.com/wcrum/gofi/gen/gofi/v1"
 	"github.com/wcrum/gofi/gen/gofi/v1/gofiv1connect"
+	"github.com/wcrum/gofi/observability"
 	"github.com/wcrum/gofi/tapstream"
 )
 
-type tapSubscription struct {
-	target driver.TapTarget
-	cancel context.CancelFunc
+// layerController labels the hub's per-browser queues in metrics.
+const layerController = "controller"
+
+// trafficHub serves every WatchTraffic viewer from one upstream subscription
+// per flow. An event arrives from the runtime already converted (or is
+// converted once for in-process flows), is wrapped in one immutable response,
+// and is offered to each viewer's bounded queue; a viewer that falls behind
+// loses events, counted on its stream, and never delays another viewer or the
+// runtime.
+type trafficHub struct {
+	ctrl    *controller.Controller
+	cfg     hubConfig
+	clients *upstreamClients
+	set     *upstreamSet
+
+	mu      sync.RWMutex
+	viewers map[*trafficViewer]struct{}
 }
 
-// WatchTraffic multiplexes all selected listeners over one Connect server
-// stream, including listeners added or replaced while the portal stays open.
+type trafficViewer struct {
+	flow    string // "" watches every flow
+	ch      chan *gofiv1.WatchTrafficResponse
+	dropped atomic.Uint64
+}
+
+func newTrafficHub(ctrl *controller.Controller, cfg hubConfig, clients *upstreamClients) *trafficHub {
+	h := &trafficHub{ctrl: ctrl, cfg: cfg, clients: clients, viewers: map[*trafficViewer]struct{}{}}
+	h.set = newUpstreamSet("traffic", cfg, func() []string { return flowNames(ctrl) }, h.run)
+	return h
+}
+
+func flowNames(ctrl *controller.Controller) []string {
+	defs := ctrl.List()
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
+	}
+	return names
+}
+
+// subscribe registers a viewer; release detaches it.
+func (h *trafficHub) subscribe(flow string) (viewer *trafficViewer, release func()) {
+	viewer = &trafficViewer{flow: flow, ch: make(chan *gofiv1.WatchTrafficResponse, h.cfg.queue)}
+	h.mu.Lock()
+	h.viewers[viewer] = struct{}{}
+	h.mu.Unlock()
+	observability.TapSubscribed(layerController, 1)
+	unwant := h.set.want(flow)
+	return viewer, func() {
+		h.mu.Lock()
+		delete(h.viewers, viewer)
+		h.mu.Unlock()
+		observability.TapSubscribed(layerController, -1)
+		unwant()
+	}
+}
+
+// viewerCount reports how many browser streams the hub serves.
+func (h *trafficHub) viewerCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.viewers)
+}
+
+// dispatch offers one converted event to every interested viewer.
+func (h *trafficHub) dispatch(flow string, event *gofiv1.TrafficEvent) {
+	response := &gofiv1.WatchTrafficResponse{Flow: flow, Event: event}
+	var dropped uint64
+	h.mu.RLock()
+	for viewer := range h.viewers {
+		if viewer.flow != "" && viewer.flow != flow {
+			continue
+		}
+		select {
+		case viewer.ch <- response:
+		default:
+			viewer.dropped.Add(1)
+			dropped++
+		}
+	}
+	h.mu.RUnlock()
+	observability.TapDroppedAt(layerController, dropped)
+}
+
+// run is one flow's upstream: resolve the runtime, stream from it, repeat.
+func (h *trafficHub) run(ctx context.Context, name string, kick <-chan struct{}) {
+	h.set.resolveLoop(ctx, h.ctrl, name, kick,
+		func(ctx context.Context, target driver.TapTarget) error {
+			sub := tapstream.Shared(target.Local, tapstream.MaxBytes()).Subscribe(h.cfg.queue)
+			defer sub.Close()
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case event := <-sub.Events():
+					h.dispatch(name, event)
+				}
+			}
+		},
+		func(ctx context.Context, target driver.TapTarget) error {
+			return h.streamRemote(ctx, name, target.Addr)
+		})
+}
+
+// streamRemote relays one WatchTraffic session from a runtime. It tries the
+// shared h2c client first and falls back to HTTP/1.1 for a runtime that
+// never answered h2c, remembering the choice per address.
+func (h *trafficHub) streamRemote(ctx context.Context, name, addr string) error {
+	var lastErr error
+	for i, client := range h.clients.order(addr) {
+		remote := gofiv1connect.NewGoFiServiceClient(client, "http://"+addr)
+		stream, err := remote.WatchTraffic(ctx, connect.NewRequest(&gofiv1.WatchTrafficRequest{Name: name}))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		received := false
+		for stream.Receive() {
+			received = true
+			msg := stream.Msg()
+			if msg.Event != nil {
+				h.dispatch(name, msg.Event)
+			}
+		}
+		lastErr = stream.Err()
+		_ = stream.Close()
+		if received {
+			h.clients.learn(addr, i > 0)
+			return lastErr
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return lastErr
+}
+
+// WatchTraffic streams live events for one flow or every flow. Each message
+// carries how many events this stream skipped since the previous one.
 func (h *Handler) WatchTraffic(ctx context.Context, req *connect.Request[gofiv1.WatchTrafficRequest], stream *connect.ServerStream[gofiv1.WatchTrafficResponse]) error {
 	if req.Msg.Name != "" {
 		if _, found := h.ctrl.Get(req.Msg.Name); !found {
 			return rpcError(connect.CodeNotFound, errors.New("flow not found"))
 		}
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	var workers sync.WaitGroup
-	defer workers.Wait()
-	defer cancel()
-	transport := &http.Transport{Proxy: nil, ResponseHeaderTimeout: 5 * time.Second}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport}
-	events := make(chan *gofiv1.WatchTrafficResponse, 64)
-	subscriptions := map[string]tapSubscription{}
-	send := func(event *gofiv1.WatchTrafficResponse) {
-		select {
-		case events <- event:
-		default:
-		} // Slow viewers cannot block ingestion.
+	release, err := h.caps.acquire("traffic", clientKey(req))
+	if err != nil {
+		return err
 	}
-	refresh := func() {
-		wanted := map[string]bool{}
-		for _, def := range h.ctrl.List() {
-			if req.Msg.Name != "" && req.Msg.Name != def.Name {
-				continue
-			}
-			wanted[def.Name] = true
-			lookupCtx, done := context.WithTimeout(ctx, 5*time.Second)
-			target, found, err := h.ctrl.Tap(lookupCtx, def.Name)
-			done()
-			previous, exists := subscriptions[def.Name]
-			if err != nil {
-				continue
-			}
-			if exists && found && previous.target.Local == target.Local && previous.target.Addr == target.Addr {
-				continue
-			}
-			if exists {
-				previous.cancel()
-				delete(subscriptions, def.Name)
-			}
-			if !found || (target.Local == nil && target.Addr == "") {
-				continue
-			}
-			subCtx, stop := context.WithCancel(ctx)
-			subscriptions[def.Name] = tapSubscription{target: target, cancel: stop}
-			workers.Add(1)
-			go func(name string, target driver.TapTarget) {
-				defer workers.Done()
-				if target.Local != nil {
-					ch := target.Local.Subscribe()
-					defer target.Local.Unsubscribe(ch)
-					for {
-						select {
-						case <-subCtx.Done():
-							return
-						case event := <-ch:
-							converted, err := tapstream.Event(event)
-							if err == nil && converted != nil {
-								send(&gofiv1.WatchTrafficResponse{Flow: name, Event: converted})
-							}
-						}
-					}
-				}
-				remote := gofiv1connect.NewGoFiServiceClient(client, "http://"+target.Addr)
-				for subCtx.Err() == nil {
-					relay, err := remote.WatchTraffic(subCtx, connect.NewRequest(&gofiv1.WatchTrafficRequest{Name: name}))
-					if err == nil {
-						for relay.Receive() {
-							event := relay.Msg()
-							if event.Event != nil {
-								event.Flow = name
-								send(event)
-							}
-						}
-						relay.Close()
-					}
-					timer := time.NewTimer(5 * time.Second)
-					select {
-					case <-subCtx.Done():
-						timer.Stop()
-						return
-					case <-timer.C:
-					}
-				}
-			}(def.Name, target)
-		}
-		for name, subscription := range subscriptions {
-			if !wanted[name] {
-				subscription.cancel()
-				delete(subscriptions, name)
-			}
-		}
-	}
-	refresh()
+	defer release()
+	viewer, detach := h.traffic.subscribe(req.Msg.Name)
+	defer detach()
 	if err := stream.Send(&gofiv1.WatchTrafficResponse{Heartbeat: true}); err != nil {
 		return err
 	}
-	updates := time.NewTicker(5 * time.Second)
-	defer updates.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-updates.C:
-			refresh()
 		case <-heartbeat.C:
-			if err := stream.Send(&gofiv1.WatchTrafficResponse{Heartbeat: true}); err != nil {
+			if err := stream.Send(&gofiv1.WatchTrafficResponse{Heartbeat: true, Dropped: viewer.dropped.Swap(0)}); err != nil {
 				return err
 			}
-		case event := <-events:
-			if _, exists := subscriptions[event.Flow]; !exists {
-				continue
+		case response := <-viewer.ch:
+			if dropped := viewer.dropped.Swap(0); dropped > 0 {
+				// The shared response is immutable; a copy carries this viewer's count.
+				response = &gofiv1.WatchTrafficResponse{Flow: response.Flow, Event: response.Event, Dropped: dropped}
 			}
-			if err := stream.Send(event); err != nil {
+			if err := stream.Send(response); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+// streamingHandlerOptions compresses unary responses above 1 KiB when the
+// client accepts it (browsers always send Accept-Encoding: gzip) and leaves
+// small messages alone.
+func handlerOptions() []connect.HandlerOption {
+	return []connect.HandlerOption{connect.WithCompressMinBytes(1024)}
+}
+
+// withStreamDeadlines wraps the mounted service with per-write deadlines on
+// its streaming procedures.
+func withStreamDeadlines(service http.Handler) http.Handler {
+	return tapstream.WithWriteDeadline(service, tapstream.WriteTimeout())
 }

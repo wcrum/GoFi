@@ -46,6 +46,9 @@ spec:
                   description: Set by GoFi to flow:<listener> for libraries generated from inline flow stages.
                   type: string
                   maxLength: 260
+                ai:
+                  description: 'Deprecated and ignored: whether libraries may use the deployment''s AI endpoint through gofi.llm is one switch under Administration › AI assistant (the assistant configuration''s allowFunctions).'
+                  type: boolean
                 tests:
                   type: array
                   maxItems: 64

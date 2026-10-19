@@ -83,6 +83,7 @@ func (s *Supervisor) RunScratchAs(ctx context.Context, runID string, d Definitio
 	defer func() {
 		s.mu.Lock()
 		delete(s.scratch, name)
+		delete(s.scratchDefs, name)
 		s.mu.Unlock()
 	}()
 	select {
@@ -96,6 +97,10 @@ func (s *Supervisor) RunScratchAs(ctx context.Context, runID string, d Definitio
 	if err != nil {
 		return err
 	}
+	d = s.resolveAI(d)
+	s.mu.Lock()
+	s.scratchDefs[name] = d
+	s.mu.Unlock()
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -103,7 +108,7 @@ func (s *Supervisor) RunScratchAs(ctx context.Context, runID string, d Definitio
 			slog.Warn("scratch Python worker cleanup failed", "worker", d.Name, "error", err)
 		}
 	}()
-	endpoint, err := s.backend.Start(ctx, d, token)
+	endpoint, err := s.backend.Start(ctx, s.forBackend(d), token)
 	if err != nil {
 		return fmt.Errorf("scratch Python worker failed to start: %w", err)
 	}

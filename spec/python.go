@@ -8,9 +8,10 @@ import (
 	"strings"
 )
 
-// FunctionKinds lists the @gofi decorators in flow order; each kind plugs into
-// one flow step.
-var FunctionKinds = []string{"framer", "decoder", "parser", "transformer", "encoder", "sink"}
+// FunctionKinds lists the invocable @gofi decorators in flow order; each kind
+// plugs into one flow step. A fetcher (source.python) can also be invoked
+// once; streamers only run as a flow source (WorkerService.Stream).
+var FunctionKinds = []string{"fetcher", "framer", "decoder", "parser", "transformer", "encoder", "sink"}
 
 // PythonRef identifies a named function in a durable, isolated Python library.
 // Runtime addresses and credentials are resolved privately by the controller.
@@ -34,8 +35,11 @@ func (r *PythonRef) Validate() error {
 		// stored listeners carry the managed library resolved by the controller.
 		return ValidateInlineSource(r.InlineSource)
 	}
-	if r.Library == "" || r.Function == "" {
-		return fmt.Errorf("python.library and python.function are required")
+	if r.Function == "" {
+		return fmt.Errorf("python.function is required")
+	}
+	if r.Library == "" {
+		return fmt.Errorf("python.library is required (or set the flow's python.library default)")
 	}
 	return nil
 }
@@ -122,8 +126,8 @@ func (d *FlowDefinition) UnresolveInlinePython() {
 }
 
 // PythonRef paths name every Python function a flow uses, with the kind of
-// function each must be ("framer", "decoder", "parser", "transformer",
-// "encoder", or "sink").
+// function each must be ("source" for a fetcher or streamer, "framer",
+// "decoder", "parser", "transformer", "encoder", or "sink").
 type PythonUse struct {
 	Path string
 	Kind string
@@ -131,7 +135,8 @@ type PythonUse struct {
 }
 
 // PythonRefs lists every Python function the flow references, in pipeline
-// order: framer, decoders, parser, stages, then each sink's encoders and sink.
+// order: source, framer, decoders, parser, stages (including a parse
+// stage's decoders and parser), then each sink's encoders and sink.
 func (d FlowDefinition) PythonRefs() []PythonUse {
 	var uses []PythonUse
 	add := func(path, kind string, ref *PythonRef) {
@@ -139,13 +144,27 @@ func (d FlowDefinition) PythonRefs() []PythonUse {
 			uses = append(uses, PythonUse{Path: path, Kind: kind, Ref: ref})
 		}
 	}
+	if d.Source.Python != nil {
+		// Kind "source": a @gofi.fetcher or @gofi.streamer (spec.SourceFunctionKinds).
+		add("source.python", "source", d.Source.Python.Ref())
+	}
 	add("framing.python", "framer", d.Framing.Python)
-	for i, step := range d.Parser.Decoders {
+	for i, step := range d.DecodeSteps().Decoders {
+		add(fmt.Sprintf("decode.decoders[%d].python", i), "decoder", step.Python)
+	}
+	// Not yet normalized (see Normalize): still name every function.
+	for i, step := range d.Parser.LegacyDecoders {
 		add(fmt.Sprintf("parser.decoders[%d].python", i), "decoder", step.Python)
 	}
 	add("parser.python", "parser", d.Parser.Python)
 	for i, stage := range d.Stages {
 		add(fmt.Sprintf("stages[%d].python", i), "transformer", stage.Python)
+		if p := stage.Parse; p != nil {
+			for j, step := range p.Decoders {
+				add(fmt.Sprintf("stages[%d].parse.decoders[%d].python", i, j), "decoder", step.Python)
+			}
+			add(fmt.Sprintf("stages[%d].parse.python", i), "parser", p.Python)
+		}
 	}
 	sink := func(prefix string, s SinkCfg) {
 		if s.Encoding != nil {
@@ -175,3 +194,22 @@ func (d FlowDefinition) ValidateInlinePlacement() error {
 }
 
 func (d FlowDefinition) UsesPython() bool { return len(d.PythonRefs()) > 0 }
+
+// Reserved library-name prefixes (see sandbox.ManagedPrefix/ScratchPrefix):
+// libraries GoFi generates from a flow's inline stages, and scratch runs.
+var reservedLibraryPrefixes = []string{"flow-", "run-"}
+
+// CheckLibraryReference rejects a reference to a GoFi-managed library other
+// than the flow's own inline library: another flow's inline code, and its
+// worker, must not be reachable by naming its generated library.
+func CheckLibraryReference(flow string, ref *PythonRef) error {
+	if ref == nil || ref.Library == "" {
+		return nil
+	}
+	for _, prefix := range reservedLibraryPrefixes {
+		if strings.HasPrefix(ref.Library, prefix) && ref.Library != ManagedLibraryName(flow) {
+			return fmt.Errorf("library %q is managed by GoFi and cannot be referenced; use a saved library", ref.Library)
+		}
+	}
+	return nil
+}

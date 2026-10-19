@@ -7,7 +7,6 @@ import (
 
 	"github.com/wcrum/gofi/functionrpc"
 	"github.com/wcrum/gofi/spec"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // PythonBindingsChecker compares the private environment used by a remote
@@ -42,12 +41,12 @@ func (k *Kube) PythonBindingsCurrent(ctx context.Context, def spec.FlowDefinitio
 	if err != nil {
 		return false, err
 	}
-	pod, err := k.cs.CoreV1().Pods(k.namespace).Get(ctx, podName(def.Name), metav1.GetOptions{})
+	pod, _, err := k.currentPod(ctx, def.Name)
 	if err != nil {
 		return false, err
 	}
-	if pod.Labels[kubeLabelManaged] != "true" || pod.Labels[kubeLabelListener] != def.Name {
-		return false, fmt.Errorf("flow runtime is outside this deployment")
+	if pod == nil {
+		return false, fmt.Errorf("flow runtime has no live pod")
 	}
 	for _, container := range pod.Spec.Containers {
 		if container.Name != "gofi-listener" {

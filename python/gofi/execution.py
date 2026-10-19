@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 import traceback
-from . import _functions, _load, data_arity
+from . import Frame, SourceContext, _functions, _load, data_arity
 from . import debugger, logs
 
 MAX_RESULT = 1048576
@@ -61,27 +61,34 @@ def _coerce(entry, config):
     return {key: int(value) if types.get(key) == "int" and isinstance(value, float) and value.is_integer() else value for key, value in config.items()}
 
 
-def _call(entry, kind, raw, fields, meta, config):
-    callback = entry.callback
+def _options(entry, config):
+    """Keyword configuration for a call, rejecting names the function lacks."""
     config = _coerce(entry, config)
-    data = _data(kind, raw, fields, meta)[:data_arity(kind, callback)]
-    parameters = inspect.signature(callback).parameters.values()
+    parameters = inspect.signature(entry.callback).parameters.values()
     if any(p.kind is p.VAR_KEYWORD for p in parameters):
-        options = dict(config)
-    else:
-        accepted = {p.name for p in parameters if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)}
-        unknown = sorted(set(config) - accepted)
-        if unknown:
-            raise TypeError(f"unknown configuration for {entry.name}: {', '.join(unknown)}")
-        options = config
+        return dict(config)
+    accepted = {p.name for p in parameters if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)}
+    unknown = sorted(set(config) - accepted)
+    if unknown:
+        raise TypeError(f"unknown configuration for {entry.name}: {', '.join(unknown)}")
+    return config
+
+
+def _call(entry, kind, raw, fields, meta, config, context=None):
+    callback = entry.callback
+    options = _options(entry, config)
+    data = _data(kind, raw, fields, meta, context)[:data_arity(kind, callback)]
     result = callback(*data, **options)
     if inspect.isawaitable(result):
         result = asyncio.run(result)
     return result
 
 
-def _data(kind, raw, fields, meta):
+def _data(kind, raw, fields, meta, context=None):
     """Positional data arguments for each kind of step."""
+    if kind in ("fetcher", "streamer"):
+        # Run/Debug of a fetcher: fields are the state, meta["flow"] the flow.
+        return (context if context is not None else SourceContext(meta.get("flow", ""), fields),)
     if kind in ("parser", "decoder"):
         return (raw,)
     if kind == "framer":
@@ -91,9 +98,43 @@ def _data(kind, raw, fields, meta):
     return (fields, meta)
 
 
-def _shape(kind, result, output):
+MAX_SOURCE_FRAMES = 10000
+
+
+def _frame_bytes(data):
+    if isinstance(data, (bytes, bytearray, memoryview)):
+        return bytes(data)
+    if isinstance(data, str):
+        return data.encode("utf-8")
+    if isinstance(data, dict):
+        return json.dumps(data, allow_nan=False, default=str, separators=(",", ":")).encode("utf-8")
+    raise TypeError(f"a source frame must be bytes, str, a dict, or gofi.Frame (got {type(data).__name__})")
+
+
+def source_frames(result):
+    """Normalize a fetcher result or streamer item to [{"data": b64, "meta": {...}}]."""
+    if result is None:
+        return []
+    items = result if isinstance(result, (list, tuple)) else [result]
+    if len(items) > MAX_SOURCE_FRAMES:
+        raise ValueError(f"a source returned more than {MAX_SOURCE_FRAMES} frames at once")
+    frames = []
+    for item in items:
+        meta = {}
+        if isinstance(item, Frame):
+            if not isinstance(item.meta, dict):
+                raise TypeError("gofi.Frame meta must be a dict")
+            meta = {str(k)[:256]: str(v)[:4096] for k, v in item.meta.items()}
+            item = item.data
+        frames.append({"data": base64.b64encode(_frame_bytes(item)).decode("ascii"), "meta": meta})
+    return frames
+
+
+def _shape(kind, result, output, context=None):
     """Validate a step's return value and place it in the RPC result."""
-    if kind in ("decoder", "encoder"):
+    if kind == "fetcher":
+        output["fields"] = {"frames": source_frames(result), "state": context.state if context else {}}
+    elif kind in ("decoder", "encoder"):
         if isinstance(result, str):
             result = result.encode()
         if not isinstance(result, (bytes, bytearray)):
@@ -205,22 +246,26 @@ def _run(load, source, name, kind, raw, fields, meta, config, invocation_id="", 
                     _load(source)
                     _loaded = True
                 entry = _resolve(name, kind)
+                if kind == "streamer":
+                    raise TypeError("a streamer runs as a flow source (WorkerService.Stream), not as a single invocation")
                 echo.context["function"] = entry.name
                 output["entryLine"] = _entry_line(entry.callback)
                 logs.system(f"invocation started: {kind} {entry.name}", **echo.context)
+                # Fetchers receive their state (sent as fields) and flow name.
+                context = SourceContext(meta.get("flow", ""), fields) if kind == "fetcher" else None
                 started = time.perf_counter_ns()
                 if trace:
                     code = getattr(inspect.unwrap(entry.callback), "__code__", None)
                     sys.settrace(_line_tracer(code.co_filename if code else LIBRARY_FILENAME, executed))
                 try:
-                    result = _call(entry, kind, raw, fields, meta, config)
+                    result = _call(entry, kind, raw, fields, meta, config, context)
                 finally:
                     sys.settrace(None)
             finally:
                 for tee in tees:
                     tee.finish()
         output["name"] = entry.name
-        _shape(kind, result, output)
+        _shape(kind, result, output, context)
     except BaseException as exc:
         output = {"error": f"{type(exc).__name__}: {exc}"[:1024], "errorLine": _error_line(exc), "entryLine": output.get("entryLine", 0)}
     output["durationUs"] = (time.perf_counter_ns() - started) // 1000
@@ -410,3 +455,160 @@ class Executor:
             except BaseException:
                 self.stop()
                 raise
+
+
+# --- Streamers ---------------------------------------------------------------
+
+MAX_STREAM_MESSAGE = MAX_RESULT
+
+
+def _stream_serve(conn, source, name, config, flow, state, invocation_id, window):
+    """Child-process body of one streamer: load the library, iterate the
+    generator, and send each item as a message. At most `window` messages are
+    sent ahead of the parent's credits (bounded backpressure). A b"stop" from
+    the parent (or the pipe closing) stops at the next yield and closes the
+    generator so its finally blocks run."""
+    stop = threading.Event()
+    credits = threading.Semaphore(window)
+
+    def reader():
+        while True:
+            try:
+                message = conn.recv_bytes(64)
+            except (EOFError, OSError):
+                message = b"stop"
+            if message == b"credit":
+                credits.release()
+                continue
+            stop.set()
+            credits.release()
+            return
+
+    threading.Thread(target=reader, daemon=True).start()
+    echo = logs.RateEcho(invocation_id, name, "streamer")
+    tees = (logs.Tee(_CappedText(), echo, "stdout"), logs.Tee(_CappedText(), echo, "stderr"))
+    context = SourceContext(flow, state, stop)
+
+    def send(message):
+        data = json.dumps(message, allow_nan=False, default=str).encode()
+        if len(data) > MAX_STREAM_MESSAGE:
+            raise ValueError("a streamed item exceeds 1 MiB")
+        conn.send_bytes(data)
+
+    generator, loop, sent = None, None, 0
+    try:
+        with contextlib.redirect_stdout(tees[0]), contextlib.redirect_stderr(tees[1]):
+            try:
+                _load(source)
+                entry = _resolve(name, "streamer")
+                echo.context["function"] = entry.name
+                generator = entry.callback(*_data("streamer", b"", {}, {}, context)[:data_arity("streamer", entry.callback)], **_options(entry, config))
+                if inspect.isasyncgen(generator):
+                    loop = asyncio.new_event_loop()
+                    advance = lambda: loop.run_until_complete(generator.__anext__())
+                    finished = StopAsyncIteration
+                elif inspect.isgenerator(generator):
+                    advance, finished = generator.__next__, StopIteration
+                else:
+                    raise TypeError("a streamer must be a generator function (use yield)")
+                logs.system(f"streamer started: {entry.name}", **echo.context)
+                last_state = json.dumps(context.state, sort_keys=True, default=str)
+                while not stop.is_set():
+                    try:
+                        item = advance()
+                    except finished:
+                        if not stop.is_set():  # returning after a stop request is stopping
+                            send({"type": "end"})
+                            logs.system(f"streamer returned after {sent} messages", **echo.context)
+                        break
+                    message = {"type": "frames", "frames": source_frames(item)}
+                    current = json.dumps(context.state, sort_keys=True, default=str)
+                    if current != last_state:
+                        message["state"], last_state = context.state, current
+                    if not message["frames"] and "state" not in message:
+                        continue  # yielding None only gives GoFi a chance to stop
+                    while not credits.acquire(timeout=0.5):
+                        pass
+                    if stop.is_set():
+                        break
+                    send(message)
+                    sent += 1
+                if stop.is_set():
+                    logs.system(f"streamer stopping after {sent} messages", **echo.context)
+            finally:
+                try:
+                    if loop is not None:
+                        loop.run_until_complete(generator.aclose())
+                        loop.close()
+                    elif generator is not None and inspect.isgenerator(generator):
+                        generator.close()
+                finally:
+                    for tee in tees:
+                        tee.finish()
+    except BaseException as exc:
+        error = f"{type(exc).__name__}: {exc}"[:1024]
+        logs.system(f"streamer failed after {sent} messages: {error}", level="error", **echo.context)
+        with contextlib.suppress(BaseException):
+            send({"type": "error", "error": error, "errorLine": _error_line(exc)})
+    finally:
+        with contextlib.suppress(BaseException):
+            conn.close()
+
+
+class StreamSession:
+    """One @gofi.streamer running in its own child process.
+
+    Streams are long-lived, so they do not use the library's warm executor or
+    its one-at-a-time lock: invocations of the library's other functions keep
+    running. The child sends at most WINDOW messages ahead of credit()
+    calls, so a slow consumer pauses the generator instead of buffering.
+    """
+
+    WINDOW = 8
+
+    def __init__(self, source, name, config, flow, state, invocation_id):
+        self.args = (source, name, config or {}, flow, state or {}, invocation_id, self.WINDOW)
+        self.name, self.invocation_id = name, invocation_id
+        self.process, self.conn = None, None
+        self.lock = threading.Lock()
+
+    def start(self):
+        context = multiprocessing.get_context("spawn")
+        self.conn, child = context.Pipe(duplex=True)
+        self.process = context.Process(target=_stream_serve, args=(child, *self.args), daemon=True)
+        self.process.start()
+        child.close()
+
+    def receive(self, timeout):
+        """The next message, or None when nothing arrived within timeout."""
+        if not self.conn.poll(timeout):
+            if self.process.is_alive() or self.conn.poll(0):
+                return None
+            return self._crashed()
+        try:
+            return json.loads(self.conn.recv_bytes(MAX_STREAM_MESSAGE + 1024))
+        except (EOFError, OSError):
+            return self._crashed()
+
+    def _crashed(self):
+        logs.system("streamer process exited without a result (crash or memory limit)", level="error", invocation_id=self.invocation_id, function=self.name, kind="streamer")
+        return {"type": "error", "error": "streamer process exited (crash or memory limit)", "errorLine": 0}
+
+    def credit(self):
+        with self.lock, contextlib.suppress(OSError, ValueError):
+            self.conn.send_bytes(b"credit")
+
+    def stop(self, grace=2.0):
+        """Ask the streamer to stop at its next yield; kill it after grace."""
+        with self.lock:
+            if self.process is None:
+                return
+            with contextlib.suppress(OSError, ValueError):
+                self.conn.send_bytes(b"stop")
+        self.process.join(grace)
+        if self.process.is_alive():
+            logs.system(f"streamer did not stop within {grace:g}s; killed", level="warn", invocation_id=self.invocation_id, function=self.name, kind="streamer")
+            self.process.kill()
+            self.process.join(1)
+        with contextlib.suppress(OSError):
+            self.conn.close()

@@ -2,6 +2,7 @@
 // the flow-canvas node components so there is one source of truth for stage
 // coloring. Values are Grafana Badge colors.
 import type { BadgeColor } from '@grafana/ui'
+import { t } from '../i18n/index.ts'
 
 export type StageColor = BadgeColor
 
@@ -15,6 +16,8 @@ export const FRAMING_COLOR: Record<string, StageColor> = {
 export const PARSER_COLOR: Record<string, StageColor> = {
   xml: 'blue',
   json: 'green',
+  text: 'orange',
+  python: 'purple',
   none: 'darkgrey',
 }
 
@@ -40,6 +43,7 @@ export const STAGE_KIND_COLOR: Record<string, StageColor> = {
   dedup: 'purple',
   schema: 'green',
   python: 'purple',
+  parse: 'blue',
 }
 
 // Outline color for the transient mock-playback highlight on canvas nodes
@@ -63,9 +67,14 @@ export const MOCK_STATE_BADGE_COLOR: Record<string, StageColor> = {
   error: 'orange',
 }
 
-export const MOCK_STATE_LABEL: Record<string, string> = {
-  active: 'running',
-  pass: 'pass',
-  drop: 'drop',
-  error: 'error',
+/** Localized badge text for a MockState; unknown states return the raw key.
+ * A function (not a module constant) so labels resolve in the active locale. */
+export function mockStateLabel(state: string): string {
+  switch (state) {
+    case 'active': return t('gofi.components.stage-colors.mock-running', 'running')
+    case 'pass': return t('gofi.components.stage-colors.mock-pass', 'pass')
+    case 'drop': return t('gofi.components.stage-colors.mock-drop', 'drop')
+    case 'error': return t('gofi.components.stage-colors.mock-error', 'error')
+    default: return state
+  }
 }

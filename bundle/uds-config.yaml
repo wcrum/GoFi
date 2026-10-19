@@ -1,2 +1,6 @@
 # Optional deployment overrides. GoFi uses UDS Core's existing Keycloak/Authservice.
+# Dev clusters that rebuild the 0.2.0 tag:
+#   variables:
+#     gofi:
+#       IMAGE_PULL_POLICY: Always
 {}

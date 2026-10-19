@@ -1,8 +1,14 @@
 image:
   repository: ghcr.io/wcrum/gofi
   tag: "0.2.0"
-  # Dev packages rebuild the same tag; always pull so nodes never run a cached
-  # image. Applies to the controller, listener Pods, and Python worker Pods.
-  pullPolicy: Always
+  # Production: pull only when the tag is absent on the node. Dev packages that
+  # rebuild one tag set the IMAGE_PULL_POLICY bundle variable (or
+  # values/dev-values.yaml) to Always; it applies to the controller, listener
+  # Pods, and Python worker Pods alike.
+  pullPolicy: IfNotPresent
 uds:
   manageAllows: true
+# UDS Core's Package already default-denies; the chart's NetworkPolicies would
+# only widen it. Prometheus scrapes through the Package's monitors.
+networkPolicy:
+  enabled: false

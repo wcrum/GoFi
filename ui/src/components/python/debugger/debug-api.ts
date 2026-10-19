@@ -5,6 +5,7 @@ import { GoFiService, SimulateResultSchema } from '../../../gen/gofi/v1/gofi_pb'
 import { SandboxService, type DebugRecording as ProtoRecording, type DebugVariable as ProtoVariable, type RunFunctionResponse } from '../../../gen/gofi/v1/sandbox_pb'
 import type { PythonFunctionKind, PythonRunResult } from '../../../sandbox-api'
 import type { SimulateResult } from '../../../types'
+import { t } from '../../../i18n/index.ts'
 
 export interface DebugVariable { name: string; type: string; repr: string; children: DebugVariable[]; changed: boolean; truncated: boolean }
 export interface DebugWatch { expression: string; repr: string; error: string }
@@ -19,7 +20,7 @@ export interface DebugRecording {
   truncated: boolean; truncationReason: string; entryLine: number; runId: string
 }
 
-const transport = createConnectTransport({ baseUrl: window.location.origin })
+const transport = createConnectTransport({ baseUrl: window.location.origin, useBinaryFormat: true })
 const sandbox = createClient(SandboxService, transport)
 const gofi = createClient(GoFiService, transport)
 const encoder = new TextEncoder()
@@ -27,7 +28,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true })
 
 /** True when this controller does not implement the debugger RPCs yet. */
 export const debuggerUnavailable = (error: unknown) => ConnectError.from(error).code === Code.Unimplemented
-export const debugErrorMessage = (error: unknown) => debuggerUnavailable(error) ? 'This GoFi controller cannot record debug sessions yet.' : ConnectError.from(error).rawMessage || String(error)
+export const debugErrorMessage = (error: unknown) => debuggerUnavailable(error) ? t('gofi.python.debugger.unavailable', 'This GoFi controller cannot record debug sessions yet.') : ConnectError.from(error).rawMessage || String(error)
 
 const variable = (value: ProtoVariable): DebugVariable => ({ name: value.name, type: value.type, repr: value.repr, children: value.children.map(variable), changed: value.changed, truncated: value.truncated })
 function result(value: RunFunctionResponse): PythonRunResult {

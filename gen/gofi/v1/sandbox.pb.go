@@ -39,6 +39,7 @@ type DebugFunctionRequest struct {
 	MaxSteps       int32    `protobuf:"varint,10,opt,name=max_steps,json=maxSteps,proto3" json:"max_steps,omitempty"` // default 5000, max 20000
 	RunId          string   `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`           // correlates WatchWorkerLogs lines
 	TimeoutSeconds int32    `protobuf:"varint,12,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	Ai             bool     `protobuf:"varint,13,opt,name=ai,proto3" json:"ai,omitempty"` // deprecated: ignored (AssistantConfiguration.allow_functions decides)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -155,6 +156,13 @@ func (x *DebugFunctionRequest) GetTimeoutSeconds() int32 {
 		return x.TimeoutSeconds
 	}
 	return 0
+}
+
+func (x *DebugFunctionRequest) GetAi() bool {
+	if x != nil {
+		return x.Ai
+	}
+	return false
 }
 
 type DebugRecording struct {
@@ -750,7 +758,12 @@ type SandboxDefinition struct {
 	// generates from inline flow stages. Managed libraries are read-only.
 	ManagedBy string `protobuf:"bytes,6,opt,name=managed_by,json=managedBy,proto3" json:"managed_by,omitempty"`
 	// Outbound destinations this library may reach. Empty = no egress (default).
-	Egress        []*EgressRule `protobuf:"bytes,7,rep,name=egress,proto3" json:"egress,omitempty"`
+	Egress []*EgressRule `protobuf:"bytes,7,rep,name=egress,proto3" json:"egress,omitempty"`
+	// Deprecated: ignored. Whether libraries may use the deployment's AI
+	// endpoint through gofi.llm is one switch under Administration › AI
+	// assistant (AssistantConfiguration.allow_functions); GoFi supplies the
+	// endpoint, model, key, and egress rules to every worker while it is on.
+	Ai            bool `protobuf:"varint,8,opt,name=ai,proto3" json:"ai,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -832,6 +845,13 @@ func (x *SandboxDefinition) GetEgress() []*EgressRule {
 		return x.Egress
 	}
 	return nil
+}
+
+func (x *SandboxDefinition) GetAi() bool {
+	if x != nil {
+		return x.Ai
+	}
+	return false
 }
 
 // EgressRule allows outbound traffic from a library's worker. Kubernetes
@@ -1032,10 +1052,13 @@ func (x *FunctionTest) GetExpectDrop() bool {
 }
 
 type SandboxStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Phase         string                 `protobuf:"bytes,2,opt,name=phase,proto3" json:"phase,omitempty"`
-	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Phase string                 `protobuf:"bytes,2,opt,name=phase,proto3" json:"phase,omitempty"`
+	Error string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	// Whether the deployment currently provides an AI endpoint to libraries
+	// with `ai` set (explains an unavailable gofi.llm).
+	AiAvailable   bool `protobuf:"varint,4,opt,name=ai_available,json=aiAvailable,proto3" json:"ai_available,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1089,6 +1112,13 @@ func (x *SandboxStatus) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *SandboxStatus) GetAiAvailable() bool {
+	if x != nil {
+		return x.AiAvailable
+	}
+	return false
 }
 
 type ListSandboxesRequest struct {
@@ -1505,7 +1535,9 @@ type LibraryFunction struct {
 	Params []*FunctionParam `protobuf:"bytes,6,rep,name=params,proto3" json:"params,omitempty"`
 	// "flow:<name>" when the library is generated from a flow's inline Python;
 	// such functions belong to that flow and are not offered to others.
-	ManagedBy     string `protobuf:"bytes,7,opt,name=managed_by,json=managedBy,proto3" json:"managed_by,omitempty"`
+	ManagedBy string `protobuf:"bytes,7,opt,name=managed_by,json=managedBy,proto3" json:"managed_by,omitempty"`
+	// @gofi.fetcher(every=...): the default poll interval (Go duration).
+	Every         string `protobuf:"bytes,8,opt,name=every,proto3" json:"every,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1578,6 +1610,13 @@ func (x *LibraryFunction) GetParams() []*FunctionParam {
 func (x *LibraryFunction) GetManagedBy() string {
 	if x != nil {
 		return x.ManagedBy
+	}
+	return ""
+}
+
+func (x *LibraryFunction) GetEvery() string {
+	if x != nil {
+		return x.Every
 	}
 	return ""
 }
@@ -1811,11 +1850,13 @@ func (x *WorkerDebugRequest) GetInvocationId() string {
 }
 
 type WorkerFunction struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Params        []*FunctionParam       `protobuf:"bytes,5,rep,name=params,proto3" json:"params,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Kind        string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Params      []*FunctionParam       `protobuf:"bytes,5,rep,name=params,proto3" json:"params,omitempty"`
+	// @gofi.fetcher(every=...): the default poll interval (Go duration).
+	Every         string `protobuf:"bytes,6,opt,name=every,proto3" json:"every,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1876,6 +1917,13 @@ func (x *WorkerFunction) GetParams() []*FunctionParam {
 		return x.Params
 	}
 	return nil
+}
+
+func (x *WorkerFunction) GetEvery() string {
+	if x != nil {
+		return x.Every
+	}
+	return ""
 }
 
 type WorkerListFunctionsRequest struct {
@@ -2188,27 +2236,33 @@ func (x *WorkerInvokeResponse) GetInvocationId() string {
 	return ""
 }
 
-type WorkerListenRequest struct {
+// A Python flow source call: the function, its configuration, and the state
+// the previous call (or stream) left in ctx.state.
+type WorkerSourceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Config        *structpb.Struct       `protobuf:"bytes,2,opt,name=config,proto3" json:"config,omitempty"`
+	Flow          string                 `protobuf:"bytes,3,opt,name=flow,proto3" json:"flow,omitempty"`
+	State         *structpb.Struct       `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
+	InvocationId  string                 `protobuf:"bytes,5,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *WorkerListenRequest) Reset() {
-	*x = WorkerListenRequest{}
+func (x *WorkerSourceRequest) Reset() {
+	*x = WorkerSourceRequest{}
 	mi := &file_gofi_v1_sandbox_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *WorkerListenRequest) String() string {
+func (x *WorkerSourceRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*WorkerListenRequest) ProtoMessage() {}
+func (*WorkerSourceRequest) ProtoMessage() {}
 
-func (x *WorkerListenRequest) ProtoReflect() protoreflect.Message {
+func (x *WorkerSourceRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_gofi_v1_sandbox_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2220,41 +2274,70 @@ func (x *WorkerListenRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use WorkerListenRequest.ProtoReflect.Descriptor instead.
-func (*WorkerListenRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use WorkerSourceRequest.ProtoReflect.Descriptor instead.
+func (*WorkerSourceRequest) Descriptor() ([]byte, []int) {
 	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{30}
 }
 
-func (x *WorkerListenRequest) GetName() string {
+func (x *WorkerSourceRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-type WorkerListenResponse struct {
+func (x *WorkerSourceRequest) GetConfig() *structpb.Struct {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *WorkerSourceRequest) GetFlow() string {
+	if x != nil {
+		return x.Flow
+	}
+	return ""
+}
+
+func (x *WorkerSourceRequest) GetState() *structpb.Struct {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+func (x *WorkerSourceRequest) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+// One frame a fetcher returned or a streamer yielded, with optional metadata
+// from gofi.Frame(data, meta=...).
+type SourceFrame struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Raw           []byte                 `protobuf:"bytes,1,opt,name=raw,proto3" json:"raw,omitempty"`
-	Fields        *structpb.Struct       `protobuf:"bytes,2,opt,name=fields,proto3" json:"fields,omitempty"`
-	Meta          *structpb.Struct       `protobuf:"bytes,3,opt,name=meta,proto3" json:"meta,omitempty"`
+	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	Meta          map[string]string      `protobuf:"bytes,2,rep,name=meta,proto3" json:"meta,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *WorkerListenResponse) Reset() {
-	*x = WorkerListenResponse{}
+func (x *SourceFrame) Reset() {
+	*x = SourceFrame{}
 	mi := &file_gofi_v1_sandbox_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *WorkerListenResponse) String() string {
+func (x *SourceFrame) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*WorkerListenResponse) ProtoMessage() {}
+func (*SourceFrame) ProtoMessage() {}
 
-func (x *WorkerListenResponse) ProtoReflect() protoreflect.Message {
+func (x *SourceFrame) ProtoReflect() protoreflect.Message {
 	mi := &file_gofi_v1_sandbox_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2266,30 +2349,195 @@ func (x *WorkerListenResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use WorkerListenResponse.ProtoReflect.Descriptor instead.
-func (*WorkerListenResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use SourceFrame.ProtoReflect.Descriptor instead.
+func (*SourceFrame) Descriptor() ([]byte, []int) {
 	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *WorkerListenResponse) GetRaw() []byte {
+func (x *SourceFrame) GetData() []byte {
 	if x != nil {
-		return x.Raw
+		return x.Data
 	}
 	return nil
 }
 
-func (x *WorkerListenResponse) GetFields() *structpb.Struct {
-	if x != nil {
-		return x.Fields
-	}
-	return nil
-}
-
-func (x *WorkerListenResponse) GetMeta() *structpb.Struct {
+func (x *SourceFrame) GetMeta() map[string]string {
 	if x != nil {
 		return x.Meta
 	}
 	return nil
+}
+
+type WorkerFetchResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Frames []*SourceFrame         `protobuf:"bytes,1,rep,name=frames,proto3" json:"frames,omitempty"`
+	// ctx.state after the call; send it back with the next call.
+	State      *structpb.Struct `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	Stdout     string           `protobuf:"bytes,3,opt,name=stdout,proto3" json:"stdout,omitempty"`
+	Stderr     string           `protobuf:"bytes,4,opt,name=stderr,proto3" json:"stderr,omitempty"`
+	DurationUs int64            `protobuf:"varint,5,opt,name=duration_us,json=durationUs,proto3" json:"duration_us,omitempty"`
+	// A user-code exception (the RPC still succeeds, like Invoke).
+	Error         string            `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorLocation *SourceDiagnostic `protobuf:"bytes,7,opt,name=error_location,json=errorLocation,proto3" json:"error_location,omitempty"`
+	InvocationId  string            `protobuf:"bytes,8,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerFetchResponse) Reset() {
+	*x = WorkerFetchResponse{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerFetchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerFetchResponse) ProtoMessage() {}
+
+func (x *WorkerFetchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerFetchResponse.ProtoReflect.Descriptor instead.
+func (*WorkerFetchResponse) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *WorkerFetchResponse) GetFrames() []*SourceFrame {
+	if x != nil {
+		return x.Frames
+	}
+	return nil
+}
+
+func (x *WorkerFetchResponse) GetState() *structpb.Struct {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+func (x *WorkerFetchResponse) GetStdout() string {
+	if x != nil {
+		return x.Stdout
+	}
+	return ""
+}
+
+func (x *WorkerFetchResponse) GetStderr() string {
+	if x != nil {
+		return x.Stderr
+	}
+	return ""
+}
+
+func (x *WorkerFetchResponse) GetDurationUs() int64 {
+	if x != nil {
+		return x.DurationUs
+	}
+	return 0
+}
+
+func (x *WorkerFetchResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *WorkerFetchResponse) GetErrorLocation() *SourceDiagnostic {
+	if x != nil {
+		return x.ErrorLocation
+	}
+	return nil
+}
+
+func (x *WorkerFetchResponse) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+type WorkerStreamResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Frames []*SourceFrame         `protobuf:"bytes,1,rep,name=frames,proto3" json:"frames,omitempty"`
+	// Set when ctx.state changed since the previous message.
+	State *structpb.Struct `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	// The first message: the streamer process started.
+	Started       bool   `protobuf:"varint,3,opt,name=started,proto3" json:"started,omitempty"`
+	InvocationId  string `protobuf:"bytes,4,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerStreamResponse) Reset() {
+	*x = WorkerStreamResponse{}
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerStreamResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerStreamResponse) ProtoMessage() {}
+
+func (x *WorkerStreamResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerStreamResponse.ProtoReflect.Descriptor instead.
+func (*WorkerStreamResponse) Descriptor() ([]byte, []int) {
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *WorkerStreamResponse) GetFrames() []*SourceFrame {
+	if x != nil {
+		return x.Frames
+	}
+	return nil
+}
+
+func (x *WorkerStreamResponse) GetState() *structpb.Struct {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+func (x *WorkerStreamResponse) GetStarted() bool {
+	if x != nil {
+		return x.Started
+	}
+	return false
+}
+
+func (x *WorkerStreamResponse) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
 }
 
 // Formatting and validation run only in the private tooling worker. They never
@@ -2306,7 +2554,7 @@ type SourceDiagnostic struct {
 
 func (x *SourceDiagnostic) Reset() {
 	*x = SourceDiagnostic{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[32]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2318,7 +2566,7 @@ func (x *SourceDiagnostic) String() string {
 func (*SourceDiagnostic) ProtoMessage() {}
 
 func (x *SourceDiagnostic) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[32]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2331,7 +2579,7 @@ func (x *SourceDiagnostic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceDiagnostic.ProtoReflect.Descriptor instead.
 func (*SourceDiagnostic) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{32}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *SourceDiagnostic) GetLine() int32 {
@@ -2371,7 +2619,7 @@ type FormatSourceRequest struct {
 
 func (x *FormatSourceRequest) Reset() {
 	*x = FormatSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[33]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2383,7 +2631,7 @@ func (x *FormatSourceRequest) String() string {
 func (*FormatSourceRequest) ProtoMessage() {}
 
 func (x *FormatSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[33]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2396,7 +2644,7 @@ func (x *FormatSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FormatSourceRequest.ProtoReflect.Descriptor instead.
 func (*FormatSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{33}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *FormatSourceRequest) GetSource() string {
@@ -2415,7 +2663,7 @@ type FormatSourceResponse struct {
 
 func (x *FormatSourceResponse) Reset() {
 	*x = FormatSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[34]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2427,7 +2675,7 @@ func (x *FormatSourceResponse) String() string {
 func (*FormatSourceResponse) ProtoMessage() {}
 
 func (x *FormatSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[34]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2440,7 +2688,7 @@ func (x *FormatSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FormatSourceResponse.ProtoReflect.Descriptor instead.
 func (*FormatSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{34}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *FormatSourceResponse) GetSource() string {
@@ -2459,7 +2707,7 @@ type ValidateSourceRequest struct {
 
 func (x *ValidateSourceRequest) Reset() {
 	*x = ValidateSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[35]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2471,7 +2719,7 @@ func (x *ValidateSourceRequest) String() string {
 func (*ValidateSourceRequest) ProtoMessage() {}
 
 func (x *ValidateSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[35]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2484,7 +2732,7 @@ func (x *ValidateSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateSourceRequest.ProtoReflect.Descriptor instead.
 func (*ValidateSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{35}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ValidateSourceRequest) GetSource() string {
@@ -2504,7 +2752,7 @@ type ValidateSourceResponse struct {
 
 func (x *ValidateSourceResponse) Reset() {
 	*x = ValidateSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[36]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2516,7 +2764,7 @@ func (x *ValidateSourceResponse) String() string {
 func (*ValidateSourceResponse) ProtoMessage() {}
 
 func (x *ValidateSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[36]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2529,7 +2777,7 @@ func (x *ValidateSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateSourceResponse.ProtoReflect.Descriptor instead.
 func (*ValidateSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{36}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ValidateSourceResponse) GetValid() bool {
@@ -2555,7 +2803,7 @@ type WorkerFormatSourceRequest struct {
 
 func (x *WorkerFormatSourceRequest) Reset() {
 	*x = WorkerFormatSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[37]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2567,7 +2815,7 @@ func (x *WorkerFormatSourceRequest) String() string {
 func (*WorkerFormatSourceRequest) ProtoMessage() {}
 
 func (x *WorkerFormatSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[37]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2580,7 +2828,7 @@ func (x *WorkerFormatSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerFormatSourceRequest.ProtoReflect.Descriptor instead.
 func (*WorkerFormatSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{37}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *WorkerFormatSourceRequest) GetSource() string {
@@ -2599,7 +2847,7 @@ type WorkerFormatSourceResponse struct {
 
 func (x *WorkerFormatSourceResponse) Reset() {
 	*x = WorkerFormatSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[38]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2611,7 +2859,7 @@ func (x *WorkerFormatSourceResponse) String() string {
 func (*WorkerFormatSourceResponse) ProtoMessage() {}
 
 func (x *WorkerFormatSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[38]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2624,7 +2872,7 @@ func (x *WorkerFormatSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerFormatSourceResponse.ProtoReflect.Descriptor instead.
 func (*WorkerFormatSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{38}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *WorkerFormatSourceResponse) GetSource() string {
@@ -2643,7 +2891,7 @@ type WorkerValidateSourceRequest struct {
 
 func (x *WorkerValidateSourceRequest) Reset() {
 	*x = WorkerValidateSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[39]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2655,7 +2903,7 @@ func (x *WorkerValidateSourceRequest) String() string {
 func (*WorkerValidateSourceRequest) ProtoMessage() {}
 
 func (x *WorkerValidateSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[39]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2668,7 +2916,7 @@ func (x *WorkerValidateSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerValidateSourceRequest.ProtoReflect.Descriptor instead.
 func (*WorkerValidateSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{39}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *WorkerValidateSourceRequest) GetSource() string {
@@ -2688,7 +2936,7 @@ type WorkerValidateSourceResponse struct {
 
 func (x *WorkerValidateSourceResponse) Reset() {
 	*x = WorkerValidateSourceResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[40]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2700,7 +2948,7 @@ func (x *WorkerValidateSourceResponse) String() string {
 func (*WorkerValidateSourceResponse) ProtoMessage() {}
 
 func (x *WorkerValidateSourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[40]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2713,7 +2961,7 @@ func (x *WorkerValidateSourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerValidateSourceResponse.ProtoReflect.Descriptor instead.
 func (*WorkerValidateSourceResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{40}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *WorkerValidateSourceResponse) GetValid() bool {
@@ -2749,7 +2997,7 @@ type RunFunctionRequest struct {
 
 func (x *RunFunctionRequest) Reset() {
 	*x = RunFunctionRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[41]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2761,7 +3009,7 @@ func (x *RunFunctionRequest) String() string {
 func (*RunFunctionRequest) ProtoMessage() {}
 
 func (x *RunFunctionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[41]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2774,7 +3022,7 @@ func (x *RunFunctionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunFunctionRequest.ProtoReflect.Descriptor instead.
 func (*RunFunctionRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{41}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *RunFunctionRequest) GetLibrary() string {
@@ -2859,7 +3107,7 @@ type RunFunctionResponse struct {
 
 func (x *RunFunctionResponse) Reset() {
 	*x = RunFunctionResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[42]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2871,7 +3119,7 @@ func (x *RunFunctionResponse) String() string {
 func (*RunFunctionResponse) ProtoMessage() {}
 
 func (x *RunFunctionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[42]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2884,7 +3132,7 @@ func (x *RunFunctionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunFunctionResponse.ProtoReflect.Descriptor instead.
 func (*RunFunctionResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{42}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RunFunctionResponse) GetFields() *structpb.Struct {
@@ -2976,15 +3224,17 @@ type RunSourceRequest struct {
 	TimeoutSeconds int32                  `protobuf:"varint,8,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
 	MemoryMib      int32                  `protobuf:"varint,9,opt,name=memory_mib,json=memoryMib,proto3" json:"memory_mib,omitempty"`
 	// Names the short-lived worker so WatchWorkerLogs(run_id) can attach to it.
-	RunId         string `protobuf:"bytes,10,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	TraceLines    bool   `protobuf:"varint,11,opt,name=trace_lines,json=traceLines,proto3" json:"trace_lines,omitempty"`
+	RunId      string `protobuf:"bytes,10,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TraceLines bool   `protobuf:"varint,11,opt,name=trace_lines,json=traceLines,proto3" json:"trace_lines,omitempty"`
+	// Run with the deployment's AI endpoint, as a library with `ai` set would.
+	Ai            bool `protobuf:"varint,12,opt,name=ai,proto3" json:"ai,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunSourceRequest) Reset() {
 	*x = RunSourceRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[43]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2996,7 +3246,7 @@ func (x *RunSourceRequest) String() string {
 func (*RunSourceRequest) ProtoMessage() {}
 
 func (x *RunSourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[43]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3009,7 +3259,7 @@ func (x *RunSourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunSourceRequest.ProtoReflect.Descriptor instead.
 func (*RunSourceRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{43}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *RunSourceRequest) GetSource() string {
@@ -3089,6 +3339,13 @@ func (x *RunSourceRequest) GetTraceLines() bool {
 	return false
 }
 
+func (x *RunSourceRequest) GetAi() bool {
+	if x != nil {
+		return x.Ai
+	}
+	return false
+}
+
 type DescribePythonEnvironmentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3097,7 +3354,7 @@ type DescribePythonEnvironmentRequest struct {
 
 func (x *DescribePythonEnvironmentRequest) Reset() {
 	*x = DescribePythonEnvironmentRequest{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[44]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3109,7 +3366,7 @@ func (x *DescribePythonEnvironmentRequest) String() string {
 func (*DescribePythonEnvironmentRequest) ProtoMessage() {}
 
 func (x *DescribePythonEnvironmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[44]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3122,7 +3379,7 @@ func (x *DescribePythonEnvironmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribePythonEnvironmentRequest.ProtoReflect.Descriptor instead.
 func (*DescribePythonEnvironmentRequest) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{44}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{46}
 }
 
 type PythonPackage struct {
@@ -3136,7 +3393,7 @@ type PythonPackage struct {
 
 func (x *PythonPackage) Reset() {
 	*x = PythonPackage{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[45]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3148,7 +3405,7 @@ func (x *PythonPackage) String() string {
 func (*PythonPackage) ProtoMessage() {}
 
 func (x *PythonPackage) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[45]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3161,7 +3418,7 @@ func (x *PythonPackage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PythonPackage.ProtoReflect.Descriptor instead.
 func (*PythonPackage) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{45}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *PythonPackage) GetName() string {
@@ -3196,7 +3453,7 @@ type PythonDecorator struct {
 
 func (x *PythonDecorator) Reset() {
 	*x = PythonDecorator{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[46]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3208,7 +3465,7 @@ func (x *PythonDecorator) String() string {
 func (*PythonDecorator) ProtoMessage() {}
 
 func (x *PythonDecorator) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[46]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3221,7 +3478,7 @@ func (x *PythonDecorator) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PythonDecorator.ProtoReflect.Descriptor instead.
 func (*PythonDecorator) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{46}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *PythonDecorator) GetName() string {
@@ -3253,13 +3510,16 @@ type DescribePythonEnvironmentResponse struct {
 	NetworkPolicy     string                 `protobuf:"bytes,4,opt,name=network_policy,json=networkPolicy,proto3" json:"network_policy,omitempty"`
 	MaxTimeoutSeconds int32                  `protobuf:"varint,5,opt,name=max_timeout_seconds,json=maxTimeoutSeconds,proto3" json:"max_timeout_seconds,omitempty"`
 	MaxMemoryMib      int32                  `protobuf:"varint,6,opt,name=max_memory_mib,json=maxMemoryMib,proto3" json:"max_memory_mib,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Whether the deployment provides an AI endpoint (gofi.llm) to libraries
+	// that opt in with SandboxDefinition.ai.
+	AiAvailable   bool `protobuf:"varint,7,opt,name=ai_available,json=aiAvailable,proto3" json:"ai_available,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DescribePythonEnvironmentResponse) Reset() {
 	*x = DescribePythonEnvironmentResponse{}
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[47]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3271,7 +3531,7 @@ func (x *DescribePythonEnvironmentResponse) String() string {
 func (*DescribePythonEnvironmentResponse) ProtoMessage() {}
 
 func (x *DescribePythonEnvironmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gofi_v1_sandbox_proto_msgTypes[47]
+	mi := &file_gofi_v1_sandbox_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3284,7 +3544,7 @@ func (x *DescribePythonEnvironmentResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use DescribePythonEnvironmentResponse.ProtoReflect.Descriptor instead.
 func (*DescribePythonEnvironmentResponse) Descriptor() ([]byte, []int) {
-	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{47}
+	return file_gofi_v1_sandbox_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *DescribePythonEnvironmentResponse) GetPythonVersion() string {
@@ -3329,11 +3589,18 @@ func (x *DescribePythonEnvironmentResponse) GetMaxMemoryMib() int32 {
 	return 0
 }
 
+func (x *DescribePythonEnvironmentResponse) GetAiAvailable() bool {
+	if x != nil {
+		return x.AiAvailable
+	}
+	return false
+}
+
 var File_gofi_v1_sandbox_proto protoreflect.FileDescriptor
 
 const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\n" +
-	"\x15gofi/v1/sandbox.proto\x12\agofi.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x03\n" +
+	"\x15gofi/v1/sandbox.proto\x12\agofi.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x98\x03\n" +
 	"\x14DebugFunctionRequest\x12\x18\n" +
 	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x12\n" +
@@ -3347,7 +3614,8 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\tmax_steps\x18\n" +
 	" \x01(\x05R\bmaxSteps\x12\x15\n" +
 	"\x06run_id\x18\v \x01(\tR\x05runId\x12'\n" +
-	"\x0ftimeout_seconds\x18\f \x01(\x05R\x0etimeoutSeconds\"\xb2\x02\n" +
+	"\x0ftimeout_seconds\x18\f \x01(\x05R\x0etimeoutSeconds\x12\x0e\n" +
+	"\x02ai\x18\r \x01(\bR\x02ai\"\xb2\x02\n" +
 	"\x0eDebugRecording\x12(\n" +
 	"\x05steps\x18\x01 \x03(\v2\x12.gofi.v1.DebugStepR\x05steps\x124\n" +
 	"\x06result\x18\x02 \x01(\v2\x1c.gofi.v1.RunFunctionResponseR\x06result\x12?\n" +
@@ -3401,7 +3669,7 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\rinvocation_id\x18\x04 \x01(\tR\finvocationId\x12\x1a\n" +
 	"\bfunction\x18\x05 \x01(\tR\bfunction\x12\x12\n" +
 	"\x04kind\x18\x06 \x01(\tR\x04kind\x12\x14\n" +
-	"\x05level\x18\a \x01(\tR\x05level\"\x89\x02\n" +
+	"\x05level\x18\a \x01(\tR\x05level\"\x99\x02\n" +
 	"\x11SandboxDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
 	"\vsource_code\x18\x02 \x01(\tR\n" +
@@ -3412,7 +3680,8 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x05tests\x18\x05 \x03(\v2\x15.gofi.v1.FunctionTestR\x05tests\x12\x1d\n" +
 	"\n" +
 	"managed_by\x18\x06 \x01(\tR\tmanagedBy\x12+\n" +
-	"\x06egress\x18\a \x03(\v2\x13.gofi.v1.EgressRuleR\x06egress\"\x99\x02\n" +
+	"\x06egress\x18\a \x03(\v2\x13.gofi.v1.EgressRuleR\x06egress\x12\x0e\n" +
+	"\x02ai\x18\b \x01(\bR\x02ai\"\x99\x02\n" +
 	"\n" +
 	"EgressRule\x12\x12\n" +
 	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x12\x12\n" +
@@ -3435,11 +3704,12 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\rexpect_fields\x18\b \x01(\v2\x17.google.protobuf.StructR\fexpectFields\x12$\n" +
 	"\vexpect_drop\x18\t \x01(\bH\x00R\n" +
 	"expectDrop\x88\x01\x01B\x0e\n" +
-	"\f_expect_drop\"O\n" +
+	"\f_expect_drop\"r\n" +
 	"\rSandboxStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05phase\x18\x02 \x01(\tR\x05phase\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\x16\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12!\n" +
+	"\fai_available\x18\x04 \x01(\bR\vaiAvailable\"\x16\n" +
 	"\x14ListSandboxesRequest\"\x85\x01\n" +
 	"\x15ListSandboxesResponse\x128\n" +
 	"\tsandboxes\x18\x01 \x03(\v2\x1a.gofi.v1.SandboxDefinitionR\tsandboxes\x122\n" +
@@ -3458,7 +3728,7 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x17\n" +
 	"\x15DeleteSandboxResponse\"7\n" +
 	"\x1bListLibraryFunctionsRequest\x12\x18\n" +
-	"\alibrary\x18\x01 \x01(\tR\alibrary\"\xd3\x01\n" +
+	"\alibrary\x18\x01 \x01(\tR\alibrary\"\xe9\x01\n" +
 	"\x0fLibraryFunction\x12\x18\n" +
 	"\alibrary\x18\x01 \x01(\tR\alibrary\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3466,7 +3736,8 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12.\n" +
 	"\x06params\x18\x06 \x03(\v2\x16.gofi.v1.FunctionParamR\x06params\x12\x1d\n" +
 	"\n" +
-	"managed_by\x18\a \x01(\tR\tmanagedByJ\x04\b\x05\x10\x06R\aingress\"\xa7\x01\n" +
+	"managed_by\x18\a \x01(\tR\tmanagedBy\x12\x14\n" +
+	"\x05every\x18\b \x01(\tR\x05everyJ\x04\b\x05\x10\x06R\aingress\"\xa7\x01\n" +
 	"\rFunctionParam\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x120\n" +
@@ -3484,12 +3755,13 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x06config\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x18\n" +
 	"\awatches\x18\a \x03(\tR\awatches\x12\x1b\n" +
 	"\tmax_steps\x18\b \x01(\x05R\bmaxSteps\x12#\n" +
-	"\rinvocation_id\x18\t \x01(\tR\finvocationId\"\x99\x01\n" +
+	"\rinvocation_id\x18\t \x01(\tR\finvocationId\"\xaf\x01\n" +
 	"\x0eWorkerFunction\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12.\n" +
-	"\x06params\x18\x05 \x03(\v2\x16.gofi.v1.FunctionParamR\x06paramsJ\x04\b\x04\x10\x05R\aingress\"\x1c\n" +
+	"\x06params\x18\x05 \x03(\v2\x16.gofi.v1.FunctionParamR\x06params\x12\x14\n" +
+	"\x05every\x18\x06 \x01(\tR\x05everyJ\x04\b\x04\x10\x05R\aingress\"\x1c\n" +
 	"\x1aWorkerListFunctionsRequest\"T\n" +
 	"\x1bWorkerListFunctionsResponse\x125\n" +
 	"\tfunctions\x18\x01 \x03(\v2\x17.gofi.v1.WorkerFunctionR\tfunctions\"\xa4\x02\n" +
@@ -3518,13 +3790,34 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x0eexecuted_lines\x18\n" +
 	" \x03(\x05R\rexecutedLines\x12#\n" +
 	"\rinvocation_id\x18\v \x01(\tR\finvocationIdB\x06\n" +
-	"\x04_raw\")\n" +
-	"\x13WorkerListenRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x86\x01\n" +
-	"\x14WorkerListenResponse\x12\x10\n" +
-	"\x03raw\x18\x01 \x01(\fR\x03raw\x12/\n" +
-	"\x06fields\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x06fields\x12+\n" +
-	"\x04meta\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x04meta\"l\n" +
+	"\x04_raw\"\xc2\x01\n" +
+	"\x13WorkerSourceRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12/\n" +
+	"\x06config\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x12\n" +
+	"\x04flow\x18\x03 \x01(\tR\x04flow\x12-\n" +
+	"\x05state\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x05state\x12#\n" +
+	"\rinvocation_id\x18\x05 \x01(\tR\finvocationId\"\x8e\x01\n" +
+	"\vSourceFrame\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\x122\n" +
+	"\x04meta\x18\x02 \x03(\v2\x1e.gofi.v1.SourceFrame.MetaEntryR\x04meta\x1a7\n" +
+	"\tMetaEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc0\x02\n" +
+	"\x13WorkerFetchResponse\x12,\n" +
+	"\x06frames\x18\x01 \x03(\v2\x14.gofi.v1.SourceFrameR\x06frames\x12-\n" +
+	"\x05state\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05state\x12\x16\n" +
+	"\x06stdout\x18\x03 \x01(\tR\x06stdout\x12\x16\n" +
+	"\x06stderr\x18\x04 \x01(\tR\x06stderr\x12\x1f\n" +
+	"\vduration_us\x18\x05 \x01(\x03R\n" +
+	"durationUs\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12@\n" +
+	"\x0eerror_location\x18\a \x01(\v2\x19.gofi.v1.SourceDiagnosticR\rerrorLocation\x12#\n" +
+	"\rinvocation_id\x18\b \x01(\tR\finvocationId\"\xb2\x01\n" +
+	"\x14WorkerStreamResponse\x12,\n" +
+	"\x06frames\x18\x01 \x03(\v2\x14.gofi.v1.SourceFrameR\x06frames\x12-\n" +
+	"\x05state\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05state\x12\x18\n" +
+	"\astarted\x18\x03 \x01(\bR\astarted\x12#\n" +
+	"\rinvocation_id\x18\x04 \x01(\tR\finvocationId\"l\n" +
 	"\x10SourceDiagnostic\x12\x12\n" +
 	"\x04line\x18\x01 \x01(\x05R\x04line\x12\x16\n" +
 	"\x06column\x18\x02 \x01(\x05R\x06column\x12\x12\n" +
@@ -3574,7 +3867,7 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x0eexecuted_lines\x18\n" +
 	" \x03(\x05R\rexecutedLines\x12\x15\n" +
 	"\x06run_id\x18\v \x01(\tR\x05runIdB\x06\n" +
-	"\x04_raw\"\xf3\x02\n" +
+	"\x04_raw\"\x83\x03\n" +
 	"\x10RunSourceRequest\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3589,7 +3882,8 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x06run_id\x18\n" +
 	" \x01(\tR\x05runId\x12\x1f\n" +
 	"\vtrace_lines\x18\v \x01(\bR\n" +
-	"traceLines\"\"\n" +
+	"traceLines\x12\x0e\n" +
+	"\x02ai\x18\f \x01(\bR\x02ai\"\"\n" +
 	" DescribePythonEnvironmentRequest\"W\n" +
 	"\rPythonPackage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -3598,7 +3892,7 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\x0fPythonDecorator\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\tR\tsignature\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\"\xb5\x02\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"\xd8\x02\n" +
 	"!DescribePythonEnvironmentResponse\x12%\n" +
 	"\x0epython_version\x18\x01 \x01(\tR\rpythonVersion\x122\n" +
 	"\bpackages\x18\x02 \x03(\v2\x16.gofi.v1.PythonPackageR\bpackages\x128\n" +
@@ -3607,7 +3901,8 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"decorators\x12%\n" +
 	"\x0enetwork_policy\x18\x04 \x01(\tR\rnetworkPolicy\x12.\n" +
 	"\x13max_timeout_seconds\x18\x05 \x01(\x05R\x11maxTimeoutSeconds\x12$\n" +
-	"\x0emax_memory_mib\x18\x06 \x01(\x05R\fmaxMemoryMib2\xd8\a\n" +
+	"\x0emax_memory_mib\x18\x06 \x01(\x05R\fmaxMemoryMib\x12!\n" +
+	"\fai_available\x18\a \x01(\bR\vaiAvailable2\xd8\a\n" +
 	"\x0eSandboxService\x12N\n" +
 	"\rListSandboxes\x12\x1d.gofi.v1.ListSandboxesRequest\x1a\x1e.gofi.v1.ListSandboxesResponse\x12E\n" +
 	"\n" +
@@ -3621,11 +3916,12 @@ const file_gofi_v1_sandbox_proto_rawDesc = "" +
 	"\tRunSource\x12\x19.gofi.v1.RunSourceRequest\x1a\x1c.gofi.v1.RunFunctionResponse\x12l\n" +
 	"\x13DescribeEnvironment\x12).gofi.v1.DescribePythonEnvironmentRequest\x1a*.gofi.v1.DescribePythonEnvironmentResponse\x12M\n" +
 	"\x0fWatchWorkerLogs\x12\x1f.gofi.v1.WatchWorkerLogsRequest\x1a\x17.gofi.v1.WorkerLogEntry0\x01\x12G\n" +
-	"\rDebugFunction\x12\x1d.gofi.v1.DebugFunctionRequest\x1a\x17.gofi.v1.DebugRecording2\xe0\x04\n" +
+	"\rDebugFunction\x12\x1d.gofi.v1.DebugFunctionRequest\x1a\x17.gofi.v1.DebugRecording2\xa5\x05\n" +
 	"\rWorkerService\x12Z\n" +
 	"\rListFunctions\x12#.gofi.v1.WorkerListFunctionsRequest\x1a$.gofi.v1.WorkerListFunctionsResponse\x12E\n" +
-	"\x06Invoke\x12\x1c.gofi.v1.WorkerInvokeRequest\x1a\x1d.gofi.v1.WorkerInvokeResponse\x12G\n" +
-	"\x06Listen\x12\x1c.gofi.v1.WorkerListenRequest\x1a\x1d.gofi.v1.WorkerListenResponse0\x01\x12W\n" +
+	"\x06Invoke\x12\x1c.gofi.v1.WorkerInvokeRequest\x1a\x1d.gofi.v1.WorkerInvokeResponse\x12C\n" +
+	"\x05Fetch\x12\x1c.gofi.v1.WorkerSourceRequest\x1a\x1c.gofi.v1.WorkerFetchResponse\x12G\n" +
+	"\x06Stream\x12\x1c.gofi.v1.WorkerSourceRequest\x1a\x1d.gofi.v1.WorkerStreamResponse0\x01\x12W\n" +
 	"\fFormatSource\x12\".gofi.v1.WorkerFormatSourceRequest\x1a#.gofi.v1.WorkerFormatSourceResponse\x12]\n" +
 	"\x0eValidateSource\x12$.gofi.v1.WorkerValidateSourceRequest\x1a%.gofi.v1.WorkerValidateSourceResponse\x12l\n" +
 	"\x13DescribeEnvironment\x12).gofi.v1.DescribePythonEnvironmentRequest\x1a*.gofi.v1.DescribePythonEnvironmentResponse\x12=\n" +
@@ -3643,7 +3939,7 @@ func file_gofi_v1_sandbox_proto_rawDescGZIP() []byte {
 	return file_gofi_v1_sandbox_proto_rawDescData
 }
 
-var file_gofi_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_gofi_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_gofi_v1_sandbox_proto_goTypes = []any{
 	(*DebugFunctionRequest)(nil),              // 0: gofi.v1.DebugFunctionRequest
 	(*DebugRecording)(nil),                    // 1: gofi.v1.DebugRecording
@@ -3675,35 +3971,38 @@ var file_gofi_v1_sandbox_proto_goTypes = []any{
 	(*WorkerListFunctionsResponse)(nil),       // 27: gofi.v1.WorkerListFunctionsResponse
 	(*WorkerInvokeRequest)(nil),               // 28: gofi.v1.WorkerInvokeRequest
 	(*WorkerInvokeResponse)(nil),              // 29: gofi.v1.WorkerInvokeResponse
-	(*WorkerListenRequest)(nil),               // 30: gofi.v1.WorkerListenRequest
-	(*WorkerListenResponse)(nil),              // 31: gofi.v1.WorkerListenResponse
-	(*SourceDiagnostic)(nil),                  // 32: gofi.v1.SourceDiagnostic
-	(*FormatSourceRequest)(nil),               // 33: gofi.v1.FormatSourceRequest
-	(*FormatSourceResponse)(nil),              // 34: gofi.v1.FormatSourceResponse
-	(*ValidateSourceRequest)(nil),             // 35: gofi.v1.ValidateSourceRequest
-	(*ValidateSourceResponse)(nil),            // 36: gofi.v1.ValidateSourceResponse
-	(*WorkerFormatSourceRequest)(nil),         // 37: gofi.v1.WorkerFormatSourceRequest
-	(*WorkerFormatSourceResponse)(nil),        // 38: gofi.v1.WorkerFormatSourceResponse
-	(*WorkerValidateSourceRequest)(nil),       // 39: gofi.v1.WorkerValidateSourceRequest
-	(*WorkerValidateSourceResponse)(nil),      // 40: gofi.v1.WorkerValidateSourceResponse
-	(*RunFunctionRequest)(nil),                // 41: gofi.v1.RunFunctionRequest
-	(*RunFunctionResponse)(nil),               // 42: gofi.v1.RunFunctionResponse
-	(*RunSourceRequest)(nil),                  // 43: gofi.v1.RunSourceRequest
-	(*DescribePythonEnvironmentRequest)(nil),  // 44: gofi.v1.DescribePythonEnvironmentRequest
-	(*PythonPackage)(nil),                     // 45: gofi.v1.PythonPackage
-	(*PythonDecorator)(nil),                   // 46: gofi.v1.PythonDecorator
-	(*DescribePythonEnvironmentResponse)(nil), // 47: gofi.v1.DescribePythonEnvironmentResponse
-	nil,                           // 48: gofi.v1.EgressRule.PodSelectorEntry
-	(*structpb.Struct)(nil),       // 49: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 50: google.protobuf.Timestamp
-	(*structpb.Value)(nil),        // 51: google.protobuf.Value
+	(*WorkerSourceRequest)(nil),               // 30: gofi.v1.WorkerSourceRequest
+	(*SourceFrame)(nil),                       // 31: gofi.v1.SourceFrame
+	(*WorkerFetchResponse)(nil),               // 32: gofi.v1.WorkerFetchResponse
+	(*WorkerStreamResponse)(nil),              // 33: gofi.v1.WorkerStreamResponse
+	(*SourceDiagnostic)(nil),                  // 34: gofi.v1.SourceDiagnostic
+	(*FormatSourceRequest)(nil),               // 35: gofi.v1.FormatSourceRequest
+	(*FormatSourceResponse)(nil),              // 36: gofi.v1.FormatSourceResponse
+	(*ValidateSourceRequest)(nil),             // 37: gofi.v1.ValidateSourceRequest
+	(*ValidateSourceResponse)(nil),            // 38: gofi.v1.ValidateSourceResponse
+	(*WorkerFormatSourceRequest)(nil),         // 39: gofi.v1.WorkerFormatSourceRequest
+	(*WorkerFormatSourceResponse)(nil),        // 40: gofi.v1.WorkerFormatSourceResponse
+	(*WorkerValidateSourceRequest)(nil),       // 41: gofi.v1.WorkerValidateSourceRequest
+	(*WorkerValidateSourceResponse)(nil),      // 42: gofi.v1.WorkerValidateSourceResponse
+	(*RunFunctionRequest)(nil),                // 43: gofi.v1.RunFunctionRequest
+	(*RunFunctionResponse)(nil),               // 44: gofi.v1.RunFunctionResponse
+	(*RunSourceRequest)(nil),                  // 45: gofi.v1.RunSourceRequest
+	(*DescribePythonEnvironmentRequest)(nil),  // 46: gofi.v1.DescribePythonEnvironmentRequest
+	(*PythonPackage)(nil),                     // 47: gofi.v1.PythonPackage
+	(*PythonDecorator)(nil),                   // 48: gofi.v1.PythonDecorator
+	(*DescribePythonEnvironmentResponse)(nil), // 49: gofi.v1.DescribePythonEnvironmentResponse
+	nil,                           // 50: gofi.v1.EgressRule.PodSelectorEntry
+	nil,                           // 51: gofi.v1.SourceFrame.MetaEntry
+	(*structpb.Struct)(nil),       // 52: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 53: google.protobuf.Timestamp
+	(*structpb.Value)(nil),        // 54: google.protobuf.Value
 }
 var file_gofi_v1_sandbox_proto_depIdxs = []int32{
-	49, // 0: gofi.v1.DebugFunctionRequest.fields:type_name -> google.protobuf.Struct
-	49, // 1: gofi.v1.DebugFunctionRequest.meta:type_name -> google.protobuf.Struct
-	49, // 2: gofi.v1.DebugFunctionRequest.config:type_name -> google.protobuf.Struct
+	52, // 0: gofi.v1.DebugFunctionRequest.fields:type_name -> google.protobuf.Struct
+	52, // 1: gofi.v1.DebugFunctionRequest.meta:type_name -> google.protobuf.Struct
+	52, // 2: gofi.v1.DebugFunctionRequest.config:type_name -> google.protobuf.Struct
 	2,  // 3: gofi.v1.DebugRecording.steps:type_name -> gofi.v1.DebugStep
-	42, // 4: gofi.v1.DebugRecording.result:type_name -> gofi.v1.RunFunctionResponse
+	44, // 4: gofi.v1.DebugRecording.result:type_name -> gofi.v1.RunFunctionResponse
 	4,  // 5: gofi.v1.DebugRecording.initial_globals:type_name -> gofi.v1.DebugVariable
 	3,  // 6: gofi.v1.DebugStep.stack:type_name -> gofi.v1.DebugFrame
 	4,  // 7: gofi.v1.DebugStep.locals:type_name -> gofi.v1.DebugVariable
@@ -3711,14 +4010,14 @@ var file_gofi_v1_sandbox_proto_depIdxs = []int32{
 	5,  // 9: gofi.v1.DebugStep.watches:type_name -> gofi.v1.DebugWatch
 	4,  // 10: gofi.v1.DebugStep.return_value:type_name -> gofi.v1.DebugVariable
 	4,  // 11: gofi.v1.DebugVariable.children:type_name -> gofi.v1.DebugVariable
-	50, // 12: gofi.v1.WorkerLogEntry.time:type_name -> google.protobuf.Timestamp
+	53, // 12: gofi.v1.WorkerLogEntry.time:type_name -> google.protobuf.Timestamp
 	10, // 13: gofi.v1.SandboxDefinition.tests:type_name -> gofi.v1.FunctionTest
 	9,  // 14: gofi.v1.SandboxDefinition.egress:type_name -> gofi.v1.EgressRule
-	48, // 15: gofi.v1.EgressRule.pod_selector:type_name -> gofi.v1.EgressRule.PodSelectorEntry
-	49, // 16: gofi.v1.FunctionTest.fields:type_name -> google.protobuf.Struct
-	49, // 17: gofi.v1.FunctionTest.meta:type_name -> google.protobuf.Struct
-	49, // 18: gofi.v1.FunctionTest.config:type_name -> google.protobuf.Struct
-	49, // 19: gofi.v1.FunctionTest.expect_fields:type_name -> google.protobuf.Struct
+	50, // 15: gofi.v1.EgressRule.pod_selector:type_name -> gofi.v1.EgressRule.PodSelectorEntry
+	52, // 16: gofi.v1.FunctionTest.fields:type_name -> google.protobuf.Struct
+	52, // 17: gofi.v1.FunctionTest.meta:type_name -> google.protobuf.Struct
+	52, // 18: gofi.v1.FunctionTest.config:type_name -> google.protobuf.Struct
+	52, // 19: gofi.v1.FunctionTest.expect_fields:type_name -> google.protobuf.Struct
 	8,  // 20: gofi.v1.ListSandboxesResponse.sandboxes:type_name -> gofi.v1.SandboxDefinition
 	11, // 21: gofi.v1.ListSandboxesResponse.statuses:type_name -> gofi.v1.SandboxStatus
 	8,  // 22: gofi.v1.GetSandboxResponse.sandbox:type_name -> gofi.v1.SandboxDefinition
@@ -3727,75 +4026,83 @@ var file_gofi_v1_sandbox_proto_depIdxs = []int32{
 	8,  // 25: gofi.v1.ApplySandboxResponse.sandbox:type_name -> gofi.v1.SandboxDefinition
 	11, // 26: gofi.v1.ApplySandboxResponse.status:type_name -> gofi.v1.SandboxStatus
 	22, // 27: gofi.v1.LibraryFunction.params:type_name -> gofi.v1.FunctionParam
-	51, // 28: gofi.v1.FunctionParam.default:type_name -> google.protobuf.Value
+	54, // 28: gofi.v1.FunctionParam.default:type_name -> google.protobuf.Value
 	21, // 29: gofi.v1.ListLibraryFunctionsResponse.functions:type_name -> gofi.v1.LibraryFunction
-	49, // 30: gofi.v1.WorkerDebugRequest.fields:type_name -> google.protobuf.Struct
-	49, // 31: gofi.v1.WorkerDebugRequest.meta:type_name -> google.protobuf.Struct
-	49, // 32: gofi.v1.WorkerDebugRequest.config:type_name -> google.protobuf.Struct
+	52, // 30: gofi.v1.WorkerDebugRequest.fields:type_name -> google.protobuf.Struct
+	52, // 31: gofi.v1.WorkerDebugRequest.meta:type_name -> google.protobuf.Struct
+	52, // 32: gofi.v1.WorkerDebugRequest.config:type_name -> google.protobuf.Struct
 	22, // 33: gofi.v1.WorkerFunction.params:type_name -> gofi.v1.FunctionParam
 	25, // 34: gofi.v1.WorkerListFunctionsResponse.functions:type_name -> gofi.v1.WorkerFunction
-	49, // 35: gofi.v1.WorkerInvokeRequest.fields:type_name -> google.protobuf.Struct
-	49, // 36: gofi.v1.WorkerInvokeRequest.meta:type_name -> google.protobuf.Struct
-	49, // 37: gofi.v1.WorkerInvokeRequest.config:type_name -> google.protobuf.Struct
-	49, // 38: gofi.v1.WorkerInvokeResponse.fields:type_name -> google.protobuf.Struct
-	32, // 39: gofi.v1.WorkerInvokeResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
-	49, // 40: gofi.v1.WorkerListenResponse.fields:type_name -> google.protobuf.Struct
-	49, // 41: gofi.v1.WorkerListenResponse.meta:type_name -> google.protobuf.Struct
-	32, // 42: gofi.v1.ValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
-	32, // 43: gofi.v1.WorkerValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
-	49, // 44: gofi.v1.RunFunctionRequest.fields:type_name -> google.protobuf.Struct
-	49, // 45: gofi.v1.RunFunctionRequest.meta:type_name -> google.protobuf.Struct
-	49, // 46: gofi.v1.RunFunctionRequest.config:type_name -> google.protobuf.Struct
-	49, // 47: gofi.v1.RunFunctionResponse.fields:type_name -> google.protobuf.Struct
-	32, // 48: gofi.v1.RunFunctionResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
-	49, // 49: gofi.v1.RunSourceRequest.fields:type_name -> google.protobuf.Struct
-	49, // 50: gofi.v1.RunSourceRequest.meta:type_name -> google.protobuf.Struct
-	49, // 51: gofi.v1.RunSourceRequest.config:type_name -> google.protobuf.Struct
-	45, // 52: gofi.v1.DescribePythonEnvironmentResponse.packages:type_name -> gofi.v1.PythonPackage
-	46, // 53: gofi.v1.DescribePythonEnvironmentResponse.decorators:type_name -> gofi.v1.PythonDecorator
-	12, // 54: gofi.v1.SandboxService.ListSandboxes:input_type -> gofi.v1.ListSandboxesRequest
-	14, // 55: gofi.v1.SandboxService.GetSandbox:input_type -> gofi.v1.GetSandboxRequest
-	16, // 56: gofi.v1.SandboxService.ApplySandbox:input_type -> gofi.v1.ApplySandboxRequest
-	18, // 57: gofi.v1.SandboxService.DeleteSandbox:input_type -> gofi.v1.DeleteSandboxRequest
-	20, // 58: gofi.v1.SandboxService.ListFunctions:input_type -> gofi.v1.ListLibraryFunctionsRequest
-	33, // 59: gofi.v1.SandboxService.FormatSource:input_type -> gofi.v1.FormatSourceRequest
-	35, // 60: gofi.v1.SandboxService.ValidateSource:input_type -> gofi.v1.ValidateSourceRequest
-	41, // 61: gofi.v1.SandboxService.RunFunction:input_type -> gofi.v1.RunFunctionRequest
-	43, // 62: gofi.v1.SandboxService.RunSource:input_type -> gofi.v1.RunSourceRequest
-	44, // 63: gofi.v1.SandboxService.DescribeEnvironment:input_type -> gofi.v1.DescribePythonEnvironmentRequest
-	6,  // 64: gofi.v1.SandboxService.WatchWorkerLogs:input_type -> gofi.v1.WatchWorkerLogsRequest
-	0,  // 65: gofi.v1.SandboxService.DebugFunction:input_type -> gofi.v1.DebugFunctionRequest
-	26, // 66: gofi.v1.WorkerService.ListFunctions:input_type -> gofi.v1.WorkerListFunctionsRequest
-	28, // 67: gofi.v1.WorkerService.Invoke:input_type -> gofi.v1.WorkerInvokeRequest
-	30, // 68: gofi.v1.WorkerService.Listen:input_type -> gofi.v1.WorkerListenRequest
-	37, // 69: gofi.v1.WorkerService.FormatSource:input_type -> gofi.v1.WorkerFormatSourceRequest
-	39, // 70: gofi.v1.WorkerService.ValidateSource:input_type -> gofi.v1.WorkerValidateSourceRequest
-	44, // 71: gofi.v1.WorkerService.DescribeEnvironment:input_type -> gofi.v1.DescribePythonEnvironmentRequest
-	24, // 72: gofi.v1.WorkerService.Debug:input_type -> gofi.v1.WorkerDebugRequest
-	13, // 73: gofi.v1.SandboxService.ListSandboxes:output_type -> gofi.v1.ListSandboxesResponse
-	15, // 74: gofi.v1.SandboxService.GetSandbox:output_type -> gofi.v1.GetSandboxResponse
-	17, // 75: gofi.v1.SandboxService.ApplySandbox:output_type -> gofi.v1.ApplySandboxResponse
-	19, // 76: gofi.v1.SandboxService.DeleteSandbox:output_type -> gofi.v1.DeleteSandboxResponse
-	23, // 77: gofi.v1.SandboxService.ListFunctions:output_type -> gofi.v1.ListLibraryFunctionsResponse
-	34, // 78: gofi.v1.SandboxService.FormatSource:output_type -> gofi.v1.FormatSourceResponse
-	36, // 79: gofi.v1.SandboxService.ValidateSource:output_type -> gofi.v1.ValidateSourceResponse
-	42, // 80: gofi.v1.SandboxService.RunFunction:output_type -> gofi.v1.RunFunctionResponse
-	42, // 81: gofi.v1.SandboxService.RunSource:output_type -> gofi.v1.RunFunctionResponse
-	47, // 82: gofi.v1.SandboxService.DescribeEnvironment:output_type -> gofi.v1.DescribePythonEnvironmentResponse
-	7,  // 83: gofi.v1.SandboxService.WatchWorkerLogs:output_type -> gofi.v1.WorkerLogEntry
-	1,  // 84: gofi.v1.SandboxService.DebugFunction:output_type -> gofi.v1.DebugRecording
-	27, // 85: gofi.v1.WorkerService.ListFunctions:output_type -> gofi.v1.WorkerListFunctionsResponse
-	29, // 86: gofi.v1.WorkerService.Invoke:output_type -> gofi.v1.WorkerInvokeResponse
-	31, // 87: gofi.v1.WorkerService.Listen:output_type -> gofi.v1.WorkerListenResponse
-	38, // 88: gofi.v1.WorkerService.FormatSource:output_type -> gofi.v1.WorkerFormatSourceResponse
-	40, // 89: gofi.v1.WorkerService.ValidateSource:output_type -> gofi.v1.WorkerValidateSourceResponse
-	47, // 90: gofi.v1.WorkerService.DescribeEnvironment:output_type -> gofi.v1.DescribePythonEnvironmentResponse
-	1,  // 91: gofi.v1.WorkerService.Debug:output_type -> gofi.v1.DebugRecording
-	73, // [73:92] is the sub-list for method output_type
-	54, // [54:73] is the sub-list for method input_type
-	54, // [54:54] is the sub-list for extension type_name
-	54, // [54:54] is the sub-list for extension extendee
-	0,  // [0:54] is the sub-list for field type_name
+	52, // 35: gofi.v1.WorkerInvokeRequest.fields:type_name -> google.protobuf.Struct
+	52, // 36: gofi.v1.WorkerInvokeRequest.meta:type_name -> google.protobuf.Struct
+	52, // 37: gofi.v1.WorkerInvokeRequest.config:type_name -> google.protobuf.Struct
+	52, // 38: gofi.v1.WorkerInvokeResponse.fields:type_name -> google.protobuf.Struct
+	34, // 39: gofi.v1.WorkerInvokeResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
+	52, // 40: gofi.v1.WorkerSourceRequest.config:type_name -> google.protobuf.Struct
+	52, // 41: gofi.v1.WorkerSourceRequest.state:type_name -> google.protobuf.Struct
+	51, // 42: gofi.v1.SourceFrame.meta:type_name -> gofi.v1.SourceFrame.MetaEntry
+	31, // 43: gofi.v1.WorkerFetchResponse.frames:type_name -> gofi.v1.SourceFrame
+	52, // 44: gofi.v1.WorkerFetchResponse.state:type_name -> google.protobuf.Struct
+	34, // 45: gofi.v1.WorkerFetchResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
+	31, // 46: gofi.v1.WorkerStreamResponse.frames:type_name -> gofi.v1.SourceFrame
+	52, // 47: gofi.v1.WorkerStreamResponse.state:type_name -> google.protobuf.Struct
+	34, // 48: gofi.v1.ValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
+	34, // 49: gofi.v1.WorkerValidateSourceResponse.diagnostics:type_name -> gofi.v1.SourceDiagnostic
+	52, // 50: gofi.v1.RunFunctionRequest.fields:type_name -> google.protobuf.Struct
+	52, // 51: gofi.v1.RunFunctionRequest.meta:type_name -> google.protobuf.Struct
+	52, // 52: gofi.v1.RunFunctionRequest.config:type_name -> google.protobuf.Struct
+	52, // 53: gofi.v1.RunFunctionResponse.fields:type_name -> google.protobuf.Struct
+	34, // 54: gofi.v1.RunFunctionResponse.error_location:type_name -> gofi.v1.SourceDiagnostic
+	52, // 55: gofi.v1.RunSourceRequest.fields:type_name -> google.protobuf.Struct
+	52, // 56: gofi.v1.RunSourceRequest.meta:type_name -> google.protobuf.Struct
+	52, // 57: gofi.v1.RunSourceRequest.config:type_name -> google.protobuf.Struct
+	47, // 58: gofi.v1.DescribePythonEnvironmentResponse.packages:type_name -> gofi.v1.PythonPackage
+	48, // 59: gofi.v1.DescribePythonEnvironmentResponse.decorators:type_name -> gofi.v1.PythonDecorator
+	12, // 60: gofi.v1.SandboxService.ListSandboxes:input_type -> gofi.v1.ListSandboxesRequest
+	14, // 61: gofi.v1.SandboxService.GetSandbox:input_type -> gofi.v1.GetSandboxRequest
+	16, // 62: gofi.v1.SandboxService.ApplySandbox:input_type -> gofi.v1.ApplySandboxRequest
+	18, // 63: gofi.v1.SandboxService.DeleteSandbox:input_type -> gofi.v1.DeleteSandboxRequest
+	20, // 64: gofi.v1.SandboxService.ListFunctions:input_type -> gofi.v1.ListLibraryFunctionsRequest
+	35, // 65: gofi.v1.SandboxService.FormatSource:input_type -> gofi.v1.FormatSourceRequest
+	37, // 66: gofi.v1.SandboxService.ValidateSource:input_type -> gofi.v1.ValidateSourceRequest
+	43, // 67: gofi.v1.SandboxService.RunFunction:input_type -> gofi.v1.RunFunctionRequest
+	45, // 68: gofi.v1.SandboxService.RunSource:input_type -> gofi.v1.RunSourceRequest
+	46, // 69: gofi.v1.SandboxService.DescribeEnvironment:input_type -> gofi.v1.DescribePythonEnvironmentRequest
+	6,  // 70: gofi.v1.SandboxService.WatchWorkerLogs:input_type -> gofi.v1.WatchWorkerLogsRequest
+	0,  // 71: gofi.v1.SandboxService.DebugFunction:input_type -> gofi.v1.DebugFunctionRequest
+	26, // 72: gofi.v1.WorkerService.ListFunctions:input_type -> gofi.v1.WorkerListFunctionsRequest
+	28, // 73: gofi.v1.WorkerService.Invoke:input_type -> gofi.v1.WorkerInvokeRequest
+	30, // 74: gofi.v1.WorkerService.Fetch:input_type -> gofi.v1.WorkerSourceRequest
+	30, // 75: gofi.v1.WorkerService.Stream:input_type -> gofi.v1.WorkerSourceRequest
+	39, // 76: gofi.v1.WorkerService.FormatSource:input_type -> gofi.v1.WorkerFormatSourceRequest
+	41, // 77: gofi.v1.WorkerService.ValidateSource:input_type -> gofi.v1.WorkerValidateSourceRequest
+	46, // 78: gofi.v1.WorkerService.DescribeEnvironment:input_type -> gofi.v1.DescribePythonEnvironmentRequest
+	24, // 79: gofi.v1.WorkerService.Debug:input_type -> gofi.v1.WorkerDebugRequest
+	13, // 80: gofi.v1.SandboxService.ListSandboxes:output_type -> gofi.v1.ListSandboxesResponse
+	15, // 81: gofi.v1.SandboxService.GetSandbox:output_type -> gofi.v1.GetSandboxResponse
+	17, // 82: gofi.v1.SandboxService.ApplySandbox:output_type -> gofi.v1.ApplySandboxResponse
+	19, // 83: gofi.v1.SandboxService.DeleteSandbox:output_type -> gofi.v1.DeleteSandboxResponse
+	23, // 84: gofi.v1.SandboxService.ListFunctions:output_type -> gofi.v1.ListLibraryFunctionsResponse
+	36, // 85: gofi.v1.SandboxService.FormatSource:output_type -> gofi.v1.FormatSourceResponse
+	38, // 86: gofi.v1.SandboxService.ValidateSource:output_type -> gofi.v1.ValidateSourceResponse
+	44, // 87: gofi.v1.SandboxService.RunFunction:output_type -> gofi.v1.RunFunctionResponse
+	44, // 88: gofi.v1.SandboxService.RunSource:output_type -> gofi.v1.RunFunctionResponse
+	49, // 89: gofi.v1.SandboxService.DescribeEnvironment:output_type -> gofi.v1.DescribePythonEnvironmentResponse
+	7,  // 90: gofi.v1.SandboxService.WatchWorkerLogs:output_type -> gofi.v1.WorkerLogEntry
+	1,  // 91: gofi.v1.SandboxService.DebugFunction:output_type -> gofi.v1.DebugRecording
+	27, // 92: gofi.v1.WorkerService.ListFunctions:output_type -> gofi.v1.WorkerListFunctionsResponse
+	29, // 93: gofi.v1.WorkerService.Invoke:output_type -> gofi.v1.WorkerInvokeResponse
+	32, // 94: gofi.v1.WorkerService.Fetch:output_type -> gofi.v1.WorkerFetchResponse
+	33, // 95: gofi.v1.WorkerService.Stream:output_type -> gofi.v1.WorkerStreamResponse
+	40, // 96: gofi.v1.WorkerService.FormatSource:output_type -> gofi.v1.WorkerFormatSourceResponse
+	42, // 97: gofi.v1.WorkerService.ValidateSource:output_type -> gofi.v1.WorkerValidateSourceResponse
+	49, // 98: gofi.v1.WorkerService.DescribeEnvironment:output_type -> gofi.v1.DescribePythonEnvironmentResponse
+	1,  // 99: gofi.v1.WorkerService.Debug:output_type -> gofi.v1.DebugRecording
+	80, // [80:100] is the sub-list for method output_type
+	60, // [60:80] is the sub-list for method input_type
+	60, // [60:60] is the sub-list for extension type_name
+	60, // [60:60] is the sub-list for extension extendee
+	0,  // [0:60] is the sub-list for field type_name
 }
 
 func init() { file_gofi_v1_sandbox_proto_init() }
@@ -3805,14 +4112,14 @@ func file_gofi_v1_sandbox_proto_init() {
 	}
 	file_gofi_v1_sandbox_proto_msgTypes[10].OneofWrappers = []any{}
 	file_gofi_v1_sandbox_proto_msgTypes[29].OneofWrappers = []any{}
-	file_gofi_v1_sandbox_proto_msgTypes[42].OneofWrappers = []any{}
+	file_gofi_v1_sandbox_proto_msgTypes[44].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gofi_v1_sandbox_proto_rawDesc), len(file_gofi_v1_sandbox_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   49,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

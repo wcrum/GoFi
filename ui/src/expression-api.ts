@@ -5,7 +5,7 @@ import { CelExpressionSchema, DescribeEnvironmentResponseSchema, ExpressionServi
 import { ValueSchema } from '@bufbuild/protobuf/wkt'
 import { jsonValue } from './rpc-model'
 
-const client = createClient(ExpressionService, createConnectTransport({ baseUrl: window.location.origin }))
+const client = createClient(ExpressionService, createConnectTransport({ baseUrl: window.location.origin, useBinaryFormat: true }))
 
 export type ResultType = 'bool' | 'any'
 export interface CelExpression {

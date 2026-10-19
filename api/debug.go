@@ -81,8 +81,8 @@ func recordSaved(ctx context.Context, manager *sandbox.Supervisor, library strin
 
 // recordSource debugs unsaved source in a short-lived worker named from the
 // run id (so WatchWorkerLogs can follow it), after static validation.
-func recordSource(ctx context.Context, manager *sandbox.Supervisor, source string, timeoutSeconds, memoryMiB int, runID string, request *gofiv1.WorkerDebugRequest) (*gofiv1.DebugRecording, error) {
-	definition, err := sandbox.Normalize(sandbox.Definition{Name: "run-check", SourceCode: source, TimeoutSeconds: timeoutSeconds, MemoryMiB: memoryMiB})
+func recordSource(ctx context.Context, manager *sandbox.Supervisor, source string, timeoutSeconds, memoryMiB int, ai bool, runID string, request *gofiv1.WorkerDebugRequest) (*gofiv1.DebugRecording, error) {
+	definition, err := sandbox.Normalize(sandbox.Definition{Name: "run-check", SourceCode: source, TimeoutSeconds: timeoutSeconds, MemoryMiB: memoryMiB, AI: ai})
 	if err != nil {
 		return nil, rpcError(connect.CodeInvalidArgument, err)
 	}
@@ -155,7 +155,7 @@ func (h *sandboxHandler) DebugFunction(ctx context.Context, req *connect.Request
 	} else {
 		ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 		defer cancel()
-		recording, err = recordSource(ctx, h.manager, m.Source, int(m.TimeoutSeconds), 0, runID, request)
+		recording, err = recordSource(ctx, h.manager, m.Source, int(m.TimeoutSeconds), 0, m.Ai, runID, request)
 	}
 	if err != nil {
 		return nil, err
@@ -186,7 +186,8 @@ func (h *Handler) DebugFrame(ctx context.Context, req *connect.Request[gofiv1.De
 	case m.Flow != nil && m.FlowName != "":
 		return nil, rpcError(connect.CodeInvalidArgument, errors.New("set exactly one of flow_name or flow"))
 	case m.Flow != nil:
-		if err := fromProto(m.Flow, &def); err != nil {
+		var err error
+		if def, err = h.receivedFlow(m.Flow); err != nil {
 			return nil, rpcError(connect.CodeInvalidArgument, err)
 		}
 	case m.FlowName != "":
@@ -257,7 +258,7 @@ func (h *Handler) debugTarget(ctx context.Context, target *pipeline.DebugTarget,
 		} else {
 			ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 			defer cancel()
-			recording, err = recordSource(ctx, h.sandbox, "import gofi as _gofi\n"+sandbox.WrapInline(target.Step, ref.InlineSource), 0, 0, runID, request)
+			recording, err = recordSource(ctx, h.sandbox, "import gofi as _gofi\n"+sandbox.WrapInline(target.Step, ref.InlineSource), 0, 0, false, runID, request)
 		}
 	case ref.Library != "":
 		recording, err = recordSaved(ctx, h.sandbox, ref.Library, request)

@@ -1,0 +1,333 @@
+suite: controller deployment
+templates:
+  - templates/deployment.yaml
+  - templates/poddisruptionbudget.yaml
+  - templates/rbac.yaml
+release:
+  name: gofi
+  namespace: gofi
+tests:
+  - it: runs one replica with Recreate and no PDB by default
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - notExists:
+          path: spec.template.spec.affinity
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LEADER_ELECTION
+            value: "true"
+  - it: renders no PodDisruptionBudget for a single replica
+    template: templates/poddisruptionbudget.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: rejects more than one replica without leader election
+    template: templates/deployment.yaml
+    set:
+      replicaCount: 2
+    asserts:
+      - failedTemplate:
+          errorPattern: leaderElection.enabled=true
+  - it: rolls, spreads, and elects a leader with two replicas
+    template: templates/deployment.yaml
+    set:
+      replicaCount: 2
+      leaderElection.enabled: true
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 1
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+      - equal:
+          path: spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey
+          value: kubernetes.io/hostname
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LEADER_ELECTION
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LEADER_ELECTION_LEASE
+            value: gofi
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+  - it: renders a PodDisruptionBudget and Lease RBAC with two replicas
+    set:
+      replicaCount: 2
+      leaderElection.enabled: true
+    asserts:
+      - template: templates/poddisruptionbudget.yaml
+        hasDocuments:
+          count: 1
+      - template: templates/poddisruptionbudget.yaml
+        equal:
+          path: spec.minAvailable
+          value: 1
+      - template: templates/poddisruptionbudget.yaml
+        equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: controller
+      - template: templates/rbac.yaml
+        documentSelector:
+          path: kind
+          value: Role
+        contains:
+          path: rules
+          content:
+            apiGroups: ["coordination.k8s.io"]
+            resources: ["leases"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - it: uses hard anti-affinity when asked
+    template: templates/deployment.yaml
+    set:
+      replicaCount: 3
+      leaderElection.enabled: true
+      podAntiAffinity: hard
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey
+          value: kubernetes.io/hostname
+  - it: passes topology spread constraints through
+    template: templates/deployment.yaml
+    set:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: topology.kubernetes.io/zone
+  - it: has startup, readiness, and liveness probes
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /readyz
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 60
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /readyz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 5
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+  - it: sizes the Go runtime from the container limits
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMEMLIMIT
+            value: "483183821"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMAXPROCS
+            valueFrom:
+              resourceFieldRef:
+                resource: limits.cpu
+                divisor: "1"
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests["ephemeral-storage"]
+          value: 64Mi
+  - it: skips GOMEMLIMIT and GOMAXPROCS without limits
+    template: templates/deployment.yaml
+    set:
+      resources.limits: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMEMLIMIT
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOMAXPROCS
+          any: true
+  - it: pulls IfNotPresent by default and pins by digest when set
+    template: templates/deployment.yaml
+    set:
+      image.digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+      sandboxImage.digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/wcrum/gofi@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_IMAGE
+            value: ghcr.io/wcrum/gofi@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_SANDBOX_IMAGE
+            value: ghcr.io/wcrum/gofi-python@sha256:1111111111111111111111111111111111111111111111111111111111111111
+  - it: hands the data-plane defaults to the controller
+    template: templates/deployment.yaml
+    set:
+      priorityClasses.create: true
+      listenerPods.nodeSelector:
+        role: dataplane
+      workers.terminationGracePeriodSeconds: 15
+      exposure.loadBalancer.annotations:
+        metallb.io/allow-shared-ip: gofi
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: gofi-control-plane
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LISTENER_SCHEDULING
+            value: '{"nodeSelector":{"role":"dataplane"},"priorityClassName":"gofi-dataplane"}'
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_WORKER_SCHEDULING
+            value: '{"priorityClassName":"gofi-dataplane","terminationGracePeriodSeconds":15}'
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LB_ALLOCATE_NODE_PORTS
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LB_ANNOTATIONS
+            value: '{"metallb.io/allow-shared-ip":"gofi"}'
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_GATEWAY_MAX_LISTENERS
+            value: "64"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_WORKER_REPLICAS
+            value: "1"
+  - it: includes listener resources and probes as JSON
+    template: templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "GOFI_LISTENER_RESOURCES")].value
+          pattern: '"ephemeral-storage":"32Mi"'
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "GOFI_LISTENER_RESOURCES")].value
+          pattern: '"limits":\{"cpu":"1"'
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "GOFI_LISTENER_PROBES")].value
+          pattern: '"readiness":\{"enabled":true,"failureThreshold":3,"periodSeconds":5'
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "GOFI_WORKER_PROBES")].value
+          pattern: '"startup":\{"enabled":true,"failureThreshold":60,"periodSeconds":1'
+  - it: sets the tooling image only when configured
+    template: templates/deployment.yaml
+    set:
+      toolingImage.repository: ghcr.io/wcrum/gofi-python-tooling
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_TOOLING_IMAGE
+            value: ghcr.io/wcrum/gofi-python-tooling:0.2.0
+  - it: rejects reserved environment names
+    template: templates/deployment.yaml
+    set:
+      env:
+        - name: GOFI_LISTENER_RESOURCES
+          value: "{}"
+    asserts:
+      - failedTemplate:
+          errorPattern: reserved
+  - it: passes no profile or extra environment by default
+    template: templates/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_PROFILE
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_LISTENER_ENV
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_WORKER_ENV
+          any: true
+  - it: hands the profile and extra environment to the controller, listeners, and workers
+    template: templates/deployment.yaml
+    set:
+      profile: edge
+      listenerPods.extraEnv:
+        - name: GOFI_MAX_CONNECTIONS
+          value: "256"
+        - name: GOFI_SINK_SPOOL_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: gofi-tuning
+              key: spoolDir
+      workers.extraEnv:
+        - name: PYTHONOPTIMIZE
+          value: "1"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOFI_PROFILE
+            value: edge
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name == "GOFI_LISTENER_ENV")].value
+          value: '[{"name":"GOFI_PROFILE","value":"edge"},{"name":"GOFI_MAX_CONNECTIONS","value":"256"},{"name":"GOFI_SINK_SPOOL_DIR","valueFrom":{"configMapKeyRef":{"key":"spoolDir","name":"gofi-tuning"}}}]'
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name == "GOFI_WORKER_ENV")].value
+          value: '[{"name":"PYTHONOPTIMIZE","value":"1"}]'
+  - it: rejects an unknown profile
+    template: templates/deployment.yaml
+    set:
+      profile: huge
+    asserts:
+      - failedTemplate: {}
+  - it: reserves GOFI_PROFILE for the profile value
+    template: templates/deployment.yaml
+    set:
+      env:
+        - name: GOFI_PROFILE
+          value: edge
+    asserts:
+      - failedTemplate:
+          errorPattern: reserved

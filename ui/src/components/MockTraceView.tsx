@@ -3,6 +3,7 @@ import type { GrafanaTheme2 } from '@grafana/data'
 import { Alert, Badge, Stack, Text, useStyles2 } from '@grafana/ui'
 import type { SimulateResult } from '../types'
 import { formatDuration } from './python/RunResultView'
+import { t } from '../i18n'
 
 // Presentational renderer for a SimulateResult dry-run trace. No data
 // fetching — MockPanel (editor, stepping through with Next/Prev) and the
@@ -21,11 +22,11 @@ export function MockTraceView({ result, activeIndex }: Props) {
   const styles = useStyles2(getStyles)
   const stepping = activeIndex !== undefined
   return <Stack direction="column" gap={1}>
-    {result.parseError && <Alert severity="warning" title="Parse error" bottomSpacing={0}>{result.parseError}</Alert>}
+    {result.parseError && <Alert severity="warning" title={t('gofi.components.mock-trace.parse-error', 'Parse error')} bottomSpacing={0}>{result.parseError}</Alert>}
 
     {/* Parse step: fields snapshot right after parsing, before any stage. */}
     <div className={cx(styles.step, stepping && activeIndex === -1 && styles.active)}>
-      <Stack gap={1} alignItems="center"><Text weight="medium" variant="bodySmall">Parsed</Text><Badge text="ingress" color="darkgrey" /></Stack>
+      <Stack gap={1} alignItems="center"><Text weight="medium" variant="bodySmall">{t('gofi.components.mock-trace.parsed', 'Parsed')}</Text><Badge text={t('gofi.components.mock-trace.ingress', 'ingress')} color="darkgrey" /></Stack>
       <FieldsDump fields={result.parsedFields} />
     </div>
 
@@ -34,7 +35,7 @@ export function MockTraceView({ result, activeIndex }: Props) {
       return <div key={stage.id} className={cx(styles.step, stepping && activeIndex === index && styles.active)}>
         <div className={styles.stepHeader}>
           <Stack gap={1} alignItems="center"><Text weight="medium" variant="bodySmall">{stage.kind}</Text>{stage.type && <Badge text={stage.type} color="blue" />}</Stack>
-          <Stack gap={1} alignItems="center">{duration > 0 && <Badge color="darkgrey" icon="clock-nine" text={formatDuration(duration)} />}<Badge text={stage.pass ? 'pass' : 'drop'} color={stage.pass ? 'green' : 'red'} /></Stack>
+          <Stack gap={1} alignItems="center">{duration > 0 && <Badge color="darkgrey" icon="clock-nine" text={formatDuration(duration)} />}<Badge text={stage.pass ? t('gofi.components.mock-trace.pass', 'pass') : t('gofi.components.mock-trace.drop', 'drop')} color={stage.pass ? 'green' : 'red'} /></Stack>
         </div>
         {stage.error && <pre className={styles.error}>{stage.error}</pre>}
         {stage.stdout && <div className={styles.stdout}><Text variant="bodySmall" color="secondary">stdout</Text><pre className={styles.pre}>{stage.stdout}</pre></div>}
@@ -45,19 +46,19 @@ export function MockTraceView({ result, activeIndex }: Props) {
     {/* Final outcome. */}
     {result.dropped ? <div className={cx(styles.step, styles.dropped)}>
       <Stack gap={1} alignItems="center" wrap="wrap">
-        <Badge text="dropped" color="red" />
-        {result.droppedBy && <Text color="secondary" variant="bodySmall">by {result.droppedBy}</Text>}
-        {result.deadLetter && <Badge text="→ dead-letter sink" color="orange" />}
+        <Badge text={t('gofi.components.mock-trace.dropped', 'dropped')} color="red" />
+        {result.droppedBy && <Text color="secondary" variant="bodySmall">{t('gofi.components.mock-trace.dropped-by', 'by {{stage}}', { stage: result.droppedBy })}</Text>}
+        {result.deadLetter && <Badge text={t('gofi.components.mock-trace.dead-letter-sink', '→ dead-letter sink')} color="orange" />}
       </Stack>
     </div> : <div className={styles.step}>
-      <Text color="secondary" variant="bodySmall">Dry run — nothing was actually sent.</Text>
+      <Text color="secondary" variant="bodySmall">{t('gofi.components.mock-trace.dry-run', 'Dry run — nothing was actually sent.')}</Text>
       <Stack direction="column" gap={0.5}>
         {(result.sinks ?? []).map(sink => <Stack key={sink.index} gap={1} alignItems="center">
           <Text variant="bodySmall">{sink.type}</Text>
-          <Badge text={sink.sent ? 'would send' : 'skipped'} color={sink.sent ? 'green' : 'darkgrey'} />
+          <Badge text={sink.sent ? t('gofi.components.mock-trace.would-send', 'would send') : t('gofi.components.mock-trace.skipped', 'skipped')} color={sink.sent ? 'green' : 'darkgrey'} />
           {!sink.sent && sink.reason && <span className={styles.reason} title={sink.reason}>{sink.reason}</span>}
         </Stack>)}
-        {(result.sinks ?? []).length === 0 && <Text color="secondary" variant="bodySmall">No sinks matched.</Text>}
+        {(result.sinks ?? []).length === 0 && <Text color="secondary" variant="bodySmall">{t('gofi.components.mock-trace.no-sinks-matched', 'No sinks matched.')}</Text>}
       </Stack>
     </div>}
   </Stack>

@@ -1,0 +1,76 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- if $np.blockMetadata.enabled }}
+{{- /*
+Egress to anywhere except the cloud metadata service. Python workers are
+left out on purpose: each already has a deny-all egress policy, and a policy
+allowing 0.0.0.0/0 would widen it (NetworkPolicy rules are additive).
+*/}}
+{{- range $component, $selector := dict "controller" (include "gofi.controllerPodSelector" .) "listeners" (include "gofi.listenerPodSelector" .) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "gofi.fullname" $ }}-{{ $component }}-block-metadata
+  labels:
+    {{- include "gofi.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  podSelector:
+    {{- $selector | nindent 4 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              {{- toYaml $np.blockMetadata.cidrs | nindent 14 }}
+        {{- if $np.blockMetadata.ipv6Cidrs }}
+        - ipBlock:
+            cidr: ::/0
+            except:
+              {{- toYaml $np.blockMetadata.ipv6Cidrs | nindent 14 }}
+        {{- end }}
+{{- end }}
+{{- end }}
+{{- if $np.relay.enabled }}
+---
+# Listener Pods accept flow data on any port from anywhere; the :9091 relay
+# (live taps, logs, metrics) only from the controller and the scrapers below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "gofi.fullname" . }}-listeners-relay
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: listeners
+spec:
+  podSelector:
+    {{- include "gofi.listenerPodSelector" . | nindent 4 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 1
+          endPort: 9090
+        - protocol: TCP
+          port: 9092
+          endPort: 65535
+        - protocol: UDP
+          port: 1
+          endPort: 65535
+    - from:
+        - podSelector:
+            {{- include "gofi.controllerPodSelector" . | nindent 12 }}
+        {{- range $np.relay.scraperNamespaceSelectors }}
+        - namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
+        {{- with $np.relay.extraFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 9091
+{{- end }}
+{{- end }}

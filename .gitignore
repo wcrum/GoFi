@@ -15,3 +15,18 @@ python/.venv/
 
 # Grafana icon assets copied from the pinned dependency at build/dev time
 /ui/public/public/build/img/icons/
+/bin/gofi-*
+/bin/footprint-*
+
+# Build outputs and local test artifacts
+/bin/
+testenv/reports/
+.envtest/
+ui/test-results/
+ui/playwright-report/
+ui/node_modules/.vite/
+coverage.out
+*.test
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

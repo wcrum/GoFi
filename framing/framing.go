@@ -4,7 +4,9 @@ package framing
 import (
 	"fmt"
 	"io"
+	"sync"
 
+	"github.com/wcrum/gofi/config"
 	"github.com/wcrum/gofi/spec"
 )
 
@@ -45,4 +47,35 @@ func New(cfg spec.Framing, r io.Reader) (Framer, error) {
 	default:
 		return nil, fmt.Errorf("framing: unknown mode %q", cfg.Mode)
 	}
+}
+
+// Buffer sizing. Framers start small and grow toward the frame size cap as
+// data arrives: a connection or datagram costs what it carries, not the cap.
+// A reader that knows its remaining length (bytes.Reader, a datagram) gets a
+// buffer of exactly that size; a stream starts at
+// config.Limits.FramerInitialBuffer (GOFI_FRAMER_INITIAL_BUFFER).
+const minBufferSize = 512
+
+var defaultBufferSize = sync.OnceValue(func() int {
+	if n := config.Get().Limits.FramerInitialBuffer; n >= minBufferSize {
+		return n
+	}
+	return 4 << 10
+})
+
+func initialBufferSize(r io.Reader, maxBytes int) int {
+	size := defaultBufferSize()
+	if sized, ok := r.(interface{ Len() int }); ok {
+		size = sized.Len() + 1 // +1 lets a raw read observe EOF without growing
+		if size < minBufferSize {
+			size = minBufferSize
+		}
+	}
+	if size > maxBytes {
+		size = maxBytes
+	}
+	if size < 16 {
+		size = 16
+	}
+	return size
 }

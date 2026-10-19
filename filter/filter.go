@@ -77,10 +77,21 @@ func build(cfg spec.StageSpec) (Stage, error) {
 		return newDedup(cfg)
 	case "schema":
 		return newSchema(cfg)
+	case "parse":
+		return newParse(cfg)
 	default:
 		return nil, fmt.Errorf("filter: unknown stage kind %q", cfg.Kind)
 	}
 }
+
+// StageError is a stage's evaluation error, attributed to the stage ID.
+type StageError struct {
+	ID  string
+	Err error
+}
+
+func (e *StageError) Error() string { return fmt.Sprintf("stage %q: %v", e.ID, e.Err) }
+func (e *StageError) Unwrap() error { return e.Err }
 
 // chainMember pairs a stage with the ID it was declared under, so Chain.Pass
 // can attribute a drop to a specific stage.
@@ -88,6 +99,10 @@ type chainMember struct {
 	id string
 	s  Stage
 }
+
+// MaxStages bounds a flow's stage chain (matching the CRD schema): each
+// parse stage can decode and expand data again, so the count is a budget.
+const MaxStages = 128
 
 // Chain evaluates an ordered sequence of stages with AND semantics: the
 // first stage to reject a message short-circuits the rest of the chain.
@@ -99,6 +114,9 @@ type Chain struct {
 // Chain from them. A nil or empty specs slice yields a valid Chain whose
 // Pass always returns (true, "", nil).
 func NewChain(specs []spec.StageSpec) (*Chain, error) {
+	if len(specs) > MaxStages {
+		return nil, fmt.Errorf("filter: at most %d stages (got %d)", MaxStages, len(specs))
+	}
 	seen := make(map[string]struct{}, len(specs))
 	members := make([]chainMember, 0, len(specs))
 	for i, s := range specs {
@@ -130,7 +148,7 @@ func (c *Chain) Pass(msg *message.Message) (pass bool, droppedBy string, err err
 	for _, m := range c.members {
 		ok, perr := m.s.Process(msg)
 		if perr != nil && firstErr == nil {
-			firstErr = fmt.Errorf("stage %q: %w", m.id, perr)
+			firstErr = &StageError{ID: m.id, Err: perr}
 		}
 		if !ok {
 			return false, m.id, firstErr

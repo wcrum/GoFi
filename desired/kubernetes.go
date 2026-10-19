@@ -5,14 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/wcrum/gofi/spec"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+
+	"github.com/wcrum/gofi/kubeclient"
 )
 
 // FlowGVR is the desired-state resource. Pre-rename Listener resources are
@@ -22,33 +26,58 @@ var FlowGVR = schema.GroupVersionResource{Group: "gofi.wcrum.dev", Version: "v1a
 type Kubernetes struct {
 	Client    dynamic.Interface
 	Namespace string
+	// Lister, when set, serves Load from the Flow informer cache instead of
+	// listing through the API server on every reconcile.
+	Lister cache.GenericNamespaceLister
 }
 
+// NewKubernetes uses the shared in-cluster client (kubeclient).
 func NewKubernetes(namespace string) (*Kubernetes, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("Kubernetes desired state requires a namespace")
 	}
-	cfg, err := rest.InClusterConfig()
+	clients, err := kubeclient.Get()
 	if err != nil {
 		return nil, err
 	}
-	client, err := dynamic.NewForConfig(cfg)
+	return &Kubernetes{Client: clients.Dynamic, Namespace: namespace}, nil
+}
+
+// items are the Flow resources: from the cache when a Lister is set.
+func (k *Kubernetes) items(ctx context.Context) ([]unstructured.Unstructured, error) {
+	if k.Lister != nil {
+		objects, err := k.Lister.List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		out := make([]unstructured.Unstructured, 0, len(objects))
+		for _, obj := range objects {
+			if item, ok := obj.(*unstructured.Unstructured); ok {
+				out = append(out, *item)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].GetName() < out[j].GetName() })
+		return out, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, kubeclient.CallTimeout)
+	defer cancel()
+	list, err := k.Client.Resource(FlowGVR).Namespace(k.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	return &Kubernetes{Client: client, Namespace: namespace}, nil
+	return list.Items, nil
 }
 func (k *Kubernetes) Configuration() Configuration {
 	return Configuration{Source: "kubernetes", APIVersion: APIVersion, Kind: KindFlow, Namespace: k.Namespace}
 }
 
 func (k *Kubernetes) Load(ctx context.Context) ([]spec.FlowDefinition, error) {
-	list, err := k.Client.Resource(FlowGVR).Namespace(k.Namespace).List(ctx, metav1.ListOptions{})
+	items, err := k.items(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defs := make([]spec.FlowDefinition, 0, len(list.Items))
-	for _, item := range list.Items {
+	defs := make([]spec.FlowDefinition, 0, len(items))
+	for _, item := range items {
 		if item.GetDeletionTimestamp() != nil {
 			continue
 		}
@@ -70,6 +99,9 @@ func (k *Kubernetes) Load(ctx context.Context) ([]spec.FlowDefinition, error) {
 			return nil, fmt.Errorf("Flow %q spec.name must match metadata.name", item.GetName())
 		}
 		def.Name = item.GetName()
+		// Read parser.decoders as the decode step. A conflict is left in
+		// place for the controller to report on that flow alone.
+		_ = def.Normalize()
 		defs = append(defs, def)
 	}
 	return defs, nil

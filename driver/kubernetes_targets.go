@@ -3,11 +3,13 @@ package driver
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/wcrum/gofi/kubeclient"
 	"github.com/wcrum/gofi/spec"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -15,19 +17,22 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const kubeLabelTarget = "gofi.io/target"
 const MaxResolvedTargets = 100
 
-func (k *Kube) Namespace() string { return k.namespace }
+// mergePatch is the patch type for small metadata patches.
+const mergePatch = types.MergePatchType
+
 func (k *Kube) validateTarget(target *spec.KubernetesTarget, network string) error {
 	if err := target.Validate(); err != nil {
 		return err
 	}
-	if network != "tcp" && network != "udp" {
-		return fmt.Errorf("target network must be tcp or udp")
+	if !isNetworkTarget(network) {
+		return fmt.Errorf("target network must be tcp, udp, or quic")
 	}
 	return k.AllowsTargetNamespace(target.Namespace)
 }
@@ -66,6 +71,8 @@ func (k *Kube) ResolveTargets(ctx context.Context, target spec.KubernetesTarget,
 	if err := k.validateTarget(&target, network); err != nil {
 		return nil, err
 	}
+	ctx, cancel := apiCall(ctx)
+	defer cancel()
 	pods, err := k.cs.CoreV1().Pods(k.targetNamespace(&target)).List(ctx, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(target.Selector).String(), Limit: MaxResolvedTargets + 1})
 	if err != nil {
 		return nil, err
@@ -75,7 +82,7 @@ func (k *Kube) ResolveTargets(ctx context.Context, target spec.KubernetesTarget,
 		if !podReady(&pod) {
 			continue
 		}
-		endpoints = append(endpoints, Endpoint{Name: pod.Name, Namespace: pod.Namespace, Kind: "kubernetes", Type: "Pod", Host: pod.Status.PodIP, Labels: pod.Labels, Ready: true, Ports: []EndpointPort{{Port: int32(target.Port), Protocol: strings.ToUpper(network), URL: network + "://" + net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(target.Port))}}})
+		endpoints = append(endpoints, Endpoint{Name: pod.Name, Namespace: pod.Namespace, Kind: "kubernetes", Type: "Pod", Host: pod.Status.PodIP, Labels: pod.Labels, Ready: true, Ports: []EndpointPort{{Port: int32(target.Port), Protocol: string(transportOf(network)), URL: network + "://" + net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(target.Port))}}})
 		if len(endpoints) > MaxResolvedTargets {
 			return nil, fmt.Errorf("selector matches more than %d ready Pods; narrow the selector", MaxResolvedTargets)
 		}
@@ -88,41 +95,55 @@ func (k *Kube) ResolveTargets(ctx context.Context, target spec.KubernetesTarget,
 	return endpoints, nil
 }
 
-func (k *Kube) reconcileTargetServices(ctx context.Context, def spec.FlowDefinition, pod *corev1.Pod) error {
+// targetSelector labels the target Services of one flow.
+func targetSelector(flow string) map[string]string {
+	return map[string]string{kubeLabelManaged: "true", kubeLabelListener: flow, kubeLabelTarget: "true"}
+}
+
+func (k *Kube) reconcileTargetServices(ctx context.Context, def spec.FlowDefinition) error {
 	type destination struct {
 		name string
 		cfg  spec.SinkCfg
 	}
 	destinations := make([]destination, 0, len(def.Sinks)+1)
 	for _, sink := range def.Sinks {
-		destinations = append(destinations, destination{def.Name, sink})
+		if sink.Kubernetes != nil {
+			destinations = append(destinations, destination{def.Name, sink})
+		}
 	}
-	if def.DeadLetterSink != nil {
+	if def.DeadLetterSink != nil && def.DeadLetterSink.Kubernetes != nil {
 		destinations = append(destinations, destination{def.Name + "-deadletter", *def.DeadLetterSink})
+	}
+	// A flow without Kubernetes destinations lists its target Services only
+	// when that costs nothing (the cache); through the API it would be one
+	// list per flow per sync for an empty result. Stale target Services of
+	// such a flow are removed by the flow-set reconcile and by Delete.
+	if len(destinations) == 0 && !k.read().cached() {
+		return nil
 	}
 	wanted := map[string]bool{}
 	services := k.cs.CoreV1().Services(k.namespace)
 	for _, destination := range destinations {
 		cfg := destination.cfg
-		if cfg.Kubernetes == nil {
-			continue
-		}
 		if err := k.validateTarget(cfg.Kubernetes, cfg.Type); err != nil {
 			return err
 		}
 		name := spec.KubernetesServiceName(destination.name, cfg.Type, cfg.Kubernetes)
 		wanted[name] = true
-		desired := targetService(name, k.namespace, def.Name, pod, cfg)
+		desired := targetService(name, k.namespace, def.Name, k.ownerOf(def.Name), cfg)
 		// Pods in another namespace cannot be selected by a Service here:
 		// GoFi publishes their addresses in an EndpointSlice instead.
 		remote := k.targetNamespace(cfg.Kubernetes) != k.namespace
 		if remote {
 			desired.Spec.Selector = nil
 		}
-		current, err := services.Get(ctx, name, metav1.GetOptions{})
+		current, err := k.read().service(ctx, name)
 		if err == nil && (current.Spec.ClusterIP == corev1.ClusterIPNone) != (desired.Spec.ClusterIP == corev1.ClusterIPNone) {
 			// clusterIP is immutable: switching delivery mode recreates the Service.
-			if err := services.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			deleteCtx, cancel := apiCall(ctx)
+			err = services.Delete(deleteCtx, name, metav1.DeleteOptions{})
+			cancel()
+			if err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
 			err = apierrors.NewNotFound(corev1.Resource("services"), name)
@@ -130,7 +151,13 @@ func (k *Kube) reconcileTargetServices(ctx context.Context, def spec.FlowDefinit
 		var service *corev1.Service
 		switch {
 		case apierrors.IsNotFound(err):
-			if service, err = services.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			createCtx, cancel := apiCall(ctx)
+			service, err = services.Create(createCtx, desired, metav1.CreateOptions{})
+			cancel()
+			if apierrors.IsAlreadyExists(err) {
+				return fmt.Errorf("kube driver: selector target service %q exists and is unmanaged", name)
+			}
+			if err != nil {
 				return err
 			}
 		case err != nil:
@@ -139,12 +166,19 @@ func (k *Kube) reconcileTargetServices(ctx context.Context, def spec.FlowDefinit
 			if current.Labels[kubeLabelManaged] != "true" || current.Labels[kubeLabelListener] != def.Name || current.Labels[kubeLabelTarget] != "true" {
 				return fmt.Errorf("kube driver: selector target service %q exists and is unmanaged", name)
 			}
-			current.Spec.Type = desired.Spec.Type
-			current.Spec.Selector = desired.Spec.Selector
-			current.Spec.Ports = desired.Spec.Ports
-			current.OwnerReferences = desired.OwnerReferences
-			if service, err = services.Update(ctx, current, metav1.UpdateOptions{}); err != nil {
-				return err
+			merged := current.DeepCopy()
+			merged.Spec.Type = desired.Spec.Type
+			merged.Spec.Selector = desired.Spec.Selector
+			merged.Spec.Ports = desired.Spec.Ports
+			merged.OwnerReferences = desired.OwnerReferences
+			service = merged
+			if !serviceEqual(current, merged) {
+				updateCtx, cancel := apiCall(ctx)
+				service, err = services.Update(updateCtx, merged, metav1.UpdateOptions{})
+				cancel()
+				if err != nil {
+					return err
+				}
 			}
 		}
 		if remote {
@@ -153,13 +187,16 @@ func (k *Kube) reconcileTargetServices(ctx context.Context, def spec.FlowDefinit
 			}
 		}
 	}
-	existing, err := services.List(ctx, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{kubeLabelManaged: "true", kubeLabelListener: def.Name, kubeLabelTarget: "true"}).String()})
+	existing, err := k.read().services(ctx, targetSelector(def.Name))
 	if err != nil {
 		return err
 	}
-	for _, service := range existing.Items {
+	for _, service := range existing {
 		if !wanted[service.Name] {
-			if err := services.Delete(ctx, service.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			deleteCtx, cancel := apiCall(ctx)
+			err := services.Delete(deleteCtx, service.Name, metav1.DeleteOptions{})
+			cancel()
+			if err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
 		}
@@ -167,29 +204,41 @@ func (k *Kube) reconcileTargetServices(ctx context.Context, def spec.FlowDefinit
 	return nil
 }
 func (k *Kube) deleteTargetServices(ctx context.Context, name string) error {
-	services := k.cs.CoreV1().Services(k.namespace)
-	current, err := services.List(ctx, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{kubeLabelManaged: "true", kubeLabelListener: name, kubeLabelTarget: "true"}).String()})
+	current, err := k.read().services(ctx, targetSelector(name))
 	if err != nil {
 		return err
 	}
-	for _, service := range current.Items {
-		if err := services.Delete(ctx, service.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+	for _, service := range current {
+		deleteCtx, cancel := apiCall(ctx)
+		err := k.cs.CoreV1().Services(k.namespace).Delete(deleteCtx, service.Name, metav1.DeleteOptions{})
+		cancel()
+		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
 	return nil
 }
 
+// podEndpoints lists the namespace's Pods as destinations, paging through
+// the API and stopping at maxDiscoveryItems with a warning.
 func (k *Kube) podEndpoints(ctx context.Context) ([]Endpoint, error) {
-	pods, err := k.cs.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{Limit: 500})
+	pods, truncated, err := kubeclient.ListAll(ctx, maxDiscoveryItems, "", func(ctx context.Context, opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+		ctx, cancel := apiCall(ctx)
+		defer cancel()
+		list, err := k.cs.CoreV1().Pods(k.namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if pods.Continue != "" {
-		return nil, fmt.Errorf("Pod discovery exceeds 500 entries in the controller namespace")
+	if truncated {
+		slog.Warn("kube driver: " + kubeclient.TruncationWarning("Pod discovery", maxDiscoveryItems))
 	}
-	endpoints := make([]Endpoint, 0, len(pods.Items))
-	for _, pod := range pods.Items {
+	endpoints := make([]Endpoint, 0, len(pods))
+	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil {
 			continue
 		}
@@ -215,13 +264,14 @@ func (k *Kube) podEndpoints(ctx context.Context) ([]Endpoint, error) {
 }
 
 // targetService is the Service a selector destination sends to: headless for
-// fan-out delivery (DNS returns every Pod), ClusterIP for load-balanced.
-func targetService(name, namespace, flow string, pod *corev1.Pod, cfg spec.SinkCfg) *corev1.Service {
+// fan-out delivery (DNS returns every Pod), ClusterIP for load-balanced. It
+// is owned by the Flow (not the runtime Pod) so it survives Pod replacement.
+func targetService(name, namespace, flow string, owner []metav1.OwnerReference, cfg spec.SinkCfg) *corev1.Service {
 	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace,
-		Labels:          map[string]string{kubeLabelManaged: "true", kubeLabelListener: flow, kubeLabelTarget: "true"},
-		OwnerReferences: []metav1.OwnerReference{{APIVersion: "v1", Kind: "Pod", Name: pod.Name, UID: pod.UID}}},
+		Labels:          targetSelector(flow),
+		OwnerReferences: owner},
 		Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, Selector: cfg.Kubernetes.Selector,
-			Ports: []corev1.ServicePort{{Name: "data", Protocol: corev1.Protocol(strings.ToUpper(cfg.Type)), Port: int32(cfg.Kubernetes.Port), TargetPort: intstr.FromInt(cfg.Kubernetes.Port)}}}}
+			Ports: []corev1.ServicePort{{Name: "data", Protocol: transportOf(cfg.Type), Port: int32(cfg.Kubernetes.Port), TargetPort: intstr.FromInt(cfg.Kubernetes.Port)}}}}
 	if cfg.Kubernetes.FanOut() {
 		svc.Spec.ClusterIP = corev1.ClusterIPNone
 		// Unready Pods are skipped by DNS; publish only ready ones.
@@ -237,7 +287,7 @@ func (k *Kube) reconcileTargetEndpoints(ctx context.Context, service *corev1.Ser
 	if err != nil {
 		return err
 	}
-	protocol := corev1.Protocol(strings.ToUpper(cfg.Type))
+	protocol := transportOf(cfg.Type) // quic targets carry UDP ports
 	port, portName := int32(cfg.Kubernetes.Port), "data"
 	ready := true
 	slice := &discoveryv1.EndpointSlice{
@@ -257,9 +307,13 @@ func (k *Kube) reconcileTargetEndpoints(ctx context.Context, service *corev1.Ser
 			TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: pod.Namespace, Name: name}})
 	}
 	slices := k.cs.DiscoveryV1().EndpointSlices(k.namespace)
-	current, err := slices.Get(ctx, slice.Name, metav1.GetOptions{})
+	getCtx, cancel := apiCall(ctx)
+	current, err := slices.Get(getCtx, slice.Name, metav1.GetOptions{})
+	cancel()
 	if apierrors.IsNotFound(err) {
-		_, err = slices.Create(ctx, slice, metav1.CreateOptions{})
+		createCtx, cancel := apiCall(ctx)
+		defer cancel()
+		_, err = slices.Create(createCtx, slice, metav1.CreateOptions{})
 		return err
 	}
 	if err != nil {
@@ -272,6 +326,8 @@ func (k *Kube) reconcileTargetEndpoints(ctx context.Context, service *corev1.Ser
 		return nil
 	}
 	current.Endpoints, current.Ports, current.Labels, current.OwnerReferences = slice.Endpoints, slice.Ports, slice.Labels, slice.OwnerReferences
-	_, err = slices.Update(ctx, current, metav1.UpdateOptions{})
+	updateCtx, cancel := apiCall(ctx)
+	defer cancel()
+	_, err = slices.Update(updateCtx, current, metav1.UpdateOptions{})
 	return err
 }

@@ -6,7 +6,8 @@ const definition = {
   name: 'events',
   source: { listen: { port: 9000, network: 'tcp', service: { type: 'NodePort', port: 9100, nodePort: 30900 } } },
   framing: { mode: 'line' },
-  parser: { format: 'json', decoders: [{ type: 'base64' }, { type: 'gzip' }], maxDecodedBytes: 262144, errorPolicy: 'drop' },
+  decode: { decoders: [{ type: 'base64' }, { type: 'gzip' }], maxDecodedBytes: 262144 },
+  parser: { format: 'json', errorPolicy: 'drop' },
   stages: [
     { id: 'filter', kind: 'filter', type: 'regex', field: 'level', expression: '^info$' },
     { id: 'transform', kind: 'transform', transformOp: 'set', field: 'accepted', valueExpr: 'true' },
@@ -31,8 +32,8 @@ test('graph round trip retains exposure, ordered codecs, filters, direct destina
 
 test('unfinished decoder steps are dropped before submission', () => {
   const steps = [{ type: 'base64' }, { type: '' }, { type: 'python', python: { library: 'lib', function: '' } }, { type: 'python', python: { library: 'lib', function: 'unwrap' } }]
-  const { nodes, edges } = definitionToGraph({ ...definition, parser: { format: 'json', decoders: steps } })
-  assert.deepEqual(graphToDefinition('events', nodes, edges).parser.decoders, [{ type: 'base64' }, { type: 'python', python: { library: 'lib', function: 'unwrap' } }])
+  const { nodes, edges } = definitionToGraph({ ...definition, decode: { decoders: steps } })
+  assert.deepEqual(graphToDefinition('events', nodes, edges).decode.decoders, [{ type: 'base64' }, { type: 'python', python: { library: 'lib', function: 'unwrap' } }])
 })
 
 test('invalid graph cycles fail with a usable error instead of changing stage order', () => {
@@ -68,7 +69,7 @@ test('frame, decode, and parse are separate optional steps between the source an
 })
 
 test('absent steps mean whole-connection frames, no decoding, and no parsing', () => {
-  const bare = { ...definition, framing: { mode: 'raw' }, parser: { format: 'none' } }
+  const bare = { ...definition, framing: { mode: 'raw' }, decode: undefined, parser: { format: 'none' } }
   const { nodes, edges } = definitionToGraph(bare)
   assert.deepEqual(nodes.filter((n) => ['frame', 'decode', 'parse'].includes(n.type)), [], 'nothing to show')
   assert.ok(edges.some((e) => e.source === 'ingress' && e.target === 'filter'), 'stages follow the source directly')
@@ -83,7 +84,8 @@ test('deleting a step falls back to its default and keeps the rest', () => {
   const kept = nodes.filter((n) => n.type !== 'decode')
   const rewired = [...edges.filter((e) => e.source !== 'decode' && e.target !== 'decode'), { id: 'e-frame-parse', source: 'frame', target: 'parse' }]
   const back = graphToDefinition('events', kept, rewired)
-  assert.deepEqual(back.parser, { format: 'json', errorPolicy: 'drop' }, 'no decoders remain')
+  assert.deepEqual(back.parser, { format: 'json', errorPolicy: 'drop' })
+  assert.equal(back.decode, undefined, 'no decoders remain')
   assert.deepEqual(back.framing, { mode: 'line' })
 })
 
@@ -114,4 +116,35 @@ test('graph round trip retains fetch and subscribe sources', () => {
     const { nodes, edges } = definitionToGraph(pulled)
     assert.deepEqual(JSON.parse(JSON.stringify(graphToDefinition(pulled.name, nodes, edges))).source, source)
   }
+})
+
+test('legacy parser decoders load into the Decode node and save as top-level decode', () => {
+  const { decode, ...rest } = definition
+  const legacy = { ...rest, parser: { ...definition.parser, decoders: decode.decoders, maxDecodedBytes: decode.maxDecodedBytes } }
+  const { nodes, edges } = definitionToGraph(legacy)
+  assert.deepEqual(nodes.find((n) => n.type === 'decode').data, { decoders: [{ type: 'base64' }, { type: 'gzip' }], maxDecodedBytes: 262144 })
+  assert.deepEqual(nodes.find((n) => n.type === 'parse').data.parser, { format: 'json', errorPolicy: 'drop' })
+  const back = JSON.parse(JSON.stringify(graphToDefinition('events', nodes, edges)))
+  assert.deepEqual(back, definition)
+  assert.equal(back.parser.decoders, undefined)
+})
+
+test('parse stages are ordinary stage nodes and round-trip with decode and the flow Python default', () => {
+  const flow = {
+    ...definition,
+    stages: [
+      { id: 'payload', kind: 'parse', parse: { from: 'fields["message"]', decoders: [{ type: 'base64' }, { type: 'python', python: { function: 'unwrap' } }], format: 'json', into: 'payload', mode: 'merge', onError: 'drop' } },
+      definition.stages[0],
+      { id: 'body', kind: 'parse', parse: { from: 'raw', format: 'python', python: { function: 'parse_body' } } },
+      { id: 'xml', kind: 'parse', parse: { format: 'xml', mode: 'replace' } },
+    ],
+    python: { library: 'hooks' },
+  }
+  const { nodes, edges } = definitionToGraph(flow)
+  assert.deepEqual(nodes.filter((n) => n.type === 'stage').map((n) => n.id), ['payload', 'filter', 'body', 'xml'])
+  assert.ok(edges.some((e) => e.source === 'parse' && e.target === 'payload'), 'parse stages follow the Parse step')
+  assert.ok(edges.some((e) => e.source === 'payload' && e.target === 'filter'))
+  const back = JSON.parse(JSON.stringify(graphToDefinition(flow.name, [...nodes].reverse(), edges, { python: flow.python })))
+  assert.deepEqual(back, flow)
+  assert.equal(graphToDefinition(flow.name, nodes, edges).python, undefined, 'no default library unless set')
 })

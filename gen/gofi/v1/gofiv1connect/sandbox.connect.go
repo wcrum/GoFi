@@ -76,8 +76,10 @@ const (
 	WorkerServiceListFunctionsProcedure = "/gofi.v1.WorkerService/ListFunctions"
 	// WorkerServiceInvokeProcedure is the fully-qualified name of the WorkerService's Invoke RPC.
 	WorkerServiceInvokeProcedure = "/gofi.v1.WorkerService/Invoke"
-	// WorkerServiceListenProcedure is the fully-qualified name of the WorkerService's Listen RPC.
-	WorkerServiceListenProcedure = "/gofi.v1.WorkerService/Listen"
+	// WorkerServiceFetchProcedure is the fully-qualified name of the WorkerService's Fetch RPC.
+	WorkerServiceFetchProcedure = "/gofi.v1.WorkerService/Fetch"
+	// WorkerServiceStreamProcedure is the fully-qualified name of the WorkerService's Stream RPC.
+	WorkerServiceStreamProcedure = "/gofi.v1.WorkerService/Stream"
 	// WorkerServiceFormatSourceProcedure is the fully-qualified name of the WorkerService's
 	// FormatSource RPC.
 	WorkerServiceFormatSourceProcedure = "/gofi.v1.WorkerService/FormatSource"
@@ -471,7 +473,14 @@ func (UnimplementedSandboxServiceHandler) DebugFunction(context.Context, *connec
 type WorkerServiceClient interface {
 	ListFunctions(context.Context, *connect.Request[v1.WorkerListFunctionsRequest]) (*connect.Response[v1.WorkerListFunctionsResponse], error)
 	Invoke(context.Context, *connect.Request[v1.WorkerInvokeRequest]) (*connect.Response[v1.WorkerInvokeResponse], error)
-	Listen(context.Context, *connect.Request[v1.WorkerListenRequest]) (*connect.ServerStreamForClient[v1.WorkerListenResponse], error)
+	// Fetch calls one @gofi.fetcher poll under the library's deadline and
+	// returns the frames it produced (Flow source.python, docs/flows.md).
+	Fetch(context.Context, *connect.Request[v1.WorkerSourceRequest]) (*connect.Response[v1.WorkerFetchResponse], error)
+	// Stream runs one @gofi.streamer until it ends, fails, or the caller
+	// cancels. The first message (started = true) carries no frames; later
+	// messages carry frames. The worker produces at most a small window of
+	// messages ahead of the caller (bounded backpressure).
+	Stream(context.Context, *connect.Request[v1.WorkerSourceRequest]) (*connect.ServerStreamForClient[v1.WorkerStreamResponse], error)
 	FormatSource(context.Context, *connect.Request[v1.WorkerFormatSourceRequest]) (*connect.Response[v1.WorkerFormatSourceResponse], error)
 	ValidateSource(context.Context, *connect.Request[v1.WorkerValidateSourceRequest]) (*connect.Response[v1.WorkerValidateSourceResponse], error)
 	DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error)
@@ -501,10 +510,16 @@ func NewWorkerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(workerServiceMethods.ByName("Invoke")),
 			connect.WithClientOptions(opts...),
 		),
-		listen: connect.NewClient[v1.WorkerListenRequest, v1.WorkerListenResponse](
+		fetch: connect.NewClient[v1.WorkerSourceRequest, v1.WorkerFetchResponse](
 			httpClient,
-			baseURL+WorkerServiceListenProcedure,
-			connect.WithSchema(workerServiceMethods.ByName("Listen")),
+			baseURL+WorkerServiceFetchProcedure,
+			connect.WithSchema(workerServiceMethods.ByName("Fetch")),
+			connect.WithClientOptions(opts...),
+		),
+		stream: connect.NewClient[v1.WorkerSourceRequest, v1.WorkerStreamResponse](
+			httpClient,
+			baseURL+WorkerServiceStreamProcedure,
+			connect.WithSchema(workerServiceMethods.ByName("Stream")),
 			connect.WithClientOptions(opts...),
 		),
 		formatSource: connect.NewClient[v1.WorkerFormatSourceRequest, v1.WorkerFormatSourceResponse](
@@ -538,7 +553,8 @@ func NewWorkerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 type workerServiceClient struct {
 	listFunctions       *connect.Client[v1.WorkerListFunctionsRequest, v1.WorkerListFunctionsResponse]
 	invoke              *connect.Client[v1.WorkerInvokeRequest, v1.WorkerInvokeResponse]
-	listen              *connect.Client[v1.WorkerListenRequest, v1.WorkerListenResponse]
+	fetch               *connect.Client[v1.WorkerSourceRequest, v1.WorkerFetchResponse]
+	stream              *connect.Client[v1.WorkerSourceRequest, v1.WorkerStreamResponse]
 	formatSource        *connect.Client[v1.WorkerFormatSourceRequest, v1.WorkerFormatSourceResponse]
 	validateSource      *connect.Client[v1.WorkerValidateSourceRequest, v1.WorkerValidateSourceResponse]
 	describeEnvironment *connect.Client[v1.DescribePythonEnvironmentRequest, v1.DescribePythonEnvironmentResponse]
@@ -555,9 +571,14 @@ func (c *workerServiceClient) Invoke(ctx context.Context, req *connect.Request[v
 	return c.invoke.CallUnary(ctx, req)
 }
 
-// Listen calls gofi.v1.WorkerService.Listen.
-func (c *workerServiceClient) Listen(ctx context.Context, req *connect.Request[v1.WorkerListenRequest]) (*connect.ServerStreamForClient[v1.WorkerListenResponse], error) {
-	return c.listen.CallServerStream(ctx, req)
+// Fetch calls gofi.v1.WorkerService.Fetch.
+func (c *workerServiceClient) Fetch(ctx context.Context, req *connect.Request[v1.WorkerSourceRequest]) (*connect.Response[v1.WorkerFetchResponse], error) {
+	return c.fetch.CallUnary(ctx, req)
+}
+
+// Stream calls gofi.v1.WorkerService.Stream.
+func (c *workerServiceClient) Stream(ctx context.Context, req *connect.Request[v1.WorkerSourceRequest]) (*connect.ServerStreamForClient[v1.WorkerStreamResponse], error) {
+	return c.stream.CallServerStream(ctx, req)
 }
 
 // FormatSource calls gofi.v1.WorkerService.FormatSource.
@@ -584,7 +605,14 @@ func (c *workerServiceClient) Debug(ctx context.Context, req *connect.Request[v1
 type WorkerServiceHandler interface {
 	ListFunctions(context.Context, *connect.Request[v1.WorkerListFunctionsRequest]) (*connect.Response[v1.WorkerListFunctionsResponse], error)
 	Invoke(context.Context, *connect.Request[v1.WorkerInvokeRequest]) (*connect.Response[v1.WorkerInvokeResponse], error)
-	Listen(context.Context, *connect.Request[v1.WorkerListenRequest], *connect.ServerStream[v1.WorkerListenResponse]) error
+	// Fetch calls one @gofi.fetcher poll under the library's deadline and
+	// returns the frames it produced (Flow source.python, docs/flows.md).
+	Fetch(context.Context, *connect.Request[v1.WorkerSourceRequest]) (*connect.Response[v1.WorkerFetchResponse], error)
+	// Stream runs one @gofi.streamer until it ends, fails, or the caller
+	// cancels. The first message (started = true) carries no frames; later
+	// messages carry frames. The worker produces at most a small window of
+	// messages ahead of the caller (bounded backpressure).
+	Stream(context.Context, *connect.Request[v1.WorkerSourceRequest], *connect.ServerStream[v1.WorkerStreamResponse]) error
 	FormatSource(context.Context, *connect.Request[v1.WorkerFormatSourceRequest]) (*connect.Response[v1.WorkerFormatSourceResponse], error)
 	ValidateSource(context.Context, *connect.Request[v1.WorkerValidateSourceRequest]) (*connect.Response[v1.WorkerValidateSourceResponse], error)
 	DescribeEnvironment(context.Context, *connect.Request[v1.DescribePythonEnvironmentRequest]) (*connect.Response[v1.DescribePythonEnvironmentResponse], error)
@@ -610,10 +638,16 @@ func NewWorkerServiceHandler(svc WorkerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(workerServiceMethods.ByName("Invoke")),
 		connect.WithHandlerOptions(opts...),
 	)
-	workerServiceListenHandler := connect.NewServerStreamHandler(
-		WorkerServiceListenProcedure,
-		svc.Listen,
-		connect.WithSchema(workerServiceMethods.ByName("Listen")),
+	workerServiceFetchHandler := connect.NewUnaryHandler(
+		WorkerServiceFetchProcedure,
+		svc.Fetch,
+		connect.WithSchema(workerServiceMethods.ByName("Fetch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	workerServiceStreamHandler := connect.NewServerStreamHandler(
+		WorkerServiceStreamProcedure,
+		svc.Stream,
+		connect.WithSchema(workerServiceMethods.ByName("Stream")),
 		connect.WithHandlerOptions(opts...),
 	)
 	workerServiceFormatSourceHandler := connect.NewUnaryHandler(
@@ -646,8 +680,10 @@ func NewWorkerServiceHandler(svc WorkerServiceHandler, opts ...connect.HandlerOp
 			workerServiceListFunctionsHandler.ServeHTTP(w, r)
 		case WorkerServiceInvokeProcedure:
 			workerServiceInvokeHandler.ServeHTTP(w, r)
-		case WorkerServiceListenProcedure:
-			workerServiceListenHandler.ServeHTTP(w, r)
+		case WorkerServiceFetchProcedure:
+			workerServiceFetchHandler.ServeHTTP(w, r)
+		case WorkerServiceStreamProcedure:
+			workerServiceStreamHandler.ServeHTTP(w, r)
 		case WorkerServiceFormatSourceProcedure:
 			workerServiceFormatSourceHandler.ServeHTTP(w, r)
 		case WorkerServiceValidateSourceProcedure:
@@ -673,8 +709,12 @@ func (UnimplementedWorkerServiceHandler) Invoke(context.Context, *connect.Reques
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.Invoke is not implemented"))
 }
 
-func (UnimplementedWorkerServiceHandler) Listen(context.Context, *connect.Request[v1.WorkerListenRequest], *connect.ServerStream[v1.WorkerListenResponse]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.Listen is not implemented"))
+func (UnimplementedWorkerServiceHandler) Fetch(context.Context, *connect.Request[v1.WorkerSourceRequest]) (*connect.Response[v1.WorkerFetchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.Fetch is not implemented"))
+}
+
+func (UnimplementedWorkerServiceHandler) Stream(context.Context, *connect.Request[v1.WorkerSourceRequest], *connect.ServerStream[v1.WorkerStreamResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("gofi.v1.WorkerService.Stream is not implemented"))
 }
 
 func (UnimplementedWorkerServiceHandler) FormatSource(context.Context, *connect.Request[v1.WorkerFormatSourceRequest]) (*connect.Response[v1.WorkerFormatSourceResponse], error) {

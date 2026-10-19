@@ -3,10 +3,11 @@ import type { ReactNode } from 'react'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { Alert, useStyles2 } from '@grafana/ui'
+import { t } from '../i18n'
 
 type ToastSeverity = 'error' | 'success' | 'warning'
 
-const TITLES: Record<ToastSeverity, string> = { error: 'Error', success: 'Success', warning: 'Warning' }
+const defaultTitle = (severity: ToastSeverity) => severity === 'error' ? t('gofi.components.toast.title-error', 'Error') : severity === 'success' ? t('gofi.components.toast.title-success', 'Success') : t('gofi.components.toast.title-warning', 'Warning')
 
 interface Toast {
   id: string
@@ -56,11 +57,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ addToast }}>
       {children}
-      {/* Grafana's AppNotificationList: a top-right stack of Alerts. */}
+      {/* A bottom-right stack of Alerts; the newest is nearest the corner. */}
       <div className={styles.list} role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <Alert key={t.id} severity={t.severity} title={t.title ?? TITLES[t.severity]} onRemove={() => dismiss(t.id)} elevated bottomSpacing={0}>
-            {t.message}
+        {toasts.map((toast) => (
+          <Alert key={toast.id} severity={toast.severity} title={toast.title ?? defaultTitle(toast.severity)} onRemove={() => dismiss(toast.id)} elevated bottomSpacing={0}>
+            {toast.message}
           </Alert>
         ))}
       </div>
@@ -70,8 +71,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 const getStyles = (theme: GrafanaTheme2) => ({
   list: css({
-    position: 'fixed', top: `calc(var(--gofi-topbar-height) + ${theme.spacing(1)})`, right: theme.spacing(2),
+    position: 'fixed', bottom: theme.spacing(2), right: theme.spacing(2),
     zIndex: theme.zIndex.portal, display: 'flex', flexDirection: 'column', gap: theme.spacing(1),
     width: `min(400px, calc(100vw - ${theme.spacing(4)}))`, wordBreak: 'break-word', whiteSpace: 'pre-line',
+    '& > *': { animation: 'gofi-toast-in 220ms ease-out' },
+    '@keyframes gofi-toast-in': { from: { opacity: 0, transform: 'translateY(16px)' }, to: { opacity: 1, transform: 'none' } },
+    '@media (prefers-reduced-motion: reduce)': { '& > *': { animation: 'none' } },
   }),
 })

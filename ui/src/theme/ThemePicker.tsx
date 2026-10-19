@@ -6,6 +6,7 @@ import { accentShade, createGoFiTheme } from '../grafana-theme'
 import { ACCENTS, findAccent, findTheme, THEMES } from './themes'
 import { useThemeDefinition, useThemePreference } from './ThemeProvider'
 import type { AccentDefinition, SyntaxColors, ThemeDefinition } from './types'
+import { LOCALES, t, useLocale } from '../i18n'
 
 // Monaco's vs-dark / vs token colors, for previewing the stock Grafana themes.
 const STOCK_SYNTAX: Record<'dark' | 'light', Pick<SyntaxColors, 'comment' | 'keyword' | 'string' | 'function'>> = {
@@ -18,8 +19,11 @@ export function ThemePicker() {
   const styles = useStyles2(getStyles)
   const definition = useThemeDefinition()
   const [preference, setTheme, setAccent] = useThemePreference()
+  const [locale, setLocale] = useLocale()
   const accent = findAccent(preference.accent)
-  const label = `Appearance: ${preference.theme === 'system' ? `System (${definition.name})` : definition.name}`
+  const label = preference.theme === 'system'
+    ? t('gofi.theme.picker.appearance-system-label', 'Appearance: System ({{theme}})', { theme: definition.name })
+    : t('gofi.theme.picker.appearance-label', 'Appearance: {{theme}}', { theme: definition.name })
 
   const tile = (id: string, name: string, preview: ReactNode) => {
     const selected = preference.theme === id
@@ -29,7 +33,7 @@ export function ThemePicker() {
       <span className={styles.tileName}>{name}</span>
     </button>
   }
-  const group = (mode: 'dark' | 'light', title: string) => <section className={styles.section} aria-label={`${title} themes`}>
+  const group = (mode: 'dark' | 'light', title: string, label: string) => <section className={styles.section} aria-label={label}>
     <h4 className={styles.subheading}>{title}</h4>
     <div className={styles.grid}>
       {THEMES.filter(theme => theme.mode === mode).map(theme =>
@@ -38,21 +42,21 @@ export function ThemePicker() {
   </section>
 
   const content = <div className={styles.content}>
-    <h3 className={styles.heading}>Theme</h3>
+    <h3 className={styles.heading}>{t('gofi.theme.picker.theme', 'Theme')}</h3>
     <div className={styles.grid}>
-      {tile('system', 'System', <>
+      {tile('system', t('gofi.theme.picker.system', 'System'), <>
         <Preview definition={findTheme('grafana-dark')!} accent={accent} />
         <Preview definition={findTheme('grafana-light')!} accent={accent} />
       </>)}
     </div>
-    {group('dark', 'Dark')}
-    {group('light', 'Light')}
-    <h3 className={styles.heading}>Accent</h3>
-    <div className={styles.swatches} role="group" aria-label="Accent color">
+    {group('dark', t('gofi.theme.picker.dark', 'Dark'), t('gofi.theme.picker.dark-themes', 'Dark themes'))}
+    {group('light', t('gofi.theme.picker.light', 'Light'), t('gofi.theme.picker.light-themes', 'Light themes'))}
+    <h3 className={styles.heading}>{t('gofi.theme.picker.accent', 'Accent')}</h3>
+    <div className={styles.swatches} role="group" aria-label={t('gofi.theme.picker.accent-color', 'Accent color')}>
       {ACCENTS.map(option => {
         const selected = preference.accent === option.id
         const isDefault = !option[definition.mode]
-        const name = isDefault ? `Theme default (${definition.name})` : option.name
+        const name = isDefault ? t('gofi.theme.picker.theme-default-accent', 'Theme default ({{theme}})', { theme: definition.name }) : option.name
         return <Tooltip key={option.id} content={name} placement="top">
           <button type="button" aria-label={name} aria-pressed={selected}
             className={cx(styles.swatch, isDefault && styles.swatchDefault, selected && styles.swatchSelected)}
@@ -61,9 +65,24 @@ export function ThemePicker() {
         </Tooltip>
       })}
     </div>
+    <h3 className={styles.heading}>{t('gofi.theme.picker.language', 'Language')}</h3>
+    {/* Native names on purpose: a user who cannot read the current language
+        still finds their own. Switching remounts the app (I18nProvider), so
+        this popover closes after a pick. */}
+    <div className={styles.grid} role="group" aria-label={t('gofi.theme.picker.language', 'Language')}>
+      {LOCALES.map(option => {
+        const selected = locale === option.tag
+        return <button key={option.tag} type="button" lang={option.tag} aria-pressed={selected}
+          className={cx(styles.tile, styles.languageTile, selected && styles.tileSelected)}
+          onClick={() => { void setLocale(option.tag) }}>
+          <span className={styles.tileName}>{option.nativeName}</span>
+          {option.nativeName !== option.englishName && <span className={styles.languageEnglish} lang="en">{option.englishName}</span>}
+        </button>
+      })}
+    </div>
   </div>
 
-  return <Toggletip title="Appearance" placement="bottom-end" content={content}>
+  return <Toggletip title={t('gofi.theme.picker.appearance', 'Appearance')} placement="bottom-end" content={content}>
     <ToolbarButton icon="palette" aria-label={label} tooltip={label} />
   </Toggletip>
 }
@@ -185,5 +204,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   swatchSelected: css({
     boxShadow: `0 0 0 2px ${theme.colors.background.primary}, 0 0 0 4px ${theme.colors.text.primary}`,
+  }),
+  languageTile: css({ gap: theme.spacing(0.25), padding: theme.spacing(1) }),
+  languageEnglish: css({
+    ...theme.typography.bodySmall,
+    color: theme.colors.text.secondary,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   }),
 })

@@ -1,0 +1,18 @@
+{{- /* A PDB on a single replica would block node drains, so only with HA. */ -}}
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gofi.fullname" . }}
+  labels:
+    {{- include "gofi.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  {{- if not (kindIs "invalid" .Values.podDisruptionBudget.maxUnavailable) }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  selector:
+    {{- include "gofi.controllerPodSelector" . | nindent 4 }}
+{{- end }}

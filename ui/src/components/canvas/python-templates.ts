@@ -1,6 +1,7 @@
 // Pure helpers for the Python creator: starter templates, per-node config
 // defaults from declared function parameters, and saved-test
 // expectations. No React or network imports so node --test can load it.
+import { t } from '../../i18n/index.ts'
 
 export interface FunctionParamLike { name: string; type?: string; default?: unknown; required?: boolean; description?: string }
 
@@ -9,90 +10,106 @@ import gofi
 
 
 @gofi.decoder("trim")
-def trim(data: bytes):
+def trim(data: bytes) -> bytes:
     """Strip surrounding whitespace from each frame before parsing."""
     return data.strip()
 
 
 @gofi.parser("telemetry")
-def parse_telemetry(data: bytes):
+def parse_telemetry(data: bytes) -> dict:
     """Decode JSON telemetry into fields."""
     return json.loads(data)
 
 
 @gofi.transformer("enrich")
-def enrich(fields, meta, *, threshold: float = 30.0):
+def enrich(fields: dict, meta: dict, *, threshold: float = 30.0) -> dict:
     """Flag hot readings; threshold is configurable per flow node."""
     fields["hot"] = float(fields.get("temperature", 0)) >= threshold
     print("enriched", fields.get("sensor"), "hot" if fields["hot"] else "ok")
     return fields
 `
 
-export interface FunctionTemplate { id: string; label: string; description: string; source: string }
+export interface FunctionTemplate { id: string; readonly label: string; readonly description: string; source: string }
+
+/** Template titles and descriptions resolve in the active language when read
+ * (getters), so the list can stay a plain exported array. */
+function template(id: string, label: () => string, description: () => string, source: string): FunctionTemplate {
+  return { id, get label() { return label() }, get description() { return description() }, source }
+}
 
 export const FUNCTION_TEMPLATES: FunctionTemplate[] = [
-  {
-    id: 'framer', label: 'Framer', description: 'Split a byte stream into frames (Frame step)',
-    source: `@gofi.framer("records")
-def records(buffer: bytes, final: bool):
+  template('fetcher', () => t('gofi.canvas.python-templates.fetcher', 'Fetcher (source)'), () => t('gofi.canvas.python-templates.fetcher-description', 'Poll on an interval as a flow source; needs egress rules for network access'), `@gofi.fetcher("poll", every="30s")
+def poll(ctx: gofi.SourceContext, *, url: str = "https://api.example/items", limit: int = 100) -> list[gofi.Frame]:
+    """Return new items as frames: bytes, str, a dict (JSON), gofi.Frame, or a list of these.
+
+    ctx.state is kept between polls (a cursor). The library needs an egress
+    rule for the host it calls.
+    """
+    import json
+    import urllib.request
+
+    since = ctx.state.get("since", 0)
+    with urllib.request.urlopen(f"{url}?since={since}&limit={limit}", timeout=10) as response:
+        items = json.load(response)
+    if items:
+        ctx.state["since"] = max(item["id"] for item in items)
+    return [gofi.Frame(item, meta={"feed": "items"}) for item in items]
+`),
+  template('streamer', () => t('gofi.canvas.python-templates.streamer', 'Streamer (source)'), () => t('gofi.canvas.python-templates.streamer-description', 'Yield frames continuously as a flow source'), `from collections.abc import Iterator
+
+
+@gofi.streamer("ticks")
+def ticks(ctx: gofi.SourceContext, *, interval: float = 5.0) -> Iterator[dict]:
+    """Yield frames as they arrive. GoFi restarts the generator with backoff if
+    it fails, and closes it (finally runs) when the flow stops."""
+    count = ctx.state.get("count", 0)
+    while not ctx.wait(interval):  # returns True as soon as the flow stops
+        count += 1
+        ctx.state["count"] = count
+        yield {"tick": count}
+`),
+  template('framer', () => t('gofi.canvas.python-templates.framer', 'Framer'), () => t('gofi.canvas.python-templates.framer-description', 'Split a byte stream into frames (Frame step)'), `@gofi.framer("records")
+def records(buffer: bytes, final: bool) -> tuple[list[bytes], bytes]:
     """Return (frames, rest). Called after each read; final is True at end of stream."""
     *frames, rest = buffer.split(b";")
     if final and rest:
         frames, rest = frames + [rest], b""
     return frames, rest
-`,
-  },
-  {
-    id: 'decoder', label: 'Decoder', description: 'bytes → bytes before parsing (Decode step)',
-    source: `@gofi.decoder("unwrap")
-def unwrap(data: bytes):
+`),
+  template('decoder', () => t('gofi.canvas.python-templates.decoder', 'Decoder'), () => t('gofi.canvas.python-templates.decoder-description', 'bytes → bytes before parsing (Decode step)'), `@gofi.decoder("unwrap")
+def unwrap(data: bytes) -> bytes:
     """Unwrap, decrypt, or decompress a frame. Return the bytes the next step receives."""
     return data.removeprefix(b"device:")
-`,
-  },
-  {
-    id: 'parser', label: 'Parser', description: 'bytes → fields dict',
-    source: `@gofi.parser("my_parser")
-def my_parser(data: bytes):
+`),
+  template('parser', () => t('gofi.canvas.python-templates.parser', 'Parser'), () => t('gofi.canvas.python-templates.parser-description', 'bytes → fields dict'), `@gofi.parser("my_parser")
+def my_parser(data: bytes) -> dict | None:
     """Turn one frame into fields. Return None to drop it."""
     text = data.decode("utf-8", errors="replace")
     key, _, value = text.partition("=")
     return {"key": key.strip(), "value": value.strip()}
-`,
-  },
-  {
-    id: 'transformer', label: 'Transformer with config', description: 'Keyword-only parameters become per-node settings',
-    source: `@gofi.transformer("enrich")
-def enrich(fields, meta, *, threshold: float = 10.0, label: str = "hot"):
+`),
+  template('transformer', () => t('gofi.canvas.python-templates.transformer', 'Transformer with config'), () => t('gofi.canvas.python-templates.transformer-description', 'Keyword-only parameters become per-node settings'), `@gofi.transformer("enrich")
+def enrich(fields: dict, meta: dict, *, threshold: float = 10.0, label: str = "hot") -> dict:
     """Keyword-only parameters are configured on each flow node."""
     if float(fields.get("value", 0)) >= threshold:
         fields["label"] = label
     return fields
-`,
-  },
-  {
-    id: 'encoder', label: 'Encoder', description: 'bytes → bytes before a sink sends (Encode step)',
-    source: `@gofi.encoder("frame_length")
-def frame_length(data: bytes, fields, meta):
+`),
+  template('encoder', () => t('gofi.canvas.python-templates.encoder', 'Encoder'), () => t('gofi.canvas.python-templates.encoder-description', 'bytes → bytes before a sink sends (Encode step)'), `@gofi.encoder("frame_length")
+def frame_length(data: bytes, fields: dict, meta: dict) -> bytes:
     """Prefix the outgoing payload with a big-endian uint32 length."""
     return len(data).to_bytes(4, "big") + data
-`,
-  },
-  {
-    id: 'sink', label: 'Sink', description: 'Print-only unless the library has egress rules',
-    source: `@gofi.sink("inspect")
-def inspect(fields, meta):
+`),
+  template('sink', () => t('gofi.canvas.python-templates.sink', 'Sink'), () => t('gofi.canvas.python-templates.sink-description', 'Print-only unless the library has egress rules'), `@gofi.sink("inspect")
+def inspect(fields: dict, meta: dict) -> None:
     """Workers have no outbound network unless the library declares egress rules."""
     print(meta.get("name"), fields)
-`,
-  },
-  {
-    id: 'binary', label: 'Binary struct parser', description: 'Fixed-layout binary frames with struct or construct',
-    source: `import struct
+`),
+  template('binary', () => t('gofi.canvas.python-templates.binary', 'Binary struct parser'), () => t('gofi.canvas.python-templates.binary-description', 'Fixed-layout binary frames with struct or construct'), `import struct
 
 
 @gofi.parser("binary_header")
-def binary_header(data: bytes):
+def binary_header(data: bytes) -> dict | None:
     """Big-endian header: uint16 type, uint32 sequence, float32 value."""
     if len(data) < 10:
         return None
@@ -102,24 +119,135 @@ def binary_header(data: bytes):
 # The construct package is also available for declarative layouts:
 #   from construct import Struct, Int16ub, Int32ub, Float32b
 #   Header = Struct("type" / Int16ub, "sequence" / Int32ub, "value" / Float32b)
-`,
-  },
-  {
-    id: 'msgpack', label: 'MessagePack / CBOR decoder', description: 'Self-describing binary encodings',
-    source: `import cbor2
+`),
+  template('msgpack', () => t('gofi.canvas.python-templates.msgpack', 'MessagePack / CBOR decoder'), () => t('gofi.canvas.python-templates.msgpack-description', 'Self-describing binary encodings'), `import cbor2
 import msgpack
 
 
 @gofi.parser("binary_object")
-def binary_object(data: bytes):
+def binary_object(data: bytes) -> dict:
     """Try MessagePack first, then CBOR."""
     try:
         value = msgpack.unpackb(data, raw=False)
     except Exception:
         value = cbor2.loads(data)
     return value if isinstance(value, dict) else {"value": value}
-`,
-  },
+`),
+  template('pydantic', () => t('gofi.canvas.python-templates.pydantic', 'Validated parser (pydantic)'), () => t('gofi.canvas.python-templates.pydantic-description', 'Declare the frame shape as a model; frames that do not match are dropped'), `from pydantic import BaseModel, Field, ValidationError
+
+
+class Reading(BaseModel):
+    """The shape of one frame. Unknown keys are ignored; types are coerced."""
+
+    sensor: str = Field(min_length=1)
+    temperature: float = Field(ge=-50, le=150)
+    unit: str = "C"
+
+
+@gofi.parser("reading")
+def reading(data: bytes) -> dict | None:
+    """Parse JSON into a Reading and return its fields; drop frames that do not validate."""
+    try:
+        return Reading.model_validate_json(data).model_dump()
+    except ValidationError as error:
+        print("rejected:", error.errors(include_url=False, include_input=False))
+        return None
+`),
+  template('ai-classify', () => t('gofi.canvas.python-templates.ai-classify', 'AI classify / route'), () => t('gofi.canvas.python-templates.ai-classify-description', 'Have the AI pick one label from a list, then drop or route by it; needs the AI endpoint enabled for functions under Administration'), `# Needs "Functions may use the AI endpoint" on under Administration › AI assistant; GoFi supplies the endpoint and egress.
+@gofi.transformer("ai_classify")
+def ai_classify(fields: dict, meta: dict, *, labels: list = ["normal", "suspicious", "critical"], drop: list = ["normal"], instructions: str = "Classify this event by how urgently an operator must look at it.") -> dict | None:
+    """Label each message with one of labels; drop it when the label is in drop.
+
+    labels: the allowed labels; the model picks exactly one
+    drop: labels whose messages are dropped (everything else continues)
+    instructions: what the labels mean
+    """
+    fields["label"] = gofi.llm.classify(fields, labels, instructions=instructions)
+    return None if fields["label"] in drop else fields
+`),
+  template('ai-enrich', () => t('gofi.canvas.python-templates.ai-enrich', 'AI enrich'), () => t('gofi.canvas.python-templates.ai-enrich-description', 'Ask the AI about each message and add its answer as a field; needs the AI endpoint enabled for functions under Administration'), `import json
+
+
+# Needs "Functions may use the AI endpoint" on under Administration › AI assistant; GoFi supplies the endpoint and egress.
+@gofi.transformer("ai_enrich")
+def ai_enrich(fields: dict, meta: dict, *, prompt: str = "Summarize this event in one sentence: {fields}", output_key: str = "summary") -> dict:
+    """Ask the AI about each message and store its answer under output_key.
+
+    prompt: {fields} is the message as JSON; {name} inserts one field
+    output_key: field that receives the answer
+    """
+    fields[output_key] = gofi.llm.chat(prompt.format_map({**fields, "fields": json.dumps(fields)}))
+    return fields
+`),
+  template('ai-extract', () => t('gofi.canvas.python-templates.ai-extract', 'AI extract'), () => t('gofi.canvas.python-templates.ai-extract-description', 'Pull the values of a pydantic model out of each message into a field; needs the AI endpoint enabled for functions under Administration'), `import json
+
+from pydantic import BaseModel
+
+
+class Extracted(BaseModel):
+    """The values to pull out of each message; a value the message does not state stays None."""
+
+    vendor: str | None = None
+    amount: float | None = None
+    currency: str | None = None
+
+
+# Needs "Functions may use the AI endpoint" on under Administration › AI assistant; GoFi supplies the endpoint and egress.
+@gofi.transformer("ai_extract")
+def ai_extract(fields: dict, meta: dict, *, prompt: str = "Extract the vendor, amount, and currency from this event.\\n\\n{fields}", output_key: str = "extracted") -> dict:
+    """Pull the Extracted values out of each message and store them under output_key.
+
+    prompt: what to extract; {fields} is the message as JSON
+    output_key: field that receives the values (a JSON object)
+    """
+    fields[output_key] = gofi.llm.extract(prompt.format_map({**fields, "fields": json.dumps(fields)}), Extracted)
+    return fields
+`),
+  template('ai-sink', () => t('gofi.canvas.python-templates.ai-sink', 'AI sink'), () => t('gofi.canvas.python-templates.ai-sink-description', 'Let the AI triage each delivered message and pick an action; your code carries it out. Needs the AI endpoint enabled for functions under Administration'), `import json
+from typing import Literal
+
+from pydantic import BaseModel
+
+
+class Decision(BaseModel):
+    """What the model decides for one message; the code below carries it out."""
+
+    action: Literal["ignore", "notify", "ticket"]
+    message: str = ""
+
+
+# Needs "Functions may use the AI endpoint" on under Administration › AI assistant; GoFi supplies the endpoint and egress.
+@gofi.sink("ai_notify")
+def ai_notify(fields: dict, meta: dict, *, prompt: str = "Triage this event for the on-call operator. Decide whether to ignore it, notify the channel, or open a ticket, and write the message to send: {fields}") -> None:
+    """Let the AI decide what to do with each delivered message, then carry it out.
+
+    prompt: {fields} is the message as JSON; {name} inserts one field
+    """
+    # 1. The model decides. Structured output limits it to the actions in
+    #    Decision, so the model never gets free-form control of what happens.
+    decision = gofi.llm.extract(prompt.format_map({**fields, "fields": json.dumps(fields)}), Decision)
+
+    # 2. Your code acts. This is the agentic boundary: only what is written
+    #    here can touch the world. Calls beyond print need an egress rule on
+    #    the library's Network tab, and should be safe to repeat, since a flow
+    #    can redeliver a message. Replace the prints with your webhook or
+    #    ticket API call.
+    if decision["action"] == "ignore":
+        return
+    if decision["action"] == "ticket":
+        print(meta.get("name"), "ticket ->", decision["message"][:200])
+        return
+    print(meta.get("name"), "notify ->", decision["message"][:200])
+`),
+]
+
+/** How the template picker groups FUNCTION_TEMPLATES; every template id
+ * belongs to exactly one group (the test checks). */
+export const TEMPLATE_GROUPS: ReadonlyArray<{ id: string; readonly label: string; ids: readonly string[] }> = [
+  { id: 'sources', get label() { return t('gofi.canvas.python-templates.group-sources', 'Sources') }, ids: ['fetcher', 'streamer'] },
+  { id: 'steps', get label() { return t('gofi.canvas.python-templates.group-steps', 'Pipeline steps') }, ids: ['framer', 'decoder', 'parser', 'transformer', 'encoder', 'sink'] },
+  { id: 'parsers', get label() { return t('gofi.canvas.python-templates.group-parsers', 'Binary and typed parsers') }, ids: ['binary', 'msgpack', 'pydantic'] },
+  { id: 'ai', get label() { return t('gofi.canvas.python-templates.group-ai', 'AI') }, ids: ['ai-classify', 'ai-enrich', 'ai-extract', 'ai-sink'] },
 ]
 
 /** Appends a template to existing source, adding `import gofi` when missing. */
@@ -130,7 +258,7 @@ export function insertTemplate(source: string, template: string): string {
   return `${header}\n\n\n${template.trimEnd()}\n`
 }
 
-export const INLINE_STARTER = `def transform(fields, meta):
+export const INLINE_STARTER = `def transform(fields: dict, meta: dict) -> dict | None:
     """Return the updated fields, or None to drop the message."""
     print("received", fields)
     return fields
@@ -146,13 +274,13 @@ export function configWithDefaults(params: FunctionParamLike[], saved?: Record<s
 /** Parses one config input according to the declared parameter type. */
 export function coerceParam(type: string | undefined, text: string): unknown {
   switch (type) {
-    case 'int': { const value = Number.parseInt(text, 10); if (Number.isNaN(value)) throw new Error('expected an integer'); return value }
-    case 'float': { const value = Number(text); if (text.trim() === '' || Number.isNaN(value)) throw new Error('expected a number'); return value }
+    case 'int': { const value = Number.parseInt(text, 10); if (Number.isNaN(value)) throw new Error(t('gofi.canvas.python-templates.expected-integer', 'expected an integer')); return value }
+    case 'float': { const value = Number(text); if (text.trim() === '' || Number.isNaN(value)) throw new Error(t('gofi.canvas.python-templates.expected-number', 'expected a number')); return value }
     case 'bool': return text === 'true'
     case 'list': case 'dict': case 'any': {
       const value: unknown = JSON.parse(text)
-      if (type === 'list' && !Array.isArray(value)) throw new Error('expected a JSON list')
-      if (type === 'dict' && (value === null || typeof value !== 'object' || Array.isArray(value))) throw new Error('expected a JSON object')
+      if (type === 'list' && !Array.isArray(value)) throw new Error(t('gofi.canvas.python-templates.expected-json-list', 'expected a JSON list'))
+      if (type === 'dict' && (value === null || typeof value !== 'object' || Array.isArray(value))) throw new Error(t('gofi.canvas.python-templates.expected-json-object', 'expected a JSON object'))
       return value
     }
     default: return text
@@ -172,9 +300,9 @@ export function evaluateTest(expectation: TestExpectation, outcome: TestOutcome)
   if (outcome.error) return { status: 'fail', reasons: [outcome.error] }
   const reasons: string[] = []
   const hasFields = !!expectation.expectFields && Object.keys(expectation.expectFields).length > 0
-  if (expectation.expectDrop !== undefined && !!outcome.drop !== expectation.expectDrop) reasons.push(expectation.expectDrop ? 'expected the message to be dropped' : 'message was dropped')
+  if (expectation.expectDrop !== undefined && !!outcome.drop !== expectation.expectDrop) reasons.push(expectation.expectDrop ? t('gofi.canvas.python-templates.expected-drop', 'expected the message to be dropped') : t('gofi.canvas.python-templates.unexpected-drop', 'message was dropped'))
   if (hasFields) for (const [key, value] of Object.entries(expectation.expectFields!)) {
-    if (JSON.stringify(outcome.fields?.[key]) !== JSON.stringify(value)) reasons.push(`${key}: expected ${JSON.stringify(value)}, got ${JSON.stringify(outcome.fields?.[key])}`)
+    if (JSON.stringify(outcome.fields?.[key]) !== JSON.stringify(value)) reasons.push(t('gofi.canvas.python-templates.field-mismatch', '{{key}}: expected {{expected}}, got {{actual}}', { key, expected: JSON.stringify(value), actual: JSON.stringify(outcome.fields?.[key]) }))
   }
   if (expectation.expectDrop === undefined && !hasFields) return { status: 'recorded', reasons }
   return { status: reasons.length ? 'fail' : 'pass', reasons }
@@ -199,12 +327,12 @@ export function promoteInlineSource(source: string, functionName: string): strin
  * that name (which the appended one would shadow). Empty when it is safe. */
 export function promotionConflict(librarySource: string, functionName: string): string {
   const name = functionName.replace(/[^A-Za-z0-9_]/g, '_').replace(/^[^A-Za-z_]/, '_') || 'transform'
-  if (discoverFunctions(librarySource).some(fn => fn.kind === 'transformer' && fn.name === name)) return `already registers a transformer named "${name}"`
-  if (new RegExp(`^(?:async\\s+)?def\\s+${name}\\s*\\(`, 'm').test(librarySource)) return `already defines a function named "${name}"`
+  if (discoverFunctions(librarySource).some(fn => fn.kind === 'transformer' && fn.name === name)) return t('gofi.canvas.python-templates.conflict-transformer', 'already registers a transformer named "{{name}}"', { name })
+  if (new RegExp(`^(?:async\\s+)?def\\s+${name}\\s*\\(`, 'm').test(librarySource)) return t('gofi.canvas.python-templates.conflict-function', 'already defines a function named "{{name}}"', { name })
   return ''
 }
 
-export type StepKind = 'framer' | 'decoder' | 'parser' | 'transformer' | 'encoder' | 'sink'
+export type StepKind = 'fetcher' | 'streamer' | 'framer' | 'decoder' | 'parser' | 'transformer' | 'encoder' | 'sink'
 export interface DiscoveredFunction { name: string; kind: StepKind; line: number; defLine: number }
 
 /** Static scan of decorated functions in unsaved source (text only, never executed). */
@@ -212,7 +340,7 @@ export function discoverFunctions(source: string): DiscoveredFunction[] {
   const lines = source.split('\n')
   const found: DiscoveredFunction[] = []
   for (let index = 0; index < lines.length; index++) {
-    const decorator = /^@gofi\.(framer|decoder|parser|transformer|encoder|sink)\b\s*(?:\((.*)\))?\s*$/.exec(lines[index].trim())
+    const decorator = /^@gofi\.(fetcher|streamer|framer|decoder|parser|transformer|encoder|sink)\b\s*(?:\((.*)\))?\s*$/.exec(lines[index].trim())
     if (!decorator) continue
     let defLine = index + 1
     while (defLine < lines.length && (lines[defLine].trim().startsWith('@') || !lines[defLine].trim())) defLine++

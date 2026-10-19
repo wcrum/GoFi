@@ -14,7 +14,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file gofi/v1/gofi.proto.
  */
 export const file_gofi_v1_gofi: GenFile = /*@__PURE__*/
-  fileDesc("ChJnb2ZpL3YxL2dvZmkucHJvdG8SB2dvZmkudjEinwIKBEZsb3cSDAoEbmFtZRgBIAEoCRIjCgZzb3VyY2UYAiABKAsyEy5nb2ZpLnYxLkZsb3dTb3VyY2USIQoHZnJhbWluZxgDIAEoCzIQLmdvZmkudjEuRnJhbWluZxIlCgZwYXJzZXIYBCABKAsyFS5nb2ZpLnYxLlBhcnNlckNvbmZpZxIeCgZzdGFnZXMYBSADKAsyDi5nb2ZpLnYxLlN0YWdlEhwKBXNpbmtzGAYgAygLMg0uZ29maS52MS5TaW5rEicKEGRlYWRfbGV0dGVyX3NpbmsYByABKAsyDS5nb2ZpLnYxLlNpbmsSJQoKdGVzdF9jYXNlcxgIIAMoCzIRLmdvZmkudjEuVGVzdENhc2VKBAgJEApSBmxlZ2FjeSKTAQoKRmxvd1NvdXJjZRIlCgZsaXN0ZW4YASABKAsyFS5nb2ZpLnYxLkxpc3RlblNvdXJjZRIjCgVmZXRjaBgCIAEoCzIULmdvZmkudjEuRmV0Y2hTb3VyY2USKwoJc3Vic2NyaWJlGAMgASgLMhguZ29maS52MS5TdWJzY3JpYmVTb3VyY2VKBAgEEAVSBnB5dGhvbiI+CgtGZXRjaFNvdXJjZRIgCgRodHRwGAEgASgLMhIuZ29maS52MS5IVFRQRmV0Y2gSDQoFc3BsaXQYAiABKAki2QEKCUhUVFBGZXRjaBILCgN1cmwYASABKAkSDgoGbWV0aG9kGAIgASgJEjAKB2hlYWRlcnMYAyADKAsyHy5nb2ZpLnYxLkhUVFBGZXRjaC5IZWFkZXJzRW50cnkSHwoEYXV0aBgEIAEoCzIRLmdvZmkudjEuSFRUUEF1dGgSDQoFZXZlcnkYBSABKAkSDwoHdGltZW91dBgGIAEoCRIMCgRib2R5GAcgASgJGi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIrEBCg9TdWJzY3JpYmVTb3VyY2USJAoEbmF0cxgBIAEoCzIWLmdvZmkudjEuTkFUU1N1YnNjcmliZRIkCgRtcXR0GAIgASgLMhYuZ29maS52MS5NUVRUU3Vic2NyaWJlEisKCXdlYnNvY2tldBgDIAEoCzIYLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlEiUKA3NzZRgEIAEoCzIYLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlIl0KDU5BVFNTdWJzY3JpYmUSCwoDdXJsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSDQoFcXVldWUYAyABKAkSHwoEYXV0aBgEIAEoCzIRLmdvZmkudjEuTkFUU0F1dGgibwoNTVFUVFN1YnNjcmliZRILCgN1cmwYASABKAkSDQoFdG9waWMYAiABKAkSCwoDcW9zGAMgASgFEhEKCWNsaWVudF9pZBgEIAEoCRIQCgh1c2VybmFtZRgFIAEoCRIQCghwYXNzd29yZBgGIAEoCSK1AQoPU3RyZWFtU3Vic2NyaWJlEgsKA3VybBgBIAEoCRI2CgdoZWFkZXJzGAIgAygLMiUuZ29maS52MS5TdHJlYW1TdWJzY3JpYmUuSGVhZGVyc0VudHJ5Eh8KBGF1dGgYAyABKAsyES5nb2ZpLnYxLkhUVFBBdXRoEgwKBHNlbmQYBCABKAkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiZAoMTGlzdGVuU291cmNlEg8KB25ldHdvcmsYASABKAkSDAoEcG9ydBgCIAEoBRIpCgdzZXJ2aWNlGAMgASgLMhguZ29maS52MS5TZXJ2aWNlRXhwb3N1cmVKBAgEEAVSBGhvb2sibgoJUHl0aG9uUmVmEg8KB2xpYnJhcnkYASABKAkSEAoIZnVuY3Rpb24YAiABKAkSFQoNaW5saW5lX3NvdXJjZRgDIAEoCRInCgZjb25maWcYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IjEKDUV4cHJlc3Npb25SZWYSDAoEbmFtZRgBIAEoCRISCgpnZW5lcmF0aW9uGAIgASgDItsCCg9TZXJ2aWNlRXhwb3N1cmUSDAoEdHlwZRgBIAEoCRIMCgRwb3J0GAIgASgFEhEKCW5vZGVfcG9ydBgDIAEoBRIfChdleHRlcm5hbF90cmFmZmljX3BvbGljeRgEIAEoCRI+Cgthbm5vdGF0aW9ucxgFIAMoCzIpLmdvZmkudjEuU2VydmljZUV4cG9zdXJlLkFubm90YXRpb25zRW50cnkSMwoNbG9hZF9iYWxhbmNlchgGIAEoCzIcLmdvZmkudjEuTG9hZEJhbGFuY2VyT3B0aW9ucxIpCgdnYXRld2F5GAcgASgLMhguZ29maS52MS5HYXRld2F5RXhwb3N1cmUSJAoKYWxsb3dfZnJvbRgIIAMoCzIQLmdvZmkudjEuUGVlclJlZhoyChBBbm5vdGF0aW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEikAEKB1BlZXJSZWYSEQoJbmFtZXNwYWNlGAEgASgJEg8KB3BhY2thZ2UYAiABKAkSMAoIc2VsZWN0b3IYAyADKAsyHi5nb2ZpLnYxLlBlZXJSZWYuU2VsZWN0b3JFbnRyeRovCg1TZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiRgoTTG9hZEJhbGFuY2VyT3B0aW9ucxINCgVjbGFzcxgBIAEoCRIUCgxhZGRyZXNzX3Bvb2wYAiABKAkSCgoCaXAYAyABKAkiUgoPR2F0ZXdheUV4cG9zdXJlEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJEhAKCGxpc3RlbmVyGAMgASgJEgwKBHBvcnQYBCABKAUidQoHRnJhbWluZxIMCgRtb2RlGAEgASgJEhEKCWRlbGltaXRlchgCIAEoCRISCgpwcmVmaXhfbGVuGAMgASgFEhEKCW1heF9ieXRlcxgEIAEoBRIiCgZweXRob24YBSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZiI9CglDb2RlY1N0ZXASDAoEdHlwZRgBIAEoCRIiCgZweXRob24YAiABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZiJACghFbmNvZGluZxIOCgZmb3JtYXQYASABKAkSJAoIZW5jb2RlcnMYAiADKAsyEi5nb2ZpLnYxLkNvZGVjU3RlcCKfAQoMUGFyc2VyQ29uZmlnEg4KBmZvcm1hdBgBIAEoCRIkCghkZWNvZGVycxgGIAMoCzISLmdvZmkudjEuQ29kZWNTdGVwEhkKEW1heF9kZWNvZGVkX2J5dGVzGAMgASgFEhQKDGVycm9yX3BvbGljeRgEIAEoCRIiCgZweXRob24YBSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZkoECAIQAyLIAgoFU3RhZ2USCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIMCgR0eXBlGAMgASgJEhIKCmV4cHJlc3Npb24YBCABKAkSFAoMdHJhbnNmb3JtX29wGAUgASgJEg0KBWZpZWxkGAYgASgJEhEKCW5ld19maWVsZBgHIAEoCRISCgp2YWx1ZV9leHByGAggASgJEhYKDm1heF9wZXJfc2Vjb25kGAkgASgBEhAKCGtleV9leHByGAogASgJEg4KBndpbmRvdxgLIAEoCRIXCg9yZXF1aXJlZF9maWVsZHMYDCADKAkSIgoGcHl0aG9uGA0gASgLMhIuZ29maS52MS5QeXRob25SZWYSLgoOZXhwcmVzc2lvbl9yZWYYDiABKAsyFi5nb2ZpLnYxLkV4cHJlc3Npb25SZWYSEAoIb25fZXJyb3IYDyABKAkisQEKEEt1YmVybmV0ZXNUYXJnZXQSEQoJbmFtZXNwYWNlGAEgASgJEjkKCHNlbGVjdG9yGAIgAygLMicuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0LlNlbGVjdG9yRW50cnkSDAoEcG9ydBgDIAEoBRIQCghkZWxpdmVyeRgEIAEoCRovCg1TZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEi0QQKBFNpbmsSDAoEdHlwZRgBIAEoCRILCgN1cmwYAiABKAkSDwoHc3ViamVjdBgDIAEoCRIRCglkZWxpbWl0ZXIYBCABKAkSDgoGbWV0aG9kGAUgASgJEisKB2hlYWRlcnMYBiADKAsyGi5nb2ZpLnYxLlNpbmsuSGVhZGVyc0VudHJ5EhQKDGNvbnRlbnRfdHlwZRgHIAEoCRIRCglib2R5X21vZGUYCCABKAkSHwoEYXV0aBgJIAEoCzIRLmdvZmkudjEuSFRUUEF1dGgSJAoJbmF0c19hdXRoGAogASgLMhEuZ29maS52MS5OQVRTQXV0aBIjCgVhc3RlchgLIAEoCzIULmdvZmkudjEuQXN0ZXJDb25maWcSDAoEd2hlbhgMIAEoCRItCgprdWJlcm5ldGVzGA4gASgLMhkuZ29maS52MS5LdWJlcm5ldGVzVGFyZ2V0EiIKBnB5dGhvbhgNIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEikKBmxhYmVscxgPIAMoCzIZLmdvZmkudjEuU2luay5MYWJlbHNFbnRyeRIoCgh3aGVuX3JlZhgQ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cnNlX2Vycm9yGAEgASgJEi4KDXBhcnNlZF9maWVsZHMYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiMKBnN0YWdlcxgDIAMoCzITLmdvZmkudjEuU3RhZ2VUcmFjZRIPCgdkcm9wcGVkGAQgASgIEhIKCmRyb3BwZWRfYnkYBSABKAkSEwoLZGVhZF9sZXR0ZXIYBiABKAgSIwoFc2lua3MYByADKAsyFC5nb2ZpLnYxLlNpbmtPdXRjb21lIhIKEExpc3RGbG93c1JlcXVlc3QiMQoRTGlzdEZsb3dzUmVzcG9uc2USHAoFZmxvd3MYASADKAsyDS5nb2ZpLnYxLkZsb3ciHgoOR2V0Rmxvd1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIuCg9HZXRGbG93UmVzcG9uc2USGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdyJHChFVcHNlcnRGbG93UmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93EhUKDXZhbGlkYXRlX29ubHkYAiABKAgiQwoSVXBzZXJ0Rmxvd1Jlc3BvbnNlEhsKBGZsb3cYASABKAsyDS5nb2ZpLnYxLkZsb3cSEAoId2FybmluZ3MYAiADKAkiIQoRRGVsZXRlRmxvd1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIUChJEZWxldGVGbG93UmVzcG9uc2UiJQoVR2V0Um91dGVIZWFsdGhSZXF1ZXN0EgwKBG5hbWUYASABKAkiPgoWR2V0Um91dGVIZWFsdGhSZXNwb25zZRIkCgZyb3V0ZXMYASADKAsyFC5nb2ZpLnYxLlJvdXRlSGVhbHRoIuUBCgtSb3V0ZUhlYWx0aBINCgVyb3V0ZRgBIAEoCRIRCglzdWNjZXNzZXMYAiABKAMSEAoIZmFpbHVyZXMYAyABKAMSMwoPbGFzdF9zdWNjZXNzX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIzCg9sYXN0X2ZhaWx1cmVfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhIKCmxhc3RfZXJyb3IYBiABKAkSEwoLZXJyb3JfY2xhc3MYByABKAkSDwoHZmFpbGluZxgIIAEoCCInChdHZXRSdW50aW1lU3RhdHVzUmVxdWVzdBIMCgRuYW1lGAEgASgJIkEKGEdldFJ1bnRpbWVTdGF0dXNSZXNwb25zZRIlCgdydW50aW1lGAEgASgLMhQuZ29maS52MS5SdW50aW1lSW5mbyIWChRMaXN0RW5kcG9pbnRzUmVxdWVzdCI9ChVMaXN0RW5kcG9pbnRzUmVzcG9uc2USJAoJZW5kcG9pbnRzGAEgAygLMhEuZ29maS52MS5FbmRwb2ludCIZChdHZXRDb25maWd1cmF0aW9uUmVxdWVzdCJJChhHZXRDb25maWd1cmF0aW9uUmVzcG9uc2USLQoNY29uZmlndXJhdGlvbhgBIAEoCzIWLmdvZmkudjEuQ29uZmlndXJhdGlvbiIQCg5HZXRNb2RlUmVxdWVzdCJ4Cg9HZXRNb2RlUmVzcG9uc2USDAoEbW9kZRgBIAEoCRIUCgxwcm9jZXNzX3JvbGUYAiABKAkSEwoLZHJpdmVyX2tpbmQYAyABKAkSFQoNbm9kZV9wb3J0X21pbhgEIAEoBRIVCg1ub2RlX3BvcnRfbWF4GAUgASgFIjsKD1NpbXVsYXRlUmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93EgsKA3JhdxgCIAEoCSI7ChBTaW11bGF0ZVJlc3BvbnNlEicKBnJlc3VsdBgBIAEoCzIXLmdvZmkudjEuU2ltdWxhdGVSZXN1bHQiIwoTV2F0Y2hUcmFmZmljUmVxdWVzdBIMCgRuYW1lGAEgASgJIl0KFFdhdGNoVHJhZmZpY1Jlc3BvbnNlEgwKBGZsb3cYASABKAkSJAoFZXZlbnQYAiABKAsyFS5nb2ZpLnYxLlRyYWZmaWNFdmVudBIRCgloZWFydGJlYXQYAyABKAgiUwoVUmVzb2x2ZVRhcmdldHNSZXF1ZXN0EikKBnRhcmdldBgBIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIPCgduZXR3b3JrGAIgASgJIj4KFlJlc29sdmVUYXJnZXRzUmVzcG9uc2USJAoJZW5kcG9pbnRzGAEgAygLMhEuZ29maS52MS5FbmRwb2ludCJlCg1SZXBsYXlSZXF1ZXN0EikKBnRhcmdldBgBIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIPCgduZXR3b3JrGAIgASgJEgsKA3VybBgDIAEoCRILCgNyYXcYBCABKAwiUgoOUmVwbGF5RGVsaXZlcnkSIwoIZW5kcG9pbnQYASABKAsyES5nb2ZpLnYxLkVuZHBvaW50EgwKBHNlbnQYAiABKAgSDQoFZXJyb3IYAyABKAkiPQoOUmVwbGF5UmVzcG9uc2USKwoKZGVsaXZlcmllcxgBIAMoCzIXLmdvZmkudjEuUmVwbGF5RGVsaXZlcnkiggEKEURlYnVnRnJhbWVSZXF1ZXN0EhEKCWZsb3dfbmFtZRgBIAEoCRIbCgRmbG93GAIgASgLMg0uZ29maS52MS5GbG93EgsKA3JhdxgDIAEoDBIMCgRzdGVwGAQgASgJEg8KB3dhdGNoZXMYBSADKAkSEQoJbWF4X3N0ZXBzGAYgASgFIuoCChJEZWJ1Z0ZyYW1lUmVzcG9uc2USKwoKc2ltdWxhdGlvbhgBIAEoCzIXLmdvZmkudjEuU2ltdWxhdGVSZXN1bHQSDAoEc3RlcBgCIAEoCRIkCghmdW5jdGlvbhgDIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEi0KDGlucHV0X2ZpZWxkcxgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSPgoKaW5wdXRfbWV0YRgFIAMoCzIqLmdvZmkudjEuRGVidWdGcmFtZVJlc3BvbnNlLklucHV0TWV0YUVudHJ5EhEKCWlucHV0X3JhdxgGIAEoDBIqCglyZWNvcmRpbmcYByABKAsyFy5nb2ZpLnYxLkRlYnVnUmVjb3JkaW5nEhMKC25vdF9yZWFjaGVkGAggASgJGjAKDklucHV0TWV0YUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEylQgKC0dvRmlTZXJ2aWNlEkIKCUxpc3RGbG93cxIZLmdvZmkudjEuTGlzdEZsb3dzUmVxdWVzdBoaLmdvZmkudjEuTGlzdEZsb3dzUmVzcG9uc2USPAoHR2V0RmxvdxIXLmdvZmkudjEuR2V0Rmxvd1JlcXVlc3QaGC5nb2ZpLnYxLkdldEZsb3dSZXNwb25zZRJFCgpVcHNlcnRGbG93EhouZ29maS52MS5VcHNlcnRGbG93UmVxdWVzdBobLmdvZmkudjEuVXBzZXJ0Rmxvd1Jlc3BvbnNlEkUKCkRlbGV0ZUZsb3cSGi5nb2ZpLnYxLkRlbGV0ZUZsb3dSZXF1ZXN0GhsuZ29maS52MS5EZWxldGVGbG93UmVzcG9uc2USVwoQR2V0UnVudGltZVN0YXR1cxIgLmdvZmkudjEuR2V0UnVudGltZVN0YXR1c1JlcXVlc3QaIS5nb2ZpLnYxLkdldFJ1bnRpbWVTdGF0dXNSZXNwb25zZRJOCg1MaXN0RW5kcG9pbnRzEh0uZ29maS52MS5MaXN0RW5kcG9pbnRzUmVxdWVzdBoeLmdvZmkudjEuTGlzdEVuZHBvaW50c1Jlc3BvbnNlElEKDlJlc29sdmVUYXJnZXRzEh4uZ29maS52MS5SZXNvbHZlVGFyZ2V0c1JlcXVlc3QaHy5nb2ZpLnYxLlJlc29sdmVUYXJnZXRzUmVzcG9uc2USOQoGUmVwbGF5EhYuZ29maS52MS5SZXBsYXlSZXF1ZXN0GhcuZ29maS52MS5SZXBsYXlSZXNwb25zZRJXChBHZXRDb25maWd1cmF0aW9uEiAuZ29maS52MS5HZXRDb25maWd1cmF0aW9uUmVxdWVzdBohLmdvZmkudjEuR2V0Q29uZmlndXJhdGlvblJlc3BvbnNlEjwKB0dldE1vZGUSFy5nb2ZpLnYxLkdldE1vZGVSZXF1ZXN0GhguZ29maS52MS5HZXRNb2RlUmVzcG9uc2USPwoIU2ltdWxhdGUSGC5nb2ZpLnYxLlNpbXVsYXRlUmVxdWVzdBoZLmdvZmkudjEuU2ltdWxhdGVSZXNwb25zZRJFCgpEZWJ1Z0ZyYW1lEhouZ29maS52MS5EZWJ1Z0ZyYW1lUmVxdWVzdBobLmdvZmkudjEuRGVidWdGcmFtZVJlc3BvbnNlEk0KDFdhdGNoVHJhZmZpYxIcLmdvZmkudjEuV2F0Y2hUcmFmZmljUmVxdWVzdBodLmdvZmkudjEuV2F0Y2hUcmFmZmljUmVzcG9uc2UwARJRCg5HZXRSb3V0ZUhlYWx0aBIeLmdvZmkudjEuR2V0Um91dGVIZWFsdGhSZXF1ZXN0Gh8uZ29maS52MS5HZXRSb3V0ZUhlYWx0aFJlc3BvbnNlQipaKGdpdGh1Yi5jb20vd2NydW0vZ29maS9nZW4vZ29maS92MTtnb2ZpdjFiBnByb3RvMw", [file_google_protobuf_struct, file_google_protobuf_timestamp, file_gofi_v1_sandbox]);
+  fileDesc("ChJnb2ZpL3YxL2dvZmkucHJvdG8SB2dvZmkudjEi+gIKBEZsb3cSDAoEbmFtZRgBIAEoCRIjCgZzb3VyY2UYAiABKAsyEy5nb2ZpLnYxLkZsb3dTb3VyY2USIQoHZnJhbWluZxgDIAEoCzIQLmdvZmkudjEuRnJhbWluZxIlCgZwYXJzZXIYBCABKAsyFS5nb2ZpLnYxLlBhcnNlckNvbmZpZxIeCgZzdGFnZXMYBSADKAsyDi5nb2ZpLnYxLlN0YWdlEhwKBXNpbmtzGAYgAygLMg0uZ29maS52MS5TaW5rEicKEGRlYWRfbGV0dGVyX3NpbmsYByABKAsyDS5nb2ZpLnYxLlNpbmsSJQoKdGVzdF9jYXNlcxgIIAMoCzIRLmdvZmkudjEuVGVzdENhc2USDQoFc3RhdGUYCiABKAkSJQoGZGVjb2RlGAsgASgLMhUuZ29maS52MS5EZWNvZGVDb25maWcSIwoGcHl0aG9uGAwgASgLMhMuZ29maS52MS5GbG93UHl0aG9uSgQICRAKUgZsZWdhY3kiTwoMRGVjb2RlQ29uZmlnEiQKCGRlY29kZXJzGAEgAygLMhIuZ29maS52MS5Db2RlY1N0ZXASGQoRbWF4X2RlY29kZWRfYnl0ZXMYAiABKAUiHQoKRmxvd1B5dGhvbhIPCgdsaWJyYXJ5GAEgASgJIqwBCgpGbG93U291cmNlEiUKBmxpc3RlbhgBIAEoCzIVLmdvZmkudjEuTGlzdGVuU291cmNlEiMKBWZldGNoGAIgASgLMhQuZ29maS52MS5GZXRjaFNvdXJjZRIrCglzdWJzY3JpYmUYAyABKAsyGC5nb2ZpLnYxLlN1YnNjcmliZVNvdXJjZRIlCgZweXRob24YBCABKAsyFS5nb2ZpLnYxLlB5dGhvblNvdXJjZSJpCgxQeXRob25Tb3VyY2USDwoHbGlicmFyeRgBIAEoCRIQCghmdW5jdGlvbhgCIAEoCRInCgZjb25maWcYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg0KBWV2ZXJ5GAQgASgJInwKC0ZldGNoU291cmNlEiAKBGh0dHAYASABKAsyEi5nb2ZpLnYxLkhUVFBGZXRjaBINCgVzcGxpdBgCIAEoCRIcCgJzMxgDIAEoCzIQLmdvZmkudjEuUzNGZXRjaBIeCgNzcWwYBCABKAsyES5nb2ZpLnYxLlNRTEZldGNoIs8CCgdTM0ZldGNoEhAKCGVuZHBvaW50GAEgASgJEg4KBnJlZ2lvbhgCIAEoCRIOCgZidWNrZXQYAyABKAkSDgoGcHJlZml4GAQgASgJEgwKBGdsb2IYBSABKAkSFQoNYWNjZXNzX2tleV9pZBgGIAEoCRIZChFzZWNyZXRfYWNjZXNzX2tleRgHIAEoCRIVCg1zZXNzaW9uX3Rva2VuGAggASgJEhIKCnBhdGhfc3R5bGUYCSABKAgSHAoUaW5zZWN1cmVfc2tpcF92ZXJpZnkYCiABKAgSDgoGdGxzX2NhGAsgASgJEg0KBXNpbmNlGAwgASgJEhMKC21heF9vYmplY3RzGA0gASgFEhQKDGRlbGV0ZV9hZnRlchgOIAEoCBIPCgdtb3ZlX3RvGA8gASgJEg0KBWV2ZXJ5GBAgASgJEg8KB3RpbWVvdXQYESABKAki0gIKCFNRTEZldGNoEg4KBmRyaXZlchgBIAEoCRILCgNkc24YAiABKAkSDAoEaG9zdBgDIAEoCRIMCgRwb3J0GAQgASgFEhAKCGRhdGFiYXNlGAUgASgJEhAKCHVzZXJuYW1lGAYgASgJEhAKCHBhc3N3b3JkGAcgASgJEgsKA3RscxgIIAEoCRItCgZwYXJhbXMYCSADKAsyHS5nb2ZpLnYxLlNRTEZldGNoLlBhcmFtc0VudHJ5Eg0KBXF1ZXJ5GAogASgJEhUKDWN1cnNvcl9jb2x1bW4YCyABKAkSFAoMY3Vyc29yX3N0YXJ0GAwgASgJEhAKCG1heF9yb3dzGA0gASgFEg0KBWV2ZXJ5GA4gASgJEg8KB3RpbWVvdXQYDyABKAkaLQoLUGFyYW1zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASLZAQoJSFRUUEZldGNoEgsKA3VybBgBIAEoCRIOCgZtZXRob2QYAiABKAkSMAoHaGVhZGVycxgDIAMoCzIfLmdvZmkudjEuSFRUUEZldGNoLkhlYWRlcnNFbnRyeRIfCgRhdXRoGAQgASgLMhEuZ29maS52MS5IVFRQQXV0aBINCgVldmVyeRgFIAEoCRIPCgd0aW1lb3V0GAYgASgJEgwKBGJvZHkYByABKAkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEi/wIKD1N1YnNjcmliZVNvdXJjZRIkCgRuYXRzGAEgASgLMhYuZ29maS52MS5OQVRTU3Vic2NyaWJlEiQKBG1xdHQYAiABKAsyFi5nb2ZpLnYxLk1RVFRTdWJzY3JpYmUSKwoJd2Vic29ja2V0GAMgASgLMhguZ29maS52MS5TdHJlYW1TdWJzY3JpYmUSJQoDc3NlGAQgASgLMhguZ29maS52MS5TdHJlYW1TdWJzY3JpYmUSJgoFa2Fma2EYBSABKAsyFy5nb2ZpLnYxLkthZmthU3Vic2NyaWJlEiQKBGFtcXAYBiABKAsyFi5nb2ZpLnYxLkFNUVBTdWJzY3JpYmUSLgoJamV0c3RyZWFtGAcgASgLMhsuZ29maS52MS5KZXRTdHJlYW1TdWJzY3JpYmUSJgoFcmVkaXMYCCABKAsyFy5nb2ZpLnYxLlJlZGlzU3Vic2NyaWJlEiYKBXplbm9oGBQgASgLMhcuZ29maS52MS5aZW5vaFN1YnNjcmliZSLVAQoOWmVub2hTdWJzY3JpYmUSCwoDdXJsGAEgASgJEhAKCGtleV9leHByGAIgASgJEjUKB2hlYWRlcnMYAyADKAsyJC5nb2ZpLnYxLlplbm9oU3Vic2NyaWJlLkhlYWRlcnNFbnRyeRIfCgRhdXRoGAQgASgLMhEuZ29maS52MS5IVFRQQXV0aBINCgVraW5kcxgFIAMoCRINCgVxdWVyeRgGIAEoCBouCgxIZWFkZXJzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJdCg1OQVRTU3Vic2NyaWJlEgsKA3VybBgBIAEoCRIPCgdzdWJqZWN0GAIgASgJEg0KBXF1ZXVlGAMgASgJEh8KBGF1dGgYBCABKAsyES5nb2ZpLnYxLk5BVFNBdXRoIm8KDU1RVFRTdWJzY3JpYmUSCwoDdXJsGAEgASgJEg0KBXRvcGljGAIgASgJEgsKA3FvcxgDIAEoBRIRCgljbGllbnRfaWQYBCABKAkSEAoIdXNlcm5hbWUYBSABKAkSEAoIcGFzc3dvcmQYBiABKAkitQEKD1N0cmVhbVN1YnNjcmliZRILCgN1cmwYASABKAkSNgoHaGVhZGVycxgCIAMoCzIlLmdvZmkudjEuU3RyZWFtU3Vic2NyaWJlLkhlYWRlcnNFbnRyeRIfCgRhdXRoGAMgASgLMhEuZ29maS52MS5IVFRQQXV0aBIMCgRzZW5kGAQgASgJGi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBImEKCVNvdXJjZVRMUxIPCgdlbmFibGVkGAEgASgIEgoKAmNhGAIgASgJEgwKBGNlcnQYAyABKAkSCwoDa2V5GAQgASgJEhwKFGluc2VjdXJlX3NraXBfdmVyaWZ5GAUgASgIIqwBCg5LYWZrYVN1YnNjcmliZRIPCgdicm9rZXJzGAEgAygJEg4KBnRvcGljcxgCIAMoCRINCgVncm91cBgDIAEoCRIUCgxzdGFydF9vZmZzZXQYBCABKAkSHwoDdGxzGAUgASgLMhIuZ29maS52MS5Tb3VyY2VUTFMSIAoEc2FzbBgGIAEoCzISLmdvZmkudjEuS2Fma2FTQVNMEhEKCWNsaWVudF9pZBgHIAEoCSJCCglLYWZrYVNBU0wSEQoJbWVjaGFuaXNtGAEgASgJEhAKCHVzZXJuYW1lGAIgASgJEhAKCHBhc3N3b3JkGAMgASgJIqkBCg1BTVFQU3Vic2NyaWJlEgsKA3VybBgBIAEoCRINCgVxdWV1ZRgCIAEoCRIQCghleGNoYW5nZRgDIAEoCRITCgtyb3V0aW5nX2tleRgEIAEoCRIQCghwcmVmZXRjaBgFIAEoBRIQCgh1c2VybmFtZRgGIAEoCRIQCghwYXNzd29yZBgHIAEoCRIfCgN0bHMYCCABKAsyEi5nb2ZpLnYxLlNvdXJjZVRMUyKfAQoSSmV0U3RyZWFtU3Vic2NyaWJlEgsKA3VybBgBIAEoCRIOCgZzdHJlYW0YAiABKAkSEAoIY29uc3VtZXIYAyABKAkSDwoHc3ViamVjdBgEIAEoCRIWCg5kZWxpdmVyX3BvbGljeRgFIAEoCRIQCghhY2tfd2FpdBgGIAEoCRIfCgRhdXRoGAcgASgLMhEuZ29maS52MS5OQVRTQXV0aCLUAQoOUmVkaXNTdWJzY3JpYmUSCwoDdXJsGAEgASgJEg4KBnN0cmVhbRgCIAEoCRINCgVncm91cBgDIAEoCRIQCghjb25zdW1lchgEIAEoCRINCgVzdGFydBgFIAEoCRINCgVmaWVsZBgGIAEoCRIQCghjaGFubmVscxgHIAMoCRIPCgdwYXR0ZXJuGAggASgIEhAKCHVzZXJuYW1lGAkgASgJEhAKCHBhc3N3b3JkGAogASgJEh8KA3RscxgLIAEoCzISLmdvZmkudjEuU291cmNlVExTIoUBCgxMaXN0ZW5Tb3VyY2USDwoHbmV0d29yaxgBIAEoCRIMCgRwb3J0GAIgASgFEikKB3NlcnZpY2UYAyABKAsyGC5nb2ZpLnYxLlNlcnZpY2VFeHBvc3VyZRIfCgN0bHMYBSABKAsyEi5nb2ZpLnYxLlRMU0NvbmZpZ0oECAQQBVIEaG9vayJuCglQeXRob25SZWYSDwoHbGlicmFyeRgBIAEoCRIQCghmdW5jdGlvbhgCIAEoCRIVCg1pbmxpbmVfc291cmNlGAMgASgJEicKBmNvbmZpZxgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiMQoNRXhwcmVzc2lvblJlZhIMCgRuYW1lGAEgASgJEhIKCmdlbmVyYXRpb24YAiABKAMi2wIKD1NlcnZpY2VFeHBvc3VyZRIMCgR0eXBlGAEgASgJEgwKBHBvcnQYAiABKAUSEQoJbm9kZV9wb3J0GAMgASgFEh8KF2V4dGVybmFsX3RyYWZmaWNfcG9saWN5GAQgASgJEj4KC2Fubm90YXRpb25zGAUgAygLMikuZ29maS52MS5TZXJ2aWNlRXhwb3N1cmUuQW5ub3RhdGlvbnNFbnRyeRIzCg1sb2FkX2JhbGFuY2VyGAYgASgLMhwuZ29maS52MS5Mb2FkQmFsYW5jZXJPcHRpb25zEikKB2dhdGV3YXkYByABKAsyGC5nb2ZpLnYxLkdhdGV3YXlFeHBvc3VyZRIkCgphbGxvd19mcm9tGAggAygLMhAuZ29maS52MS5QZWVyUmVmGjIKEEFubm90YXRpb25zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKQAQoHUGVlclJlZhIRCgluYW1lc3BhY2UYASABKAkSDwoHcGFja2FnZRgCIAEoCRIwCghzZWxlY3RvchgDIAMoCzIeLmdvZmkudjEuUGVlclJlZi5TZWxlY3RvckVudHJ5Gi8KDVNlbGVjdG9yRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJGChNMb2FkQmFsYW5jZXJPcHRpb25zEg0KBWNsYXNzGAEgASgJEhQKDGFkZHJlc3NfcG9vbBgCIAEoCRIKCgJpcBgDIAEoCSJSCg9HYXRld2F5RXhwb3N1cmUSEQoJbmFtZXNwYWNlGAEgASgJEgwKBG5hbWUYAiABKAkSEAoIbGlzdGVuZXIYAyABKAkSDAoEcG9ydBgEIAEoBSJ1CgdGcmFtaW5nEgwKBG1vZGUYASABKAkSEQoJZGVsaW1pdGVyGAIgASgJEhIKCnByZWZpeF9sZW4YAyABKAUSEQoJbWF4X2J5dGVzGAQgASgFEiIKBnB5dGhvbhgFIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmIj0KCUNvZGVjU3RlcBIMCgR0eXBlGAEgASgJEiIKBnB5dGhvbhgCIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmIkAKCEVuY29kaW5nEg4KBmZvcm1hdBgBIAEoCRIkCghlbmNvZGVycxgCIAMoCzISLmdvZmkudjEuQ29kZWNTdGVwIqcBCgxQYXJzZXJDb25maWcSDgoGZm9ybWF0GAEgASgJEigKCGRlY29kZXJzGAYgAygLMhIuZ29maS52MS5Db2RlY1N0ZXBCAhgBEh0KEW1heF9kZWNvZGVkX2J5dGVzGAMgASgFQgIYARIUCgxlcnJvcl9wb2xpY3kYBCABKAkSIgoGcHl0aG9uGAUgASgLMhIuZ29maS52MS5QeXRob25SZWZKBAgCEAMi7AIKBVN0YWdlEgoKAmlkGAEgASgJEgwKBGtpbmQYAiABKAkSDAoEdHlwZRgDIAEoCRISCgpleHByZXNzaW9uGAQgASgJEhQKDHRyYW5zZm9ybV9vcBgFIAEoCRINCgVmaWVsZBgGIAEoCRIRCgluZXdfZmllbGQYByABKAkSEgoKdmFsdWVfZXhwchgIIAEoCRIWCg5tYXhfcGVyX3NlY29uZBgJIAEoARIQCghrZXlfZXhwchgKIAEoCRIOCgZ3aW5kb3cYCyABKAkSFwoPcmVxdWlyZWRfZmllbGRzGAwgAygJEiIKBnB5dGhvbhgNIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEi4KDmV4cHJlc3Npb25fcmVmGA4gASgLMhYuZ29maS52MS5FeHByZXNzaW9uUmVmEhAKCG9uX2Vycm9yGA8gASgJEiIKBXBhcnNlGBAgASgLMhMuZ29maS52MS5QYXJzZVN0YWdlIqIBCgpQYXJzZVN0YWdlEgwKBGZyb20YASABKAkSJAoIZGVjb2RlcnMYAiADKAsyEi5nb2ZpLnYxLkNvZGVjU3RlcBIOCgZmb3JtYXQYAyABKAkSIgoGcHl0aG9uGAQgASgLMhIuZ29maS52MS5QeXRob25SZWYSDAoEaW50bxgFIAEoCRIMCgRtb2RlGAYgASgJEhAKCG9uX2Vycm9yGAcgASgJIrEBChBLdWJlcm5ldGVzVGFyZ2V0EhEKCW5hbWVzcGFjZRgBIAEoCRI5CghzZWxlY3RvchgCIAMoCzInLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldC5TZWxlY3RvckVudHJ5EgwKBHBvcnQYAyABKAUSEAoIZGVsaXZlcnkYBCABKAkaLwoNU2VsZWN0b3JFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIvIECgRTaW5rEgwKBHR5cGUYASABKAkSCwoDdXJsGAIgASgJEg8KB3N1YmplY3QYAyABKAkSEQoJZGVsaW1pdGVyGAQgASgJEg4KBm1ldGhvZBgFIAEoCRIrCgdoZWFkZXJzGAYgAygLMhouZ29maS52MS5TaW5rLkhlYWRlcnNFbnRyeRIUCgxjb250ZW50X3R5cGUYByABKAkSEQoJYm9keV9tb2RlGAggASgJEh8KBGF1dGgYCSABKAsyES5nb2ZpLnYxLkhUVFBBdXRoEiQKCW5hdHNfYXV0aBgKIAEoCzIRLmdvZmkudjEuTkFUU0F1dGgSIwoFYXN0ZXIYCyABKAsyFC5nb2ZpLnYxLkFzdGVyQ29uZmlnEgwKBHdoZW4YDCABKAkSLQoKa3ViZXJuZXRlcxgOIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIiCgZweXRob24YDSABKAsyEi5nb2ZpLnYxLlB5dGhvblJlZhIpCgZsYWJlbHMYDyADKAsyGS5nb2ZpLnYxLlNpbmsuTGFiZWxzRW50cnkSKAoId2hlbl9yZWYYECABKAsyFi5nb2ZpLnYxLkV4cHJlc3Npb25SZWYSIwoIZW5jb2RpbmcYESABKAsyES5nb2ZpLnYxLkVuY29kaW5nEh8K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dGRvdXQYCCABKAkSEwoLZHVyYXRpb25fdXMYCSABKAMiSAoLU2lua091dGNvbWUSDQoFaW5kZXgYASABKAUSDAoEdHlwZRgCIAEoCRIMCgRzZW50GAMgASgIEg4KBnJlYXNvbhgEIAEoCSLZAQoOU2ltdWxhdGVSZXN1bHQSEwoLcGFyc2VfZXJyb3IYASABKAkSLgoNcGFyc2VkX2ZpZWxkcxgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSIwoGc3RhZ2VzGAMgAygLMhMuZ29maS52MS5TdGFnZVRyYWNlEg8KB2Ryb3BwZWQYBCABKAgSEgoKZHJvcHBlZF9ieRgFIAEoCRITCgtkZWFkX2xldHRlchgGIAEoCBIjCgVzaW5rcxgHIAMoCzIULmdvZmkudjEuU2lua091dGNvbWUiJwoQTGlzdEZsb3dzUmVxdWVzdBITCgtpZl9yZXZpc2lvbhgBIAEoBCJWChFMaXN0Rmxvd3NSZXNwb25zZRIcCgVmbG93cxgBIAMoCzINLmdvZmkudjEuRmxvdxIQCghyZXZpc2lvbhgCIAEoBBIRCgl1bmNoYW5nZWQYAyABKAgiHgoOR2V0Rmxvd1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIuCg9HZXRGbG93UmVzcG9uc2USGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdyJYChFVcHNlcnRGbG93UmVxdWVzdBIbCgRmbG93GAEgASgLMg0uZ29maS52MS5GbG93EhUKDXZhbGlkYXRlX29ubHkYAiABKAgSDwoHbWVzc2FnZRgDIAEoCSJDChJVcHNlcnRGbG93UmVzcG9uc2USGwoEZmxvdxgBIAEoCzINLmdvZmkudjEuRmxvdxIQCgh3YXJuaW5ncxgCIAMoCSIhChFEZWxldGVGbG93UmVxdWVzdBIMCgRuYW1lGAEgASgJIhQKEkRlbGV0ZUZsb3dSZXNwb25zZSIlChVHZXRSb3V0ZUhlYWx0aFJlcXVlc3QSDAoEbmFtZRgBIAEoCSI+ChZHZXRSb3V0ZUhlYWx0aFJlc3BvbnNlEiQKBnJvdXRlcxgBIAMoCzIULmdvZmkudjEuUm91dGVIZWFsdGgi5QEKC1JvdXRlSGVhbHRoEg0KBXJvdXRlGAEgASgJEhEKCXN1Y2Nlc3NlcxgCIAEoAxIQCghmYWlsdXJlcxgDIAEoAxIzCg9sYXN0X3N1Y2Nlc3NfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjMKD2xhc3RfZmFpbHVyZV9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEgoKbGFzdF9lcnJvchgGIAEoCRITCgtlcnJvcl9jbGFzcxgHIAEoCRIPCgdmYWlsaW5nGAggASgIIicKF0dldFJ1bnRpbWVTdGF0dXNSZXF1ZXN0EgwKBG5hbWUYASABKAkiQQoYR2V0UnVudGltZVN0YXR1c1Jlc3BvbnNlEiUKB3J1bnRpbWUYASABKAsyFC5nb2ZpLnYxLlJ1bnRpbWVJbmZvIhYKFExpc3RFbmRwb2ludHNSZXF1ZXN0Ij0KFUxpc3RFbmRwb2ludHNSZXNwb25zZRIkCgllbmRwb2ludHMYASADKAsyES5nb2ZpLnYxLkVuZHBvaW50IhkKF0dldENvbmZpZ3VyYXRpb25SZXF1ZXN0IkkKGEdldENvbmZpZ3VyYXRpb25SZXNwb25zZRItCg1jb25maWd1cmF0aW9uGAEgASgLMhYuZ29maS52MS5Db25maWd1cmF0aW9uIhAKDkdldE1vZGVSZXF1ZXN0IngKD0dldE1vZGVSZXNwb25zZRIMCgRtb2RlGAEgASgJEhQKDHByb2Nlc3Nfcm9sZRgCIAEoCRITCgtkcml2ZXJfa2luZBgDIAEoCRIVCg1ub2RlX3BvcnRfbWluGAQgASgFEhUKDW5vZGVfcG9ydF9tYXgYBSABKAUiOwoPU2ltdWxhdGVSZXF1ZXN0EhsKBGZsb3cYASABKAsyDS5nb2ZpLnYxLkZsb3cSCwoDcmF3GAIgASgJIjsKEFNpbXVsYXRlUmVzcG9uc2USJwoGcmVzdWx0GAEgASgLMhcuZ29maS52MS5TaW11bGF0ZVJlc3VsdCIjChNXYXRjaFRyYWZmaWNSZXF1ZXN0EgwKBG5hbWUYASABKAkibgoUV2F0Y2hUcmFmZmljUmVzcG9uc2USDAoEZmxvdxgBIAEoCRIkCgVldmVudBgCIAEoCzIVLmdvZmkudjEuVHJhZmZpY0V2ZW50EhEKCWhlYXJ0YmVhdBgDIAEoCBIPCgdkcm9wcGVkGAQgASgEIiUKFVdhdGNoRmxvd1N0YXRzUmVxdWVzdBIMCgRuYW1lGAEgASgJInYKFldhdGNoRmxvd1N0YXRzUmVzcG9uc2USIQoFZmxvd3MYASADKAsyEi5nb2ZpLnYxLkZsb3dTdGF0cxIRCgloZWFydGJlYXQYAiABKAgSJgoCYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIp4BCglGbG93U3RhdHMSDAoEZmxvdxgBIAEoCRIKCgJ1cBgCIAEoCBIQCghvYnNlcnZlZBgDIAEoBBIQCghyZWplY3RlZBgEIAEoBBIUCgxwYXJzZV9lcnJvcnMYBSABKAQSEQoJZGVsaXZlcmVkGAYgASgEEhUKDXNpbmtfZmFpbHVyZXMYByABKAQSEwoLdGFwX2Ryb3BwZWQYCCABKAQiUwoVUmVzb2x2ZVRhcmdldHNSZXF1ZXN0EikKBnRhcmdldBgBIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIPCgduZXR3b3JrGAIgASgJIj4KFlJlc29sdmVUYXJnZXRzUmVzcG9uc2USJAoJZW5kcG9pbnRzGAEgAygLMhEuZ29maS52MS5FbmRwb2ludCJlCg1SZXBsYXlSZXF1ZXN0EikKBnRhcmdldBgBIAEoCzIZLmdvZmkudjEuS3ViZXJuZXRlc1RhcmdldBIPCgduZXR3b3JrGAIgASgJEgsKA3VybBgDIAEoCRILCgNyYXcYBCABKAwiUgoOUmVwbGF5RGVsaXZlcnkSIwoIZW5kcG9pbnQYASABKAsyES5nb2ZpLnYxLkVuZHBvaW50EgwKBHNlbnQYAiABKAgSDQoFZXJyb3IYAyABKAkiPQoOUmVwbGF5UmVzcG9uc2USKwoKZGVsaXZlcmllcxgBIAMoCzIXLmdvZmkudjEuUmVwbGF5RGVsaXZlcnkiggEKEURlYnVnRnJhbWVSZXF1ZXN0EhEKCWZsb3dfbmFtZRgBIAEoCRIbCgRmbG93GAIgASgLMg0uZ29maS52MS5GbG93EgsKA3JhdxgDIAEoDBIMCgRzdGVwGAQgASgJEg8KB3dhdGNoZXMYBSADKAkSEQoJbWF4X3N0ZXBzGAYgASgFIuoCChJEZWJ1Z0ZyYW1lUmVzcG9uc2USKwoKc2ltdWxhdGlvbhgBIAEoCzIXLmdvZmkudjEuU2ltdWxhdGVSZXN1bHQSDAoEc3RlcBgCIAEoCRIkCghmdW5jdGlvbhgDIAEoCzISLmdvZmkudjEuUHl0aG9uUmVmEi0KDGlucHV0X2ZpZWxkcxgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSPgoKaW5wdXRfbWV0YRgFIAMoCzIqLmdvZmkudjEuRGVidWdGcmFtZVJlc3BvbnNlLklucHV0TWV0YUVudHJ5EhEKCWlucHV0X3JhdxgGIAEoDBIqCglyZWNvcmRpbmcYByABKAsyFy5nb2ZpLnYxLkRlYnVnUmVjb3JkaW5nEhMKC25vdF9yZWFjaGVkGAggASgJGjAKDklucHV0TWV0YUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEy6ggKC0dvRmlTZXJ2aWNlEkIKCUxpc3RGbG93cxIZLmdvZmkudjEuTGlzdEZsb3dzUmVxdWVzdBoaLmdvZmkudjEuTGlzdEZsb3dzUmVzcG9uc2USPAoHR2V0RmxvdxIXLmdvZmkudjEuR2V0Rmxvd1JlcXVlc3QaGC5nb2ZpLnYxLkdldEZsb3dSZXNwb25zZRJFCgpVcHNlcnRGbG93EhouZ29maS52MS5VcHNlcnRGbG93UmVxdWVzdBobLmdvZmkudjEuVXBzZXJ0Rmxvd1Jlc3BvbnNlEkUKCkRlbGV0ZUZsb3cSGi5nb2ZpLnYxLkRlbGV0ZUZsb3dSZXF1ZXN0GhsuZ29maS52MS5EZWxldGVGbG93UmVzcG9uc2USVwoQR2V0UnVudGltZVN0YXR1cxIgLmdvZmkudjEuR2V0UnVudGltZVN0YXR1c1JlcXVlc3QaIS5nb2ZpLnYxLkdldFJ1bnRpbWVTdGF0dXNSZXNwb25zZRJOCg1MaXN0RW5kcG9pbnRzEh0uZ29maS52MS5MaXN0RW5kcG9pbnRzUmVxdWVzdBoeLmdvZmkudjEuTGlzdEVuZHBvaW50c1Jlc3BvbnNlElEKDlJlc29sdmVUYXJnZXRzEh4uZ29maS52MS5SZXNvbHZlVGFyZ2V0c1JlcXVlc3QaHy5nb2ZpLnYxLlJlc29sdmVUYXJnZXRzUmVzcG9uc2USOQoGUmVwbGF5EhYuZ29maS52MS5SZXBsYXlSZXF1ZXN0GhcuZ29maS52MS5SZXBsYXlSZXNwb25zZRJXChBHZXRDb25maWd1cmF0aW9uEiAuZ29maS52MS5HZXRDb25maWd1cmF0aW9uUmVxdWVzdBohLmdvZmkudjEuR2V0Q29uZmlndXJhdGlvblJlc3BvbnNlEjwKB0dldE1vZGUSFy5nb2ZpLnYxLkdldE1vZGVSZXF1ZXN0GhguZ29maS52MS5HZXRNb2RlUmVzcG9uc2USPwoIU2ltdWxhdGUSGC5nb2ZpLnYxLlNpbXVsYXRlUmVxdWVzdBoZLmdvZmkudjEuU2ltdWxhdGVSZXNwb25zZRJFCgpEZWJ1Z0ZyYW1lEhouZ29maS52MS5EZWJ1Z0ZyYW1lUmVxdWVzdBobLmdvZmkudjEuRGVidWdGcmFtZVJlc3BvbnNlEk0KDFdhdGNoVHJhZmZpYxIcLmdvZmkudjEuV2F0Y2hUcmFmZmljUmVxdWVzdBodLmdvZmkudjEuV2F0Y2hUcmFmZmljUmVzcG9uc2UwARJTCg5XYXRjaEZsb3dTdGF0cxIeLmdvZmkudjEuV2F0Y2hGbG93U3RhdHNSZXF1ZXN0Gh8uZ29maS52MS5XYXRjaEZsb3dTdGF0c1Jlc3BvbnNlMAESUQoOR2V0Um91dGVIZWFsdGgSHi5nb2ZpLnYxLkdldFJvdXRlSGVhbHRoUmVxdWVzdBofLmdvZmkudjEuR2V0Um91dGVIZWFsdGhSZXNwb25zZUIqWihnaXRodWIuY29tL3djcnVtL2dvZmkvZ2VuL2dvZmkvdjE7Z29maXYxYgZwcm90bzM", [file_google_protobuf_struct, file_google_protobuf_timestamp, file_gofi_v1_sandbox]);
 
 /**
  * Flow is GoFi's top-level object: where data comes from (source), how
@@ -62,6 +62,29 @@ export type Flow = Message<"gofi.v1.Flow"> & {
    * @generated from field: repeated gofi.v1.TestCase test_cases = 8;
    */
   testCases: TestCase[];
+
+  /**
+   * Declared run state: "running" (default when empty) or "stopped". A
+   * stopped flow keeps its definition but runs no runtime (OperationsService).
+   *
+   * @generated from field: string state = 10;
+   */
+  state: string;
+
+  /**
+   * Decode step: ordered decoding applied to each frame before the parser
+   * (formerly parser.decoders / parser.max_decoded_bytes).
+   *
+   * @generated from field: gofi.v1.DecodeConfig decode = 11;
+   */
+  decode?: DecodeConfig | undefined;
+
+  /**
+   * Flow-wide Python settings (the default library of Python steps).
+   *
+   * @generated from field: gofi.v1.FlowPython python = 12;
+   */
+  python?: FlowPython | undefined;
 };
 
 /**
@@ -70,6 +93,56 @@ export type Flow = Message<"gofi.v1.Flow"> & {
  */
 export const FlowSchema: GenMessage<Flow> = /*@__PURE__*/
   messageDesc(file_gofi_v1_gofi, 0);
+
+/**
+ * DecodeConfig is a flow's decode step (source → framing → decode → parser).
+ *
+ * @generated from message gofi.v1.DecodeConfig
+ */
+export type DecodeConfig = Message<"gofi.v1.DecodeConfig"> & {
+  /**
+   * Ordered decoding steps; the raw frame is unchanged.
+   *
+   * @generated from field: repeated gofi.v1.CodecStep decoders = 1;
+   */
+  decoders: CodecStep[];
+
+  /**
+   * Cap on each step's output; 0 = 1 MiB.
+   *
+   * @generated from field: int32 max_decoded_bytes = 2;
+   */
+  maxDecodedBytes: number;
+};
+
+/**
+ * Describes the message gofi.v1.DecodeConfig.
+ * Use `create(DecodeConfigSchema)` to create a new message.
+ */
+export const DecodeConfigSchema: GenMessage<DecodeConfig> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 1);
+
+/**
+ * FlowPython holds flow-wide Python settings.
+ *
+ * @generated from message gofi.v1.FlowPython
+ */
+export type FlowPython = Message<"gofi.v1.FlowPython"> & {
+  /**
+   * Default library for every Python reference in the flow that names only
+   * a function (inline source is unaffected).
+   *
+   * @generated from field: string library = 1;
+   */
+  library: string;
+};
+
+/**
+ * Describes the message gofi.v1.FlowPython.
+ * Use `create(FlowPythonSchema)` to create a new message.
+ */
+export const FlowPythonSchema: GenMessage<FlowPython> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 2);
 
 /**
  * FlowSource says how data arrives. Exactly one field is set.
@@ -91,6 +164,14 @@ export type FlowSource = Message<"gofi.v1.FlowSource"> & {
    * @generated from field: gofi.v1.SubscribeSource subscribe = 3;
    */
   subscribe?: SubscribeSource | undefined;
+
+  /**
+   * A @gofi.fetcher or @gofi.streamer in an isolated library worker
+   * (docs/flows.md, R4).
+   *
+   * @generated from field: gofi.v1.PythonSource python = 4;
+   */
+  python?: PythonSource | undefined;
 };
 
 /**
@@ -98,10 +179,52 @@ export type FlowSource = Message<"gofi.v1.FlowSource"> & {
  * Use `create(FlowSourceSchema)` to create a new message.
  */
 export const FlowSourceSchema: GenMessage<FlowSource> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 1);
+  messageDesc(file_gofi_v1_gofi, 3);
 
 /**
- * FetchSource: GoFi pulls on an interval.
+ * PythonSource runs a library function as the flow's source. It executes in
+ * the library's worker, under that library's egress allowlist; never in the
+ * controller or the flow runtime.
+ *
+ * @generated from message gofi.v1.PythonSource
+ */
+export type PythonSource = Message<"gofi.v1.PythonSource"> & {
+  /**
+   * @generated from field: string library = 1;
+   */
+  library: string;
+
+  /**
+   * @generated from field: string function = 2;
+   */
+  function: string;
+
+  /**
+   * Keyword arguments passed to the function.
+   *
+   * @generated from field: google.protobuf.Struct config = 3;
+   */
+  config?: JsonObject | undefined;
+
+  /**
+   * Fetchers only: poll interval (Go duration, at least 1s). Empty uses the
+   * decorator's every, else 30s.
+   *
+   * @generated from field: string every = 4;
+   */
+  every: string;
+};
+
+/**
+ * Describes the message gofi.v1.PythonSource.
+ * Use `create(PythonSourceSchema)` to create a new message.
+ */
+export const PythonSourceSchema: GenMessage<PythonSource> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 4);
+
+/**
+ * FetchSource: GoFi pulls on an interval. Exactly one of http, s3, or sql
+ * is set.
  *
  * @generated from message gofi.v1.FetchSource
  */
@@ -112,12 +235,22 @@ export type FetchSource = Message<"gofi.v1.FetchSource"> & {
   http?: HTTPFetch | undefined;
 
   /**
-   * Optional JSON path ("$.items[*]") splitting one response into one frame
-   * per element.
+   * Optional JSON path ("$.items[*]") splitting one response (or S3 object)
+   * into one frame per element.
    *
    * @generated from field: string split = 2;
    */
   split: string;
+
+  /**
+   * @generated from field: gofi.v1.S3Fetch s3 = 3;
+   */
+  s3?: S3Fetch | undefined;
+
+  /**
+   * @generated from field: gofi.v1.SQLFetch sql = 4;
+   */
+  sql?: SQLFetch | undefined;
 };
 
 /**
@@ -125,7 +258,222 @@ export type FetchSource = Message<"gofi.v1.FetchSource"> & {
  * Use `create(FetchSourceSchema)` to create a new message.
  */
 export const FetchSourceSchema: GenMessage<FetchSource> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 2);
+  messageDesc(file_gofi_v1_gofi, 5);
+
+/**
+ * S3Fetch lists a bucket prefix every interval; each new object is one frame.
+ * Credentials are inline; omit them for ambient credentials (environment,
+ * IRSA web identity, or instance metadata).
+ *
+ * @generated from message gofi.v1.S3Fetch
+ */
+export type S3Fetch = Message<"gofi.v1.S3Fetch"> & {
+  /**
+   * https://minio.example:9000 for S3-compatible stores; default AWS S3.
+   *
+   * @generated from field: string endpoint = 1;
+   */
+  endpoint: string;
+
+  /**
+   * @generated from field: string region = 2;
+   */
+  region: string;
+
+  /**
+   * @generated from field: string bucket = 3;
+   */
+  bucket: string;
+
+  /**
+   * @generated from field: string prefix = 4;
+   */
+  prefix: string;
+
+  /**
+   * Optional glob on the key after prefix ("*.json"; * does not cross /).
+   *
+   * @generated from field: string glob = 5;
+   */
+  glob: string;
+
+  /**
+   * @generated from field: string access_key_id = 6;
+   */
+  accessKeyId: string;
+
+  /**
+   * @generated from field: string secret_access_key = 7;
+   */
+  secretAccessKey: string;
+
+  /**
+   * @generated from field: string session_token = 8;
+   */
+  sessionToken: string;
+
+  /**
+   * @generated from field: bool path_style = 9;
+   */
+  pathStyle: boolean;
+
+  /**
+   * @generated from field: bool insecure_skip_verify = 10;
+   */
+  insecureSkipVerify: boolean;
+
+  /**
+   * Inline CA certificate, PEM.
+   *
+   * @generated from field: string tls_ca = 11;
+   */
+  tlsCa: string;
+
+  /**
+   * RFC 3339: skip objects last modified at or before this time.
+   *
+   * @generated from field: string since = 12;
+   */
+  since: string;
+
+  /**
+   * Objects read per poll; default 100.
+   *
+   * @generated from field: int32 max_objects = 13;
+   */
+  maxObjects: number;
+
+  /**
+   * After hand-off, delete the object, or move it under move_to.
+   *
+   * @generated from field: bool delete_after = 14;
+   */
+  deleteAfter: boolean;
+
+  /**
+   * @generated from field: string move_to = 15;
+   */
+  moveTo: string;
+
+  /**
+   * Go durations; defaults 30s and 10s (per request).
+   *
+   * @generated from field: string every = 16;
+   */
+  every: string;
+
+  /**
+   * @generated from field: string timeout = 17;
+   */
+  timeout: string;
+};
+
+/**
+ * Describes the message gofi.v1.S3Fetch.
+ * Use `create(S3FetchSchema)` to create a new message.
+ */
+export const S3FetchSchema: GenMessage<S3Fetch> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 6);
+
+/**
+ * SQLFetch runs a query every interval; each row is one JSON frame.
+ *
+ * @generated from message gofi.v1.SQLFetch
+ */
+export type SQLFetch = Message<"gofi.v1.SQLFetch"> & {
+  /**
+   * postgres, mysql, or sqlserver.
+   *
+   * @generated from field: string driver = 1;
+   */
+  driver: string;
+
+  /**
+   * Full driver DSN, or the connection fields below.
+   *
+   * @generated from field: string dsn = 2;
+   */
+  dsn: string;
+
+  /**
+   * @generated from field: string host = 3;
+   */
+  host: string;
+
+  /**
+   * @generated from field: int32 port = 4;
+   */
+  port: number;
+
+  /**
+   * @generated from field: string database = 5;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string username = 6;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string password = 7;
+   */
+  password: string;
+
+  /**
+   * "", disable, require, or verify-full.
+   *
+   * @generated from field: string tls = 8;
+   */
+  tls: string;
+
+  /**
+   * @generated from field: map<string, string> params = 9;
+   */
+  params: { [key: string]: string };
+
+  /**
+   * @generated from field: string query = 10;
+   */
+  query: string;
+
+  /**
+   * Incremental mode: the query binds the last row's cursor_column value as
+   * its one parameter ($1, ?, or @p1) and orders by that column.
+   *
+   * @generated from field: string cursor_column = 11;
+   */
+  cursorColumn: string;
+
+  /**
+   * @generated from field: string cursor_start = 12;
+   */
+  cursorStart: string;
+
+  /**
+   * Rows read per poll; default 1000.
+   *
+   * @generated from field: int32 max_rows = 13;
+   */
+  maxRows: number;
+
+  /**
+   * @generated from field: string every = 14;
+   */
+  every: string;
+
+  /**
+   * @generated from field: string timeout = 15;
+   */
+  timeout: string;
+};
+
+/**
+ * Describes the message gofi.v1.SQLFetch.
+ * Use `create(SQLFetchSchema)` to create a new message.
+ */
+export const SQLFetchSchema: GenMessage<SQLFetch> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 7);
 
 /**
  * @generated from message gofi.v1.HTTPFetch
@@ -176,7 +524,7 @@ export type HTTPFetch = Message<"gofi.v1.HTTPFetch"> & {
  * Use `create(HTTPFetchSchema)` to create a new message.
  */
 export const HTTPFetchSchema: GenMessage<HTTPFetch> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 3);
+  messageDesc(file_gofi_v1_gofi, 8);
 
 /**
  * SubscribeSource: GoFi attaches to a stream. Exactly one field is set.
@@ -203,6 +551,35 @@ export type SubscribeSource = Message<"gofi.v1.SubscribeSource"> & {
    * @generated from field: gofi.v1.StreamSubscribe sse = 4;
    */
   sse?: StreamSubscribe | undefined;
+
+  /**
+   * Streaming brokers with consumer acknowledgement (docs/flows.md).
+   *
+   * @generated from field: gofi.v1.KafkaSubscribe kafka = 5;
+   */
+  kafka?: KafkaSubscribe | undefined;
+
+  /**
+   * @generated from field: gofi.v1.AMQPSubscribe amqp = 6;
+   */
+  amqp?: AMQPSubscribe | undefined;
+
+  /**
+   * @generated from field: gofi.v1.JetStreamSubscribe jetstream = 7;
+   */
+  jetstream?: JetStreamSubscribe | undefined;
+
+  /**
+   * @generated from field: gofi.v1.RedisSubscribe redis = 8;
+   */
+  redis?: RedisSubscribe | undefined;
+
+  /**
+   * Zenoh key expression through the router's REST plugin (docs/zenoh.md).
+   *
+   * @generated from field: gofi.v1.ZenohSubscribe zenoh = 20;
+   */
+  zenoh?: ZenohSubscribe | undefined;
 };
 
 /**
@@ -210,7 +587,60 @@ export type SubscribeSource = Message<"gofi.v1.SubscribeSource"> & {
  * Use `create(SubscribeSourceSchema)` to create a new message.
  */
 export const SubscribeSourceSchema: GenMessage<SubscribeSource> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 4);
+  messageDesc(file_gofi_v1_gofi, 9);
+
+/**
+ * ZenohSubscribe subscribes over Server-Sent Events from the Zenoh router's
+ * REST plugin; each sample is one frame.
+ *
+ * @generated from message gofi.v1.ZenohSubscribe
+ */
+export type ZenohSubscribe = Message<"gofi.v1.ZenohSubscribe"> & {
+  /**
+   * Router REST origin, e.g. http://zenoh-router:8000 (no path or credentials).
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * Key expression; whole-chunk * and ** wildcards allowed, admin space (@) not.
+   *
+   * @generated from field: string key_expr = 2;
+   */
+  keyExpr: string;
+
+  /**
+   * @generated from field: map<string, string> headers = 3;
+   */
+  headers: { [key: string]: string };
+
+  /**
+   * @generated from field: gofi.v1.HTTPAuth auth = 4;
+   */
+  auth?: HTTPAuth | undefined;
+
+  /**
+   * Sample kinds to forward: PUT and/or DELETE. Default PUT only.
+   *
+   * @generated from field: repeated string kinds = 5;
+   */
+  kinds: string[];
+
+  /**
+   * Also read current values from storages (GET as JSON) on each (re)connect.
+   *
+   * @generated from field: bool query = 6;
+   */
+  query: boolean;
+};
+
+/**
+ * Describes the message gofi.v1.ZenohSubscribe.
+ * Use `create(ZenohSubscribeSchema)` to create a new message.
+ */
+export const ZenohSubscribeSchema: GenMessage<ZenohSubscribe> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 10);
 
 /**
  * @generated from message gofi.v1.NATSSubscribe
@@ -242,7 +672,7 @@ export type NATSSubscribe = Message<"gofi.v1.NATSSubscribe"> & {
  * Use `create(NATSSubscribeSchema)` to create a new message.
  */
 export const NATSSubscribeSchema: GenMessage<NATSSubscribe> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 5);
+  messageDesc(file_gofi_v1_gofi, 11);
 
 /**
  * @generated from message gofi.v1.MQTTSubscribe
@@ -284,7 +714,7 @@ export type MQTTSubscribe = Message<"gofi.v1.MQTTSubscribe"> & {
  * Use `create(MQTTSubscribeSchema)` to create a new message.
  */
 export const MQTTSubscribeSchema: GenMessage<MQTTSubscribe> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 6);
+  messageDesc(file_gofi_v1_gofi, 12);
 
 /**
  * A WebSocket or Server-Sent Events stream; each message or event is a frame.
@@ -320,7 +750,333 @@ export type StreamSubscribe = Message<"gofi.v1.StreamSubscribe"> & {
  * Use `create(StreamSubscribeSchema)` to create a new message.
  */
 export const StreamSubscribeSchema: GenMessage<StreamSubscribe> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 7);
+  messageDesc(file_gofi_v1_gofi, 13);
+
+/**
+ * SourceTLS: TLS for a broker connection. Kafka needs enabled; AMQP and
+ * Redis enable TLS with their amqps:// and rediss:// schemes and use the rest.
+ *
+ * @generated from message gofi.v1.SourceTLS
+ */
+export type SourceTLS = Message<"gofi.v1.SourceTLS"> & {
+  /**
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * Inline PEM: CA bundle, and an optional client certificate and key.
+   *
+   * @generated from field: string ca = 2;
+   */
+  ca: string;
+
+  /**
+   * @generated from field: string cert = 3;
+   */
+  cert: string;
+
+  /**
+   * @generated from field: string key = 4;
+   */
+  key: string;
+
+  /**
+   * @generated from field: bool insecure_skip_verify = 5;
+   */
+  insecureSkipVerify: boolean;
+};
+
+/**
+ * Describes the message gofi.v1.SourceTLS.
+ * Use `create(SourceTLSSchema)` to create a new message.
+ */
+export const SourceTLSSchema: GenMessage<SourceTLS> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 14);
+
+/**
+ * KafkaSubscribe joins a consumer group. Offsets are committed after the
+ * record's pipeline run.
+ *
+ * @generated from message gofi.v1.KafkaSubscribe
+ */
+export type KafkaSubscribe = Message<"gofi.v1.KafkaSubscribe"> & {
+  /**
+   * host:port seed brokers.
+   *
+   * @generated from field: repeated string brokers = 1;
+   */
+  brokers: string[];
+
+  /**
+   * @generated from field: repeated string topics = 2;
+   */
+  topics: string[];
+
+  /**
+   * Consumer group; default gofi-<flow>.
+   *
+   * @generated from field: string group = 3;
+   */
+  group: string;
+
+  /**
+   * Where a group without a committed offset starts: latest (default) or earliest.
+   *
+   * @generated from field: string start_offset = 4;
+   */
+  startOffset: string;
+
+  /**
+   * @generated from field: gofi.v1.SourceTLS tls = 5;
+   */
+  tls?: SourceTLS | undefined;
+
+  /**
+   * @generated from field: gofi.v1.KafkaSASL sasl = 6;
+   */
+  sasl?: KafkaSASL | undefined;
+
+  /**
+   * @generated from field: string client_id = 7;
+   */
+  clientId: string;
+};
+
+/**
+ * Describes the message gofi.v1.KafkaSubscribe.
+ * Use `create(KafkaSubscribeSchema)` to create a new message.
+ */
+export const KafkaSubscribeSchema: GenMessage<KafkaSubscribe> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 15);
+
+/**
+ * @generated from message gofi.v1.KafkaSASL
+ */
+export type KafkaSASL = Message<"gofi.v1.KafkaSASL"> & {
+  /**
+   * PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512.
+   *
+   * @generated from field: string mechanism = 1;
+   */
+  mechanism: string;
+
+  /**
+   * @generated from field: string username = 2;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string password = 3;
+   */
+  password: string;
+};
+
+/**
+ * Describes the message gofi.v1.KafkaSASL.
+ * Use `create(KafkaSASLSchema)` to create a new message.
+ */
+export const KafkaSASLSchema: GenMessage<KafkaSASL> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 16);
+
+/**
+ * AMQPSubscribe consumes an AMQP 0-9-1 (RabbitMQ) queue, or binds a
+ * server-named, exclusive, auto-delete queue to an exchange. Each delivery
+ * is acknowledged after its pipeline run.
+ *
+ * @generated from message gofi.v1.AMQPSubscribe
+ */
+export type AMQPSubscribe = Message<"gofi.v1.AMQPSubscribe"> & {
+  /**
+   * amqp:// or amqps://; credentials may be in the URL or below.
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * @generated from field: string queue = 2;
+   */
+  queue: string;
+
+  /**
+   * @generated from field: string exchange = 3;
+   */
+  exchange: string;
+
+  /**
+   * @generated from field: string routing_key = 4;
+   */
+  routingKey: string;
+
+  /**
+   * Unacknowledged deliveries in flight; default 100.
+   *
+   * @generated from field: int32 prefetch = 5;
+   */
+  prefetch: number;
+
+  /**
+   * @generated from field: string username = 6;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string password = 7;
+   */
+  password: string;
+
+  /**
+   * @generated from field: gofi.v1.SourceTLS tls = 8;
+   */
+  tls?: SourceTLS | undefined;
+};
+
+/**
+ * Describes the message gofi.v1.AMQPSubscribe.
+ * Use `create(AMQPSubscribeSchema)` to create a new message.
+ */
+export const AMQPSubscribeSchema: GenMessage<AMQPSubscribe> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 17);
+
+/**
+ * JetStreamSubscribe consumes a NATS JetStream stream through a durable pull
+ * consumer with explicit acks.
+ *
+ * @generated from message gofi.v1.JetStreamSubscribe
+ */
+export type JetStreamSubscribe = Message<"gofi.v1.JetStreamSubscribe"> & {
+  /**
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * @generated from field: string stream = 2;
+   */
+  stream: string;
+
+  /**
+   * Durable consumer name; default gofi-<flow>. Created or updated.
+   *
+   * @generated from field: string consumer = 3;
+   */
+  consumer: string;
+
+  /**
+   * Optional filter subject within the stream.
+   *
+   * @generated from field: string subject = 4;
+   */
+  subject: string;
+
+  /**
+   * all (default), last, new, or last_per_subject; fixed at creation.
+   *
+   * @generated from field: string deliver_policy = 5;
+   */
+  deliverPolicy: string;
+
+  /**
+   * Go duration before an unacked message is redelivered; default 30s.
+   *
+   * @generated from field: string ack_wait = 6;
+   */
+  ackWait: string;
+
+  /**
+   * @generated from field: gofi.v1.NATSAuth auth = 7;
+   */
+  auth?: NATSAuth | undefined;
+};
+
+/**
+ * Describes the message gofi.v1.JetStreamSubscribe.
+ * Use `create(JetStreamSubscribeSchema)` to create a new message.
+ */
+export const JetStreamSubscribeSchema: GenMessage<JetStreamSubscribe> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 18);
+
+/**
+ * RedisSubscribe reads a Redis Stream with a consumer group (XREADGROUP +
+ * XACK) or subscribes to Pub/Sub channels. Set stream or channels.
+ *
+ * @generated from message gofi.v1.RedisSubscribe
+ */
+export type RedisSubscribe = Message<"gofi.v1.RedisSubscribe"> & {
+  /**
+   * redis:// or rediss://, optionally with user:password@ and /db.
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * @generated from field: string stream = 2;
+   */
+  stream: string;
+
+  /**
+   * Stream mode: consumer group (default gofi-<flow>) and consumer name
+   * (default the runtime hostname).
+   *
+   * @generated from field: string group = 3;
+   */
+  group: string;
+
+  /**
+   * @generated from field: string consumer = 4;
+   */
+  consumer: string;
+
+  /**
+   * Where a new group starts: latest (default) or earliest.
+   *
+   * @generated from field: string start = 5;
+   */
+  start: string;
+
+  /**
+   * Stream mode: emit only this entry field; default all fields as JSON.
+   *
+   * @generated from field: string field = 6;
+   */
+  field: string;
+
+  /**
+   * Pub/Sub mode: channels, or glob patterns when pattern is set.
+   *
+   * @generated from field: repeated string channels = 7;
+   */
+  channels: string[];
+
+  /**
+   * @generated from field: bool pattern = 8;
+   */
+  pattern: boolean;
+
+  /**
+   * @generated from field: string username = 9;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string password = 10;
+   */
+  password: string;
+
+  /**
+   * @generated from field: gofi.v1.SourceTLS tls = 11;
+   */
+  tls?: SourceTLS | undefined;
+};
+
+/**
+ * Describes the message gofi.v1.RedisSubscribe.
+ * Use `create(RedisSubscribeSchema)` to create a new message.
+ */
+export const RedisSubscribeSchema: GenMessage<RedisSubscribe> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 19);
 
 /**
  * ListenSource: senders push to a GoFi TCP/UDP port.
@@ -329,6 +1085,8 @@ export const StreamSubscribeSchema: GenMessage<StreamSubscribe> = /*@__PURE__*/
  */
 export type ListenSource = Message<"gofi.v1.ListenSource"> & {
   /**
+   * "tcp" | "udp" | "quic" (QUIC runs over UDP on `port`).
+   *
    * @generated from field: string network = 1;
    */
   network: string;
@@ -342,6 +1100,13 @@ export type ListenSource = Message<"gofi.v1.ListenSource"> & {
    * @generated from field: gofi.v1.ServiceExposure service = 3;
    */
   service?: ServiceExposure | undefined;
+
+  /**
+   * QUIC only: the listener's certificate and client-auth policy.
+   *
+   * @generated from field: gofi.v1.TLSConfig tls = 5;
+   */
+  tls?: TLSConfig | undefined;
 };
 
 /**
@@ -349,7 +1114,7 @@ export type ListenSource = Message<"gofi.v1.ListenSource"> & {
  * Use `create(ListenSourceSchema)` to create a new message.
  */
 export const ListenSourceSchema: GenMessage<ListenSource> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 8);
+  messageDesc(file_gofi_v1_gofi, 20);
 
 /**
  * PythonRef names a function in a durable, isolated Python library. Inline
@@ -388,7 +1153,7 @@ export type PythonRef = Message<"gofi.v1.PythonRef"> & {
  * Use `create(PythonRefSchema)` to create a new message.
  */
 export const PythonRefSchema: GenMessage<PythonRef> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 9);
+  messageDesc(file_gofi_v1_gofi, 21);
 
 /**
  * ExpressionRef links a stage or sink to a CEL library entry. generation 0
@@ -413,7 +1178,7 @@ export type ExpressionRef = Message<"gofi.v1.ExpressionRef"> & {
  * Use `create(ExpressionRefSchema)` to create a new message.
  */
 export const ExpressionRefSchema: GenMessage<ExpressionRef> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 10);
+  messageDesc(file_gofi_v1_gofi, 22);
 
 /**
  * @generated from message gofi.v1.ServiceExposure
@@ -471,7 +1236,7 @@ export type ServiceExposure = Message<"gofi.v1.ServiceExposure"> & {
  * Use `create(ServiceExposureSchema)` to create a new message.
  */
 export const ServiceExposureSchema: GenMessage<ServiceExposure> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 11);
+  messageDesc(file_gofi_v1_gofi, 23);
 
 /**
  * @generated from message gofi.v1.PeerRef
@@ -498,7 +1263,7 @@ export type PeerRef = Message<"gofi.v1.PeerRef"> & {
  * Use `create(PeerRefSchema)` to create a new message.
  */
 export const PeerRefSchema: GenMessage<PeerRef> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 12);
+  messageDesc(file_gofi_v1_gofi, 24);
 
 /**
  * @generated from message gofi.v1.LoadBalancerOptions
@@ -527,7 +1292,7 @@ export type LoadBalancerOptions = Message<"gofi.v1.LoadBalancerOptions"> & {
  * Use `create(LoadBalancerOptionsSchema)` to create a new message.
  */
 export const LoadBalancerOptionsSchema: GenMessage<LoadBalancerOptions> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 13);
+  messageDesc(file_gofi_v1_gofi, 25);
 
 /**
  * Attach the flow to a Gateway API Gateway with a TCPRoute or UDPRoute. An
@@ -562,7 +1327,7 @@ export type GatewayExposure = Message<"gofi.v1.GatewayExposure"> & {
  * Use `create(GatewayExposureSchema)` to create a new message.
  */
 export const GatewayExposureSchema: GenMessage<GatewayExposure> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 14);
+  messageDesc(file_gofi_v1_gofi, 26);
 
 /**
  * @generated from message gofi.v1.Framing
@@ -602,7 +1367,7 @@ export type Framing = Message<"gofi.v1.Framing"> & {
  * Use `create(FramingSchema)` to create a new message.
  */
 export const FramingSchema: GenMessage<Framing> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 15);
+  messageDesc(file_gofi_v1_gofi, 27);
 
 /**
  * CodecStep is one decoding or encoding step: a built-in byte transformation
@@ -629,7 +1394,7 @@ export type CodecStep = Message<"gofi.v1.CodecStep"> & {
  * Use `create(CodecStepSchema)` to create a new message.
  */
 export const CodecStepSchema: GenMessage<CodecStep> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 16);
+  messageDesc(file_gofi_v1_gofi, 28);
 
 /**
  * Encoding turns a message into the bytes a sink sends: a format, then
@@ -657,7 +1422,7 @@ export type Encoding = Message<"gofi.v1.Encoding"> & {
  * Use `create(EncodingSchema)` to create a new message.
  */
 export const EncodingSchema: GenMessage<Encoding> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 17);
+  messageDesc(file_gofi_v1_gofi, 29);
 
 /**
  * @generated from message gofi.v1.ParserConfig
@@ -669,14 +1434,20 @@ export type ParserConfig = Message<"gofi.v1.ParserConfig"> & {
   format: string;
 
   /**
-   * Ordered decoding steps applied before parsing.
+   * Deprecated: moved to Flow.decode. Kept (not reserved) so older clients'
+   * requests still decode; the server reads them as Flow.decode and never
+   * returns them. Setting both with different values is an error.
    *
-   * @generated from field: repeated gofi.v1.CodecStep decoders = 6;
+   * @generated from field: repeated gofi.v1.CodecStep decoders = 6 [deprecated = true];
+   * @deprecated
    */
   decoders: CodecStep[];
 
   /**
-   * @generated from field: int32 max_decoded_bytes = 3;
+   * Deprecated: moved to Flow.decode.max_decoded_bytes (see decoders).
+   *
+   * @generated from field: int32 max_decoded_bytes = 3 [deprecated = true];
+   * @deprecated
    */
   maxDecodedBytes: number;
 
@@ -696,7 +1467,7 @@ export type ParserConfig = Message<"gofi.v1.ParserConfig"> & {
  * Use `create(ParserConfigSchema)` to create a new message.
  */
 export const ParserConfigSchema: GenMessage<ParserConfig> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 18);
+  messageDesc(file_gofi_v1_gofi, 30);
 
 /**
  * @generated from message gofi.v1.Stage
@@ -781,6 +1552,13 @@ export type Stage = Message<"gofi.v1.Stage"> & {
    * @generated from field: string on_error = 15;
    */
   onError: string;
+
+  /**
+   * kind "parse": parse the raw frame or a field again.
+   *
+   * @generated from field: gofi.v1.ParseStage parse = 16;
+   */
+  parse?: ParseStage | undefined;
 };
 
 /**
@@ -788,7 +1566,72 @@ export type Stage = Message<"gofi.v1.Stage"> & {
  * Use `create(StageSchema)` to create a new message.
  */
 export const StageSchema: GenMessage<Stage> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 19);
+  messageDesc(file_gofi_v1_gofi, 31);
+
+/**
+ * ParseStage parses a value already on the message and adds the result to
+ * fields (docs/flows.md, "Layered data").
+ *
+ * @generated from message gofi.v1.ParseStage
+ */
+export type ParseStage = Message<"gofi.v1.ParseStage"> & {
+  /**
+   * CEL expression yielding string or bytes; empty or "raw" = the raw frame.
+   *
+   * @generated from field: string from = 1;
+   */
+  from: string;
+
+  /**
+   * Decoding steps applied to the input before parsing.
+   *
+   * @generated from field: repeated gofi.v1.CodecStep decoders = 2;
+   */
+  decoders: CodecStep[];
+
+  /**
+   * "json" | "xml" | "text" | "python".
+   *
+   * @generated from field: string format = 3;
+   */
+  format: string;
+
+  /**
+   * @gofi.parser function for format "python"; library may come from
+   * Flow.python.library.
+   *
+   * @generated from field: gofi.v1.PythonRef python = 4;
+   */
+  python?: PythonRef | undefined;
+
+  /**
+   * "" merges into top-level fields; otherwise fields[into].
+   *
+   * @generated from field: string into = 5;
+   */
+  into: string;
+
+  /**
+   * "merge" (default) | "replace" (fields become the result; into empty).
+   *
+   * @generated from field: string mode = 6;
+   */
+  mode: string;
+
+  /**
+   * "continue" (default; the message passes unchanged) | "drop".
+   *
+   * @generated from field: string on_error = 7;
+   */
+  onError: string;
+};
+
+/**
+ * Describes the message gofi.v1.ParseStage.
+ * Use `create(ParseStageSchema)` to create a new message.
+ */
+export const ParseStageSchema: GenMessage<ParseStage> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 32);
 
 /**
  * @generated from message gofi.v1.KubernetesTarget
@@ -822,7 +1665,7 @@ export type KubernetesTarget = Message<"gofi.v1.KubernetesTarget"> & {
  * Use `create(KubernetesTargetSchema)` to create a new message.
  */
 export const KubernetesTargetSchema: GenMessage<KubernetesTarget> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 20);
+  messageDesc(file_gofi_v1_gofi, 33);
 
 /**
  * @generated from message gofi.v1.Sink
@@ -916,6 +1759,13 @@ export type Sink = Message<"gofi.v1.Sink"> & {
    * @generated from field: gofi.v1.Encoding encoding = 17;
    */
   encoding?: Encoding | undefined;
+
+  /**
+   * QUIC sinks (type "quic", url quic://host:port): client TLS.
+   *
+   * @generated from field: gofi.v1.TLSConfig tls = 18;
+   */
+  tls?: TLSConfig | undefined;
 };
 
 /**
@@ -923,7 +1773,59 @@ export type Sink = Message<"gofi.v1.Sink"> & {
  * Use `create(SinkSchema)` to create a new message.
  */
 export const SinkSchema: GenMessage<Sink> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 21);
+  messageDesc(file_gofi_v1_gofi, 34);
+
+/**
+ * TLSConfig is the QUIC listener's or sink's TLS: inline PEM material, the
+ * client's verification policy (server_name, insecure_skip_verify), the ALPN
+ * protocols offered or accepted (default ["gofi/1"]), and for a listener
+ * whether a client certificate is required (verified against `ca`).
+ *
+ * @generated from message gofi.v1.TLSConfig
+ */
+export type TLSConfig = Message<"gofi.v1.TLSConfig"> & {
+  /**
+   * @generated from field: string cert = 1;
+   */
+  cert: string;
+
+  /**
+   * @generated from field: string key = 2;
+   */
+  key: string;
+
+  /**
+   * @generated from field: string ca = 3;
+   */
+  ca: string;
+
+  /**
+   * @generated from field: bool insecure_skip_verify = 4;
+   */
+  insecureSkipVerify: boolean;
+
+  /**
+   * @generated from field: string server_name = 5;
+   */
+  serverName: string;
+
+  /**
+   * @generated from field: repeated string alpn = 6;
+   */
+  alpn: string[];
+
+  /**
+   * @generated from field: bool require_client_cert = 7;
+   */
+  requireClientCert: boolean;
+};
+
+/**
+ * Describes the message gofi.v1.TLSConfig.
+ * Use `create(TLSConfigSchema)` to create a new message.
+ */
+export const TLSConfigSchema: GenMessage<TLSConfig> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 35);
 
 /**
  * @generated from message gofi.v1.HTTPAuth
@@ -965,7 +1867,7 @@ export type HTTPAuth = Message<"gofi.v1.HTTPAuth"> & {
  * Use `create(HTTPAuthSchema)` to create a new message.
  */
 export const HTTPAuthSchema: GenMessage<HTTPAuth> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 22);
+  messageDesc(file_gofi_v1_gofi, 36);
 
 /**
  * @generated from message gofi.v1.NATSAuth
@@ -1022,7 +1924,7 @@ export type NATSAuth = Message<"gofi.v1.NATSAuth"> & {
  * Use `create(NATSAuthSchema)` to create a new message.
  */
 export const NATSAuthSchema: GenMessage<NATSAuth> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 23);
+  messageDesc(file_gofi_v1_gofi, 37);
 
 /**
  * @generated from message gofi.v1.AsterConfig
@@ -1074,7 +1976,7 @@ export type AsterConfig = Message<"gofi.v1.AsterConfig"> & {
  * Use `create(AsterConfigSchema)` to create a new message.
  */
 export const AsterConfigSchema: GenMessage<AsterConfig> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 24);
+  messageDesc(file_gofi_v1_gofi, 38);
 
 /**
  * @generated from message gofi.v1.TestCase
@@ -1101,7 +2003,7 @@ export type TestCase = Message<"gofi.v1.TestCase"> & {
  * Use `create(TestCaseSchema)` to create a new message.
  */
 export const TestCaseSchema: GenMessage<TestCase> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 25);
+  messageDesc(file_gofi_v1_gofi, 39);
 
 /**
  * @generated from message gofi.v1.RuntimeInfo
@@ -1150,7 +2052,7 @@ export type RuntimeInfo = Message<"gofi.v1.RuntimeInfo"> & {
  * Use `create(RuntimeInfoSchema)` to create a new message.
  */
 export const RuntimeInfoSchema: GenMessage<RuntimeInfo> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 26);
+  messageDesc(file_gofi_v1_gofi, 40);
 
 /**
  * @generated from message gofi.v1.Endpoint
@@ -1212,7 +2114,7 @@ export type Endpoint = Message<"gofi.v1.Endpoint"> & {
  * Use `create(EndpointSchema)` to create a new message.
  */
 export const EndpointSchema: GenMessage<Endpoint> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 27);
+  messageDesc(file_gofi_v1_gofi, 41);
 
 /**
  * @generated from message gofi.v1.EndpointPort
@@ -1249,7 +2151,7 @@ export type EndpointPort = Message<"gofi.v1.EndpointPort"> & {
  * Use `create(EndpointPortSchema)` to create a new message.
  */
 export const EndpointPortSchema: GenMessage<EndpointPort> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 28);
+  messageDesc(file_gofi_v1_gofi, 42);
 
 /**
  * @generated from message gofi.v1.Configuration
@@ -1286,7 +2188,7 @@ export type Configuration = Message<"gofi.v1.Configuration"> & {
  * Use `create(ConfigurationSchema)` to create a new message.
  */
 export const ConfigurationSchema: GenMessage<Configuration> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 29);
+  messageDesc(file_gofi_v1_gofi, 43);
 
 /**
  * @generated from message gofi.v1.TrafficEvent
@@ -1321,6 +2223,14 @@ export type TrafficEvent = Message<"gofi.v1.TrafficEvent"> & {
    * @generated from field: string raw = 6;
    */
   raw: string;
+
+  /**
+   * raw, or a string inside fields/meta, was cut to the runtime's per-event
+   * limit (GOFI_TAP_MAX_BYTES, default 4 KiB) before streaming.
+   *
+   * @generated from field: bool truncated = 7;
+   */
+  truncated: boolean;
 };
 
 /**
@@ -1328,7 +2238,7 @@ export type TrafficEvent = Message<"gofi.v1.TrafficEvent"> & {
  * Use `create(TrafficEventSchema)` to create a new message.
  */
 export const TrafficEventSchema: GenMessage<TrafficEvent> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 30);
+  messageDesc(file_gofi_v1_gofi, 44);
 
 /**
  * @generated from message gofi.v1.StageTrace
@@ -1387,7 +2297,7 @@ export type StageTrace = Message<"gofi.v1.StageTrace"> & {
  * Use `create(StageTraceSchema)` to create a new message.
  */
 export const StageTraceSchema: GenMessage<StageTrace> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 31);
+  messageDesc(file_gofi_v1_gofi, 45);
 
 /**
  * @generated from message gofi.v1.SinkOutcome
@@ -1419,7 +2329,7 @@ export type SinkOutcome = Message<"gofi.v1.SinkOutcome"> & {
  * Use `create(SinkOutcomeSchema)` to create a new message.
  */
 export const SinkOutcomeSchema: GenMessage<SinkOutcome> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 32);
+  messageDesc(file_gofi_v1_gofi, 46);
 
 /**
  * @generated from message gofi.v1.SimulateResult
@@ -1466,12 +2376,20 @@ export type SimulateResult = Message<"gofi.v1.SimulateResult"> & {
  * Use `create(SimulateResultSchema)` to create a new message.
  */
 export const SimulateResultSchema: GenMessage<SimulateResult> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 33);
+  messageDesc(file_gofi_v1_gofi, 47);
 
 /**
  * @generated from message gofi.v1.ListFlowsRequest
  */
 export type ListFlowsRequest = Message<"gofi.v1.ListFlowsRequest"> & {
+  /**
+   * The revision of the caller's last ListFlowsResponse. When the inventory
+   * has not changed since, the response is `unchanged` with no flows, so a
+   * poll costs one small round trip instead of every definition.
+   *
+   * @generated from field: uint64 if_revision = 1;
+   */
+  ifRevision: bigint;
 };
 
 /**
@@ -1479,7 +2397,7 @@ export type ListFlowsRequest = Message<"gofi.v1.ListFlowsRequest"> & {
  * Use `create(ListFlowsRequestSchema)` to create a new message.
  */
 export const ListFlowsRequestSchema: GenMessage<ListFlowsRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 34);
+  messageDesc(file_gofi_v1_gofi, 48);
 
 /**
  * @generated from message gofi.v1.ListFlowsResponse
@@ -1489,6 +2407,19 @@ export type ListFlowsResponse = Message<"gofi.v1.ListFlowsResponse"> & {
    * @generated from field: repeated gofi.v1.Flow flows = 1;
    */
   flows: Flow[];
+
+  /**
+   * Increases on every save, delete, and store reload (not comparable across
+   * controller replicas or restarts).
+   *
+   * @generated from field: uint64 revision = 2;
+   */
+  revision: bigint;
+
+  /**
+   * @generated from field: bool unchanged = 3;
+   */
+  unchanged: boolean;
 };
 
 /**
@@ -1496,7 +2427,7 @@ export type ListFlowsResponse = Message<"gofi.v1.ListFlowsResponse"> & {
  * Use `create(ListFlowsResponseSchema)` to create a new message.
  */
 export const ListFlowsResponseSchema: GenMessage<ListFlowsResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 35);
+  messageDesc(file_gofi_v1_gofi, 49);
 
 /**
  * @generated from message gofi.v1.GetFlowRequest
@@ -1513,7 +2444,7 @@ export type GetFlowRequest = Message<"gofi.v1.GetFlowRequest"> & {
  * Use `create(GetFlowRequestSchema)` to create a new message.
  */
 export const GetFlowRequestSchema: GenMessage<GetFlowRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 36);
+  messageDesc(file_gofi_v1_gofi, 50);
 
 /**
  * @generated from message gofi.v1.GetFlowResponse
@@ -1530,7 +2461,7 @@ export type GetFlowResponse = Message<"gofi.v1.GetFlowResponse"> & {
  * Use `create(GetFlowResponseSchema)` to create a new message.
  */
 export const GetFlowResponseSchema: GenMessage<GetFlowResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 37);
+  messageDesc(file_gofi_v1_gofi, 51);
 
 /**
  * @generated from message gofi.v1.UpsertFlowRequest
@@ -1548,6 +2479,14 @@ export type UpsertFlowRequest = Message<"gofi.v1.UpsertFlowRequest"> & {
    * @generated from field: bool validate_only = 2;
    */
   validateOnly: boolean;
+
+  /**
+   * Optional note recorded on the flow revision this save creates
+   * (FlowHistoryService, history.proto).
+   *
+   * @generated from field: string message = 3;
+   */
+  message: string;
 };
 
 /**
@@ -1555,7 +2494,7 @@ export type UpsertFlowRequest = Message<"gofi.v1.UpsertFlowRequest"> & {
  * Use `create(UpsertFlowRequestSchema)` to create a new message.
  */
 export const UpsertFlowRequestSchema: GenMessage<UpsertFlowRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 38);
+  messageDesc(file_gofi_v1_gofi, 52);
 
 /**
  * @generated from message gofi.v1.UpsertFlowResponse
@@ -1580,7 +2519,7 @@ export type UpsertFlowResponse = Message<"gofi.v1.UpsertFlowResponse"> & {
  * Use `create(UpsertFlowResponseSchema)` to create a new message.
  */
 export const UpsertFlowResponseSchema: GenMessage<UpsertFlowResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 39);
+  messageDesc(file_gofi_v1_gofi, 53);
 
 /**
  * @generated from message gofi.v1.DeleteFlowRequest
@@ -1597,7 +2536,7 @@ export type DeleteFlowRequest = Message<"gofi.v1.DeleteFlowRequest"> & {
  * Use `create(DeleteFlowRequestSchema)` to create a new message.
  */
 export const DeleteFlowRequestSchema: GenMessage<DeleteFlowRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 40);
+  messageDesc(file_gofi_v1_gofi, 54);
 
 /**
  * @generated from message gofi.v1.DeleteFlowResponse
@@ -1610,7 +2549,7 @@ export type DeleteFlowResponse = Message<"gofi.v1.DeleteFlowResponse"> & {
  * Use `create(DeleteFlowResponseSchema)` to create a new message.
  */
 export const DeleteFlowResponseSchema: GenMessage<DeleteFlowResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 41);
+  messageDesc(file_gofi_v1_gofi, 55);
 
 /**
  * @generated from message gofi.v1.GetRouteHealthRequest
@@ -1627,7 +2566,7 @@ export type GetRouteHealthRequest = Message<"gofi.v1.GetRouteHealthRequest"> & {
  * Use `create(GetRouteHealthRequestSchema)` to create a new message.
  */
 export const GetRouteHealthRequestSchema: GenMessage<GetRouteHealthRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 42);
+  messageDesc(file_gofi_v1_gofi, 56);
 
 /**
  * @generated from message gofi.v1.GetRouteHealthResponse
@@ -1644,7 +2583,7 @@ export type GetRouteHealthResponse = Message<"gofi.v1.GetRouteHealthResponse"> &
  * Use `create(GetRouteHealthResponseSchema)` to create a new message.
  */
 export const GetRouteHealthResponseSchema: GenMessage<GetRouteHealthResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 43);
+  messageDesc(file_gofi_v1_gofi, 57);
 
 /**
  * RouteHealth is one outbound route as the runtime observed it.
@@ -1707,7 +2646,7 @@ export type RouteHealth = Message<"gofi.v1.RouteHealth"> & {
  * Use `create(RouteHealthSchema)` to create a new message.
  */
 export const RouteHealthSchema: GenMessage<RouteHealth> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 44);
+  messageDesc(file_gofi_v1_gofi, 58);
 
 /**
  * @generated from message gofi.v1.GetRuntimeStatusRequest
@@ -1724,7 +2663,7 @@ export type GetRuntimeStatusRequest = Message<"gofi.v1.GetRuntimeStatusRequest">
  * Use `create(GetRuntimeStatusRequestSchema)` to create a new message.
  */
 export const GetRuntimeStatusRequestSchema: GenMessage<GetRuntimeStatusRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 45);
+  messageDesc(file_gofi_v1_gofi, 59);
 
 /**
  * @generated from message gofi.v1.GetRuntimeStatusResponse
@@ -1741,7 +2680,7 @@ export type GetRuntimeStatusResponse = Message<"gofi.v1.GetRuntimeStatusResponse
  * Use `create(GetRuntimeStatusResponseSchema)` to create a new message.
  */
 export const GetRuntimeStatusResponseSchema: GenMessage<GetRuntimeStatusResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 46);
+  messageDesc(file_gofi_v1_gofi, 60);
 
 /**
  * @generated from message gofi.v1.ListEndpointsRequest
@@ -1754,7 +2693,7 @@ export type ListEndpointsRequest = Message<"gofi.v1.ListEndpointsRequest"> & {
  * Use `create(ListEndpointsRequestSchema)` to create a new message.
  */
 export const ListEndpointsRequestSchema: GenMessage<ListEndpointsRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 47);
+  messageDesc(file_gofi_v1_gofi, 61);
 
 /**
  * @generated from message gofi.v1.ListEndpointsResponse
@@ -1771,7 +2710,7 @@ export type ListEndpointsResponse = Message<"gofi.v1.ListEndpointsResponse"> & {
  * Use `create(ListEndpointsResponseSchema)` to create a new message.
  */
 export const ListEndpointsResponseSchema: GenMessage<ListEndpointsResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 48);
+  messageDesc(file_gofi_v1_gofi, 62);
 
 /**
  * @generated from message gofi.v1.GetConfigurationRequest
@@ -1784,7 +2723,7 @@ export type GetConfigurationRequest = Message<"gofi.v1.GetConfigurationRequest">
  * Use `create(GetConfigurationRequestSchema)` to create a new message.
  */
 export const GetConfigurationRequestSchema: GenMessage<GetConfigurationRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 49);
+  messageDesc(file_gofi_v1_gofi, 63);
 
 /**
  * @generated from message gofi.v1.GetConfigurationResponse
@@ -1801,7 +2740,7 @@ export type GetConfigurationResponse = Message<"gofi.v1.GetConfigurationResponse
  * Use `create(GetConfigurationResponseSchema)` to create a new message.
  */
 export const GetConfigurationResponseSchema: GenMessage<GetConfigurationResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 50);
+  messageDesc(file_gofi_v1_gofi, 64);
 
 /**
  * @generated from message gofi.v1.GetModeRequest
@@ -1814,7 +2753,7 @@ export type GetModeRequest = Message<"gofi.v1.GetModeRequest"> & {
  * Use `create(GetModeRequestSchema)` to create a new message.
  */
 export const GetModeRequestSchema: GenMessage<GetModeRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 51);
+  messageDesc(file_gofi_v1_gofi, 65);
 
 /**
  * @generated from message gofi.v1.GetModeResponse
@@ -1853,7 +2792,7 @@ export type GetModeResponse = Message<"gofi.v1.GetModeResponse"> & {
  * Use `create(GetModeResponseSchema)` to create a new message.
  */
 export const GetModeResponseSchema: GenMessage<GetModeResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 52);
+  messageDesc(file_gofi_v1_gofi, 66);
 
 /**
  * @generated from message gofi.v1.SimulateRequest
@@ -1875,7 +2814,7 @@ export type SimulateRequest = Message<"gofi.v1.SimulateRequest"> & {
  * Use `create(SimulateRequestSchema)` to create a new message.
  */
 export const SimulateRequestSchema: GenMessage<SimulateRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 53);
+  messageDesc(file_gofi_v1_gofi, 67);
 
 /**
  * @generated from message gofi.v1.SimulateResponse
@@ -1892,7 +2831,7 @@ export type SimulateResponse = Message<"gofi.v1.SimulateResponse"> & {
  * Use `create(SimulateResponseSchema)` to create a new message.
  */
 export const SimulateResponseSchema: GenMessage<SimulateResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 54);
+  messageDesc(file_gofi_v1_gofi, 68);
 
 /**
  * @generated from message gofi.v1.WatchTrafficRequest
@@ -1909,7 +2848,7 @@ export type WatchTrafficRequest = Message<"gofi.v1.WatchTrafficRequest"> & {
  * Use `create(WatchTrafficRequestSchema)` to create a new message.
  */
 export const WatchTrafficRequestSchema: GenMessage<WatchTrafficRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 55);
+  messageDesc(file_gofi_v1_gofi, 69);
 
 /**
  * @generated from message gofi.v1.WatchTrafficResponse
@@ -1929,6 +2868,15 @@ export type WatchTrafficResponse = Message<"gofi.v1.WatchTrafficResponse"> & {
    * @generated from field: bool heartbeat = 3;
    */
   heartbeat: boolean;
+
+  /**
+   * Events this stream skipped since the previous message because the
+   * client's queue was full (the viewer could not keep up). Attached to the
+   * next event or heartbeat; 0 when nothing was missed.
+   *
+   * @generated from field: uint64 dropped = 4;
+   */
+  dropped: bigint;
 };
 
 /**
@@ -1936,7 +2884,120 @@ export type WatchTrafficResponse = Message<"gofi.v1.WatchTrafficResponse"> & {
  * Use `create(WatchTrafficResponseSchema)` to create a new message.
  */
 export const WatchTrafficResponseSchema: GenMessage<WatchTrafficResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 56);
+  messageDesc(file_gofi_v1_gofi, 70);
+
+/**
+ * @generated from message gofi.v1.WatchFlowStatsRequest
+ */
+export type WatchFlowStatsRequest = Message<"gofi.v1.WatchFlowStatsRequest"> & {
+  /**
+   * Empty: every configured flow.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message gofi.v1.WatchFlowStatsRequest.
+ * Use `create(WatchFlowStatsRequestSchema)` to create a new message.
+ */
+export const WatchFlowStatsRequestSchema: GenMessage<WatchFlowStatsRequest> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 71);
+
+/**
+ * @generated from message gofi.v1.WatchFlowStatsResponse
+ */
+export type WatchFlowStatsResponse = Message<"gofi.v1.WatchFlowStatsResponse"> & {
+  /**
+   * @generated from field: repeated gofi.v1.FlowStats flows = 1;
+   */
+  flows: FlowStats[];
+
+  /**
+   * @generated from field: bool heartbeat = 2;
+   */
+  heartbeat: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp at = 3;
+   */
+  at?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message gofi.v1.WatchFlowStatsResponse.
+ * Use `create(WatchFlowStatsResponseSchema)` to create a new message.
+ */
+export const WatchFlowStatsResponseSchema: GenMessage<WatchFlowStatsResponse> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 72);
+
+/**
+ * FlowStats is one flow's cumulative counters since its runtime started.
+ *
+ * @generated from message gofi.v1.FlowStats
+ */
+export type FlowStats = Message<"gofi.v1.FlowStats"> & {
+  /**
+   * @generated from field: string flow = 1;
+   */
+  flow: string;
+
+  /**
+   * The runtime is running and its counters were read within the last few
+   * seconds.
+   *
+   * @generated from field: bool up = 2;
+   */
+  up: boolean;
+
+  /**
+   * Frames read from the source.
+   *
+   * @generated from field: uint64 observed = 3;
+   */
+  observed: bigint;
+
+  /**
+   * Messages a stage or the parser rejected.
+   *
+   * @generated from field: uint64 rejected = 4;
+   */
+  rejected: bigint;
+
+  /**
+   * @generated from field: uint64 parse_errors = 5;
+   */
+  parseErrors: bigint;
+
+  /**
+   * Successful destination sends (one per destination per message).
+   *
+   * @generated from field: uint64 delivered = 6;
+   */
+  delivered: bigint;
+
+  /**
+   * Failed destination sends.
+   *
+   * @generated from field: uint64 sink_failures = 7;
+   */
+  sinkFailures: bigint;
+
+  /**
+   * Live-traffic events a slow viewer missed on the runtime.
+   *
+   * @generated from field: uint64 tap_dropped = 8;
+   */
+  tapDropped: bigint;
+};
+
+/**
+ * Describes the message gofi.v1.FlowStats.
+ * Use `create(FlowStatsSchema)` to create a new message.
+ */
+export const FlowStatsSchema: GenMessage<FlowStats> = /*@__PURE__*/
+  messageDesc(file_gofi_v1_gofi, 73);
 
 /**
  * @generated from message gofi.v1.ResolveTargetsRequest
@@ -1958,7 +3019,7 @@ export type ResolveTargetsRequest = Message<"gofi.v1.ResolveTargetsRequest"> & {
  * Use `create(ResolveTargetsRequestSchema)` to create a new message.
  */
 export const ResolveTargetsRequestSchema: GenMessage<ResolveTargetsRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 57);
+  messageDesc(file_gofi_v1_gofi, 74);
 
 /**
  * @generated from message gofi.v1.ResolveTargetsResponse
@@ -1975,7 +3036,7 @@ export type ResolveTargetsResponse = Message<"gofi.v1.ResolveTargetsResponse"> &
  * Use `create(ResolveTargetsResponseSchema)` to create a new message.
  */
 export const ResolveTargetsResponseSchema: GenMessage<ResolveTargetsResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 58);
+  messageDesc(file_gofi_v1_gofi, 75);
 
 /**
  * Replay transmits exactly raw, including any framing bytes, to a direct URL
@@ -2010,7 +3071,7 @@ export type ReplayRequest = Message<"gofi.v1.ReplayRequest"> & {
  * Use `create(ReplayRequestSchema)` to create a new message.
  */
 export const ReplayRequestSchema: GenMessage<ReplayRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 59);
+  messageDesc(file_gofi_v1_gofi, 76);
 
 /**
  * @generated from message gofi.v1.ReplayDelivery
@@ -2037,7 +3098,7 @@ export type ReplayDelivery = Message<"gofi.v1.ReplayDelivery"> & {
  * Use `create(ReplayDeliverySchema)` to create a new message.
  */
 export const ReplayDeliverySchema: GenMessage<ReplayDelivery> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 60);
+  messageDesc(file_gofi_v1_gofi, 77);
 
 /**
  * @generated from message gofi.v1.ReplayResponse
@@ -2054,7 +3115,7 @@ export type ReplayResponse = Message<"gofi.v1.ReplayResponse"> & {
  * Use `create(ReplayResponseSchema)` to create a new message.
  */
 export const ReplayResponseSchema: GenMessage<ReplayResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 61);
+  messageDesc(file_gofi_v1_gofi, 78);
 
 /**
  * @generated from message gofi.v1.DebugFrameRequest
@@ -2101,7 +3162,7 @@ export type DebugFrameRequest = Message<"gofi.v1.DebugFrameRequest"> & {
  * Use `create(DebugFrameRequestSchema)` to create a new message.
  */
 export const DebugFrameRequestSchema: GenMessage<DebugFrameRequest> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 62);
+  messageDesc(file_gofi_v1_gofi, 79);
 
 /**
  * @generated from message gofi.v1.DebugFrameResponse
@@ -2159,7 +3220,7 @@ export type DebugFrameResponse = Message<"gofi.v1.DebugFrameResponse"> & {
  * Use `create(DebugFrameResponseSchema)` to create a new message.
  */
 export const DebugFrameResponseSchema: GenMessage<DebugFrameResponse> = /*@__PURE__*/
-  messageDesc(file_gofi_v1_gofi, 63);
+  messageDesc(file_gofi_v1_gofi, 80);
 
 /**
  * All GoFi management and live traffic operations use ConnectRPC. Kubernetes
@@ -2278,6 +3339,19 @@ export const GoFiService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchTrafficRequestSchema;
     output: typeof WatchTrafficResponseSchema;
+  },
+  /**
+   * Per-flow counters once per second (one small message for every flow, or
+   * the named one) for dashboards and status views. Counters are cumulative
+   * since the runtime started; a decrease means the runtime restarted. Use
+   * WatchTraffic only for views that show the events themselves.
+   *
+   * @generated from rpc gofi.v1.GoFiService.WatchFlowStats
+   */
+  watchFlowStats: {
+    methodKind: "server_streaming";
+    input: typeof WatchFlowStatsRequestSchema;
+    output: typeof WatchFlowStatsResponseSchema;
   },
   /**
    * What the flow's runtime has seen on each outbound route (destinations,

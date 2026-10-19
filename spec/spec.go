@@ -1,17 +1,27 @@
 package spec
 
 // FlowDefinition describes GoFi's top-level object, a flow:
-// a source → framer → parser → ordered stage chain → sink(s).
+// a source → framer → decode → parser → ordered stage chain → sink(s).
 // See docs/flows.md.
 type FlowDefinition struct {
-	Name           string      `json:"name"`
-	Source         FlowSource  `json:"source"`
-	Framing        Framing     `json:"framing"`
+	Name    string     `json:"name"`
+	Source  FlowSource `json:"source"`
+	Framing Framing    `json:"framing"`
+	// Decode runs ordered decoding steps on each frame before the parser.
+	// Older definitions carried these as parser.decoders and
+	// parser.maxDecodedBytes; Normalize moves them here.
+	Decode         *DecodeCfg  `json:"decode,omitempty"`
 	Parser         ParserCfg   `json:"parser"`
 	Stages         []StageSpec `json:"stages,omitempty"`
 	Sinks          []SinkCfg   `json:"sinks,omitempty"`
 	DeadLetterSink *SinkCfg    `json:"deadLetterSink,omitempty"` // optional; receives messages dropped by the stage chain
 	TestCases      []TestCase  `json:"testCases,omitempty"`
+	// Python holds flow-wide Python settings: the default library of every
+	// Python step that names only a function.
+	Python *FlowPython `json:"python,omitempty"`
+	// State is the declared run state: "running" (default when empty) or
+	// "stopped". A stopped flow keeps its definition but has no runtime.
+	State string `json:"state,omitempty"`
 }
 
 // TestCase is a saved mock-mode sample input for exercising this flow's
@@ -24,12 +34,16 @@ type TestCase struct {
 	Raw  string `json:"raw"` // raw frame text fed through Simulate
 }
 
-// ListenSource is a flow source where senders push to a GoFi TCP/UDP port
-// (the former Listener.source).
+// ListenSource is a flow source where senders push to a GoFi TCP, UDP, or
+// QUIC port (the former Listener.source).
 type ListenSource struct {
 	Port    int              `json:"port"`
-	Network string           `json:"network"`           // "tcp" | "udp"
+	Network string           `json:"network"`           // "tcp" | "udp" | "quic" (QUIC runs over UDP on Port)
 	Service *ServiceExposure `json:"service,omitempty"` // Kubernetes exposure; nil leaves the port private
+	// TLS is the QUIC listen source's TLS material (quic.go). nil means an
+	// ephemeral self-signed certificate generated at startup. Only valid
+	// with network quic.
+	TLS *TLSConfig `json:"tls,omitempty"`
 }
 
 // ServiceExposure publishes a listener through a stable Kubernetes Service.
@@ -92,20 +106,72 @@ type Framing struct {
 // ParserCfg selects how a frame's bytes are decoded into Message.Fields.
 type ParserCfg struct {
 	Python *PythonRef `json:"python,omitempty"`
-	// Format is one of: "xml", "json", "none".
-	//   xml  — top-level attributes and first-level child text nodes become Fields
-	//   json — top-level keys become Fields
-	//   none — Fields["raw"] = frame as UTF-8 string
+	// Format is one of: "json", "xml", "none", "text", "python".
+	//   json   — top-level keys become Fields
+	//   xml    — top-level attributes and first-level child text nodes become Fields
+	//   none   — Fields["raw"] = decoded frame as UTF-8 string
+	//   text   — same as none (the parse stage's name for it)
+	//   python — a @gofi.parser function returns the fields
 	Format string `json:"format"`
 
-	// Decoders run in order before parsing: base64, base64url, hex, gzip,
-	// zlib, or url (URL query escaping). Raw frame bytes remain unchanged.
-	Decoders []CodecStep `json:"decoders,omitempty"`
-	// MaxDecodedBytes caps the output of each decoding step; 0 = 1 MiB.
-	MaxDecodedBytes int `json:"maxDecodedBytes,omitempty"`
+	// LegacyDecoders and LegacyMaxDecodedBytes are the pre-decode-step
+	// location of FlowDefinition.Decode. They are read for compatibility
+	// only: Normalize moves them into Decode and clears them, so nothing is
+	// ever written in this shape. Runtime code never reads them.
+	//
+	// Deprecated: use FlowDefinition.Decode.
+	LegacyDecoders []CodecStep `json:"decoders,omitempty"`
+	// Deprecated: use FlowDefinition.Decode.MaxDecodedBytes.
+	LegacyMaxDecodedBytes int `json:"maxDecodedBytes,omitempty"`
 	// ErrorPolicy is "continue" (default) or "drop". Drop sends malformed
 	// frames to the dead-letter sink when configured, before running stages.
 	ErrorPolicy string `json:"errorPolicy,omitempty"`
+}
+
+// DecodeCfg is the flow's decode step: byte transformations applied to each
+// frame, in order, before the parser. Raw frame bytes remain unchanged.
+type DecodeCfg struct {
+	// Decoders are built-in codecs (base64, gzip, …; see BuiltinCodecs) or
+	// Python @gofi.decoder functions.
+	Decoders []CodecStep `json:"decoders,omitempty"`
+	// MaxDecodedBytes caps the output of each decoding step; 0 = 1 MiB.
+	MaxDecodedBytes int `json:"maxDecodedBytes,omitempty"`
+}
+
+// FlowPython is flow-wide Python configuration.
+type FlowPython struct {
+	// Library is the default library for every PythonRef in the flow that
+	// names a function without a library (inline source is unaffected).
+	Library string `json:"library,omitempty"`
+}
+
+// ParseStage configures a stage of kind "parse": it parses a value already
+// on the message (the raw frame or a field) and adds the result to fields.
+// A flow can parse any number of times, e.g. a JSON document inside a syslog
+// line, then a base64-gzip field inside that document.
+type ParseStage struct {
+	// From is a CEL expression (fields/meta/raw environment) evaluated per
+	// message that must yield a string or bytes. Empty or "raw" uses the
+	// frame's raw bytes.
+	From string `json:"from,omitempty"`
+	// Decoders run in order on the input before parsing (same steps as
+	// decode.decoders); each step's output is capped at 1 MiB.
+	Decoders []CodecStep `json:"decoders,omitempty"`
+	// Format is "json", "xml", "text", or "python".
+	Format string `json:"format"`
+	// Python is the @gofi.parser function for format "python". The library
+	// may come from the flow's python.library.
+	Python *PythonRef `json:"python,omitempty"`
+	// Into is where the result goes: empty merges it into the top-level
+	// fields; otherwise it is stored at fields[into] (a nested map; for
+	// format "text", the decoded string).
+	Into string `json:"into,omitempty"`
+	// Mode is "merge" (default) or "replace": the parse result becomes the
+	// message's fields. Replace requires an empty Into.
+	Mode string `json:"mode,omitempty"`
+	// OnError is "continue" (default: the message passes unchanged and the
+	// error is reported) or "drop".
+	OnError string `json:"onError,omitempty"`
 }
 
 // StageSpec configures one processing block in the ordered chain between
@@ -116,12 +182,14 @@ type ParserCfg struct {
 //	"rate-limit" — drop when the listener-wide rate exceeds MaxPerSecond (approximate per-second window, shared across all connections of this listener)
 //	"dedup"      — drop repeats of KeyExpr's value seen within Window (shared across all connections of this listener)
 //	"schema"     — drop messages missing any entry in RequiredFields
+//	"parse"      — parse the raw frame or a field again (see ParseStage)
+//	"python"     — run a @gofi.transformer function
 //
 // Messages that are dropped by any stage short-circuit the remaining chain.
 type StageSpec struct {
 	Python *PythonRef `json:"python,omitempty"`
 	ID     string     `json:"id"`   // client-generated, stable, unique in chain
-	Kind   string     `json:"kind"` // "filter" | "transform" | "rate-limit" | "dedup" | "schema"
+	Kind   string     `json:"kind"` // "filter" | "transform" | "rate-limit" | "dedup" | "schema" | "parse" | "python"
 
 	// Kind == "filter"
 	Type       string `json:"type,omitempty"`       // "cel" | "regex"; empty/unknown = error
@@ -143,6 +211,9 @@ type StageSpec struct {
 	// Kind == "schema"
 	RequiredFields []string `json:"requiredFields,omitempty"`
 
+	// Kind == "parse"
+	Parse *ParseStage `json:"parse,omitempty"`
+
 	// ExpressionRef links this kind's expression (Expression, ValueExpr, or
 	// KeyExpr) to a CEL library entry; a literal expression takes precedence.
 	ExpressionRef *ExpressionRef `json:"expressionRef,omitempty"`
@@ -162,10 +233,13 @@ type SinkCfg struct {
 	Labels     map[string]string `json:"labels,omitempty"` // Loki static stream labels.
 	Kubernetes *KubernetesTarget `json:"kubernetes,omitempty"`
 	Python     *PythonRef        `json:"python,omitempty"`
-	Type       string            `json:"type"`                // "nats" | "http" | "tcp" | "udp" | "aster" | "stdout"
-	URL        string            `json:"url,omitempty"`       // NATS URL or HTTP base URL
+	Type       string            `json:"type"`                // "nats" | "http" | "tcp" | "udp" | "quic" | "aster" | "stdout"
+	URL        string            `json:"url,omitempty"`       // NATS URL, HTTP base URL, or tcp|udp|quic://host:port
 	Subject    string            `json:"subject,omitempty"`   // NATS subject or HTTP path suffix
-	Delimiter  string            `json:"delimiter,omitempty"` // TCP/UDP: suffix appended to each payload; empty preserves bytes
+	Delimiter  string            `json:"delimiter,omitempty"` // TCP/UDP/QUIC: suffix appended to each payload; empty preserves bytes
+	// TLS configures the QUIC sink's client side (quic.go): server
+	// verification (system roots by default), optional client certificate.
+	TLS *TLSConfig `json:"tls,omitempty"`
 
 	// HTTP-specific (Type == "http")
 	Method      string            `json:"method,omitempty"`      // GET|POST|PUT|PATCH|DELETE; default POST

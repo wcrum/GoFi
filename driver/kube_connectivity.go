@@ -253,7 +253,7 @@ func (k *Kube) connectivityPaths(ctx context.Context, def spec.FlowDefinition) [
 	flowLabels := map[string]string{kubeLabelManaged: "true", kubeLabelListener: def.Name}
 	var paths []connectivityPath
 	if listen := def.Source.Listen; listen != nil && listen.Service != nil {
-		protocol := strings.ToUpper(listenNetwork(listen))
+		protocol := string(transportOf(listen.Network)) // udp and quic: UDP
 		port := int32(listen.Port)
 		base := kubeexplain.UDSPath{Direction: kubeexplain.Ingress, Selector: flowLabels, Port: port, Protocol: protocol, Description: fmt.Sprintf("GoFi flow %s ingress", def.Name)}
 		to := "flow " + def.Name
@@ -364,6 +364,10 @@ func sourceURL(source spec.FlowSource) string {
 	switch {
 	case source.Fetch != nil && source.Fetch.HTTP != nil:
 		return source.Fetch.HTTP.URL
+	case source.Fetch != nil && source.Fetch.S3 != nil:
+		return source.Fetch.S3.EndpointURL()
+	case source.Fetch != nil && source.Fetch.SQL != nil:
+		return source.Fetch.SQL.EndpointURL()
 	case source.Subscribe != nil && source.Subscribe.NATS != nil:
 		return source.Subscribe.NATS.URL
 	case source.Subscribe != nil && source.Subscribe.MQTT != nil:
@@ -372,6 +376,10 @@ func sourceURL(source spec.FlowSource) string {
 		return source.Subscribe.WebSocket.URL
 	case source.Subscribe != nil && source.Subscribe.SSE != nil:
 		return source.Subscribe.SSE.URL
+	case source.Subscribe != nil && source.Subscribe.Zenoh != nil:
+		return source.Subscribe.Zenoh.URL
+	case len(source.Subscribe.Endpoints()) > 0: // kafka, amqp, jetstream, redis: first broker
+		return source.Subscribe.Endpoints()[0]
 	}
 	return ""
 }

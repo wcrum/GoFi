@@ -7,6 +7,7 @@ import inspect
 import os
 import platform
 import re
+import threading
 import uuid
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
@@ -14,14 +15,14 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.struct_pb2 import Value
 from . import DECORATORS, _load, functions
-from .execution import Executor, debug, invoke
+from .execution import Executor, StreamSession, debug, invoke
 from . import debugger
 from . import logs
 from . import tooling
 from .v1.sandbox_connect import WorkerServiceASGIApplication
 from .v1.sandbox_pb2 import (
-    DebugRecording, DescribePythonEnvironmentResponse, FunctionParam, RunFunctionResponse, PythonDecorator, PythonPackage, SourceDiagnostic,
-    WorkerFunction, WorkerInvokeResponse, WorkerListFunctionsResponse, WorkerFormatSourceResponse, WorkerValidateSourceResponse,
+    DebugRecording, DescribePythonEnvironmentResponse, FunctionParam, RunFunctionResponse, PythonDecorator, PythonPackage, SourceDiagnostic, SourceFrame,
+    WorkerFetchResponse, WorkerFunction, WorkerInvokeResponse, WorkerStreamResponse, WorkerListFunctionsResponse, WorkerFormatSourceResponse, WorkerValidateSourceResponse,
 )
 
 # The worker runtime's own distributions and everything they depend on are
@@ -60,7 +61,7 @@ def _value(value):
 
 
 def _function_message(f):
-    message = WorkerFunction(name=f.name, kind=f.kind, description=f.description)
+    message = WorkerFunction(name=f.name, kind=f.kind, description=f.description, every=f.every)
     for p in f.params:
         param = FunctionParam(name=p.name, type=p.type, required=p.required, description=p.description)
         if not p.required:
@@ -78,6 +79,29 @@ def describe_environment():
     decorators = [PythonDecorator(name=f"gofi.{d.__name__}", signature=f"@gofi.{d.__name__}{inspect.signature(d)}", description=inspect.getdoc(d) or "") for d in DECORATORS]
     return DescribePythonEnvironmentResponse(python_version=platform.python_version(), packages=[packages[k] for k in sorted(packages)], decorators=decorators)
 
+def _restore_ints(value):
+    """Struct numbers arrive as floats; give whole numbers back as ints so a
+    cursor stored in ctx.state keeps its type across calls."""
+    if isinstance(value, float) and value.is_integer() and abs(value) < 2 ** 53:
+        return int(value)
+    if isinstance(value, dict):
+        return {k: _restore_ints(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_restore_ints(v) for v in value]
+    return value
+
+
+def _source_frames(frames):
+    return [SourceFrame(data=base64.b64decode(f["data"]), meta=f.get("meta") or {}) for f in frames]
+
+
+# Concurrent @gofi.streamer processes per worker.
+MAX_STREAMS = 4
+# Idle streams send an empty message this often so a vanished caller is
+# noticed (the send fails) and the streamer process is stopped.
+STREAM_HEARTBEAT_SECONDS = 15.0
+
+
 class Worker:
     def __init__(self, source, token, timeout, lazy=False):
         if not token:
@@ -89,6 +113,7 @@ class Worker:
             _load(source)
         self.registry = () if lazy else functions()
         self.lock = asyncio.Semaphore(1)
+        self.streams = 0
         # Saved libraries keep a warm executor; unsaved (lazy) source runs once
         # per fresh process so a load error is reported for each run.
         self.executor = None if lazy else Executor(source)
@@ -200,10 +225,79 @@ class Worker:
         ParseDict({"steps": recorded.get("steps", []), "initialGlobals": recorded.get("initialGlobals", [])}, recording, ignore_unknown_fields=True)
         return recording
 
-    async def listen(self, request, ctx):
+    def _require(self, name, kind):
+        if not self.lazy and not any(f.name == name and f.kind == kind for f in self.registry):
+            raise ConnectError(Code.NOT_FOUND, f"no {kind} named {name!r} is registered")
+
+    async def fetch(self, request, ctx):
+        """One @gofi.fetcher poll, with the same executor, lock, and deadline
+        as Invoke. The state travels as the call's fields."""
         self.authorize(ctx)
-        raise ConnectError(Code.UNIMPLEMENTED, "background streamers are not enabled yet")
-        yield
+        self._require(request.name, "fetcher")
+        invocation_id = request.invocation_id[:64] or uuid.uuid4().hex[:16]
+        state = _restore_ints(MessageToDict(request.state))
+        args = (request.name, "fetcher", b"", state, {"flow": request.flow[:253]}, self.timeout, _restore_ints(MessageToDict(request.config)), invocation_id, False)
+        try:
+            async with self.lock:
+                if self.executor:
+                    result = await asyncio.to_thread(self.executor.invoke, *args)
+                else:
+                    result = await asyncio.to_thread(invoke, self.source, *args)
+        except TimeoutError as exc:
+            raise ConnectError(Code.DEADLINE_EXCEEDED, str(exc)) from exc
+        except (ValueError, TypeError, RuntimeError) as exc:
+            raise ConnectError(Code.INVALID_ARGUMENT, str(exc)) from exc
+        response = WorkerFetchResponse(stdout=result.get("stdout", ""), stderr=result.get("stderr", ""), duration_us=result.get("durationUs", 0), invocation_id=invocation_id)
+        if "error" in result:
+            response.error = result["error"]
+            if result.get("errorLine"):
+                response.error_location.CopyFrom(SourceDiagnostic(line=result["errorLine"], column=1, code="RUNTIME", message=result["error"]))
+            return response
+        fields = result.get("fields") or {}
+        response.frames.extend(_source_frames(fields.get("frames", [])))
+        response.state.update(fields.get("state") or {})
+        return response
+
+    async def stream(self, request, ctx):
+        """Run one @gofi.streamer in its own process until it ends, fails, or
+        the caller goes away. Messages are produced at most
+        StreamSession.WINDOW ahead of what the caller has taken."""
+        self.authorize(ctx)
+        if self.lazy:
+            raise ConnectError(Code.FAILED_PRECONDITION, "streamers run only in saved libraries")
+        self._require(request.name, "streamer")
+        if self.streams >= MAX_STREAMS:
+            raise ConnectError(Code.RESOURCE_EXHAUSTED, f"this library already runs {MAX_STREAMS} streamers")
+        invocation_id = request.invocation_id[:64] or uuid.uuid4().hex[:16]
+        session = StreamSession(self.source, request.name, _restore_ints(MessageToDict(request.config)), request.flow[:253], _restore_ints(MessageToDict(request.state)), invocation_id)
+        self.streams += 1
+        try:
+            await asyncio.to_thread(session.start)
+            yield WorkerStreamResponse(started=True, invocation_id=invocation_id)
+            idle = 0.0
+            while True:
+                message = await asyncio.to_thread(session.receive, 0.5)
+                if message is None:
+                    idle += 0.5
+                    if idle >= STREAM_HEARTBEAT_SECONDS:
+                        idle = 0.0
+                        yield WorkerStreamResponse(invocation_id=invocation_id)
+                    continue
+                idle = 0.0
+                if message["type"] == "end":
+                    return
+                if message["type"] == "error":
+                    location = f" (line {message['errorLine']})" if message.get("errorLine") else ""
+                    raise ConnectError(Code.ABORTED, f"streamer {request.name}: {message['error']}{location}")
+                response = WorkerStreamResponse(frames=_source_frames(message.get("frames", [])), invocation_id=invocation_id)
+                if "state" in message:
+                    response.state.update(message["state"] or {})
+                yield response
+                session.credit()
+        finally:
+            self.streams -= 1
+            # Never await here: the caller may already be cancelled.
+            threading.Thread(target=session.stop, daemon=True).start()
 
 def create_app():
     source = base64.b64decode(os.environ["GOFI_PYTHON_SOURCE"], validate=True).decode("utf-8")

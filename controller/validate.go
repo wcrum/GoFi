@@ -19,6 +19,15 @@ func ValidateDefinition(def spec.FlowDefinition) error {
 	if _, err := json.Marshal(def); err != nil {
 		return fmt.Errorf("invalid flow configuration: %w", err)
 	}
+	// Older shapes (parser.decoders) are read as the decode step, and Python
+	// steps that name only a function use the flow's default library.
+	def, err := def.Prepared()
+	if err != nil {
+		return err
+	}
+	if def.Python != nil && strings.TrimSpace(def.Python.Library) != def.Python.Library {
+		return fmt.Errorf("python.library must not have surrounding spaces")
+	}
 	if errs := validation.IsDNS1123Subdomain(def.Name); len(errs) != 0 {
 		return fmt.Errorf("name must be a valid Kubernetes resource name: %s", strings.Join(errs, "; "))
 	}
@@ -28,6 +37,17 @@ func ValidateDefinition(def spec.FlowDefinition) error {
 		if err := use.Ref.Validate(); err != nil {
 			return fmt.Errorf("%s: %w", use.Path, err)
 		}
+		if err := spec.CheckLibraryReference(def.Name, use.Ref); err != nil {
+			return fmt.Errorf("%s: %w", use.Path, err)
+		}
+	}
+	if def.Python != nil {
+		if err := spec.CheckLibraryReference(def.Name, &spec.PythonRef{Library: def.Python.Library, Function: "-"}); err != nil {
+			return fmt.Errorf("python.library: %w", err)
+		}
+	}
+	if err := spec.ValidateState(def.State); err != nil {
+		return err
 	}
 	if def.Source.Listen != nil && def.Source.Listening().Port == 0 {
 		return fmt.Errorf("source.listen.port is required")
@@ -41,10 +61,15 @@ func ValidateDefinition(def spec.FlowDefinition) error {
 	if def.Framing.Mode == "length-prefix" && def.Framing.PrefixLen != 0 && def.Framing.PrefixLen != 2 && def.Framing.PrefixLen != 4 {
 		return fmt.Errorf("framing.prefixLen must be 2 or 4")
 	}
+	for i, stage := range def.Stages {
+		if stage.Parse != nil && stage.Kind != "parse" {
+			return fmt.Errorf("stages[%d]: parse is only valid with kind parse", i)
+		}
+	}
 	if _, err := filter.NewChain(def.Stages); err != nil {
 		return err
 	}
-	if _, err := parser.New(def.Parser); err != nil {
+	if _, err := parser.ForFlow(def); err != nil {
 		return err
 	}
 	if _, err := framing.New(def.Framing, strings.NewReader("")); err != nil {

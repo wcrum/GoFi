@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { ThemeContext } from '@grafana/data'
+import { GlobalStyles } from '@grafana/ui'
 import { createGoFiTheme, cssTokens } from '../grafana-theme'
 import { gofiFaviconDataUrl } from '../components/gofi-mark-svg'
 import { setEditorTheme } from './editorTheme'
@@ -126,7 +127,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     definition, mode, setTheme, setAccent,
   }), [theme, accent, accentDefinition, definition, mode, setTheme, setAccent])
   return <ThemeStateContext.Provider value={value}>
-    <ThemeContext.Provider value={grafanaTheme}>{children}</ThemeContext.Provider>
+    <ThemeContext.Provider value={grafanaTheme}>
+      {/* Grafana's base element and form styles, which @grafana/ui components
+          assume (e.g. Switch needs block-level labels). */}
+      <GlobalStyles />
+      {children}
+    </ThemeContext.Provider>
   </ThemeStateContext.Provider>
 }
 

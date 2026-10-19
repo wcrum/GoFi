@@ -40,7 +40,9 @@ func (d *InProcess) Create(ctx context.Context, def spec.FlowDefinition) error {
 		return err
 	}
 
-	lctx, cancel := context.WithCancel(ctx)
+	// The runtime outlives the reconcile that created it: Delete or DrainAll
+	// stop it (gracefully), not the end of the controller's context.
+	lctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	go func() {
 		defer ln.Close()
 		ln.Run(lctx)
@@ -50,18 +52,46 @@ func (d *InProcess) Create(ctx context.Context, def spec.FlowDefinition) error {
 	return nil
 }
 
+// Delete drains the listener: intake stops at once (the port is released),
+// frames already received finish, and sinks flush, within DrainTimeout.
 func (d *InProcess) Delete(_ context.Context, name string) error {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	e, ok := d.running[name]
 	if !ok {
+		d.mu.Unlock()
 		return fmt.Errorf("flow %q not found", name)
 	}
-	e.cancel()
-	e.ln.Close()
 	delete(d.running, name)
+	d.mu.Unlock()
+	d.drain(e)
 	return nil
+}
+
+func (d *InProcess) drain(e *entry) {
+	ctx, cancel := context.WithTimeout(context.Background(), DrainTimeout())
+	defer cancel()
+	_ = e.ln.Shutdown(ctx)
+	e.cancel()
+}
+
+// DrainAll drains every listener concurrently (controller shutdown).
+func (d *InProcess) DrainAll(ctx context.Context) error {
+	d.mu.Lock()
+	entries := make([]*entry, 0, len(d.running))
+	for name, e := range d.running {
+		entries = append(entries, e)
+		delete(d.running, name)
+	}
+	d.mu.Unlock()
+	var wg sync.WaitGroup
+	for _, e := range entries {
+		wg.Go(func() {
+			_ = e.ln.Shutdown(ctx)
+			e.cancel()
+		})
+	}
+	wg.Wait()
+	return ctx.Err()
 }
 
 func (d *InProcess) List(_ context.Context) ([]spec.FlowDefinition, error) {

@@ -75,3 +75,18 @@ test('worker state reads Starting after Ready as a restart', () => {
   assert.equal(failed.tone, 'error'); assert.equal(failed.tooltip, 'boom')
   assert.equal(workerState(undefined).text, 'Stopped')
 })
+
+test('worker startup rows read in order and stop spinning once ready', () => {
+  const t = '2026-10-17T19:14:33.142Z'
+  const entries = [
+    { time: '2026-10-17T19:14:33.136Z', stream: 'system', line: 'worker starting', level: 'info' },
+    { time: t, stream: 'system', line: 'worker ready: decoder strip_dev', level: 'info' },
+    { time: t, stream: 'system', line: 'Started server process [7]', level: 'info' },
+    { time: t, stream: 'system', line: 'Application startup complete.', level: 'info' },
+  ]
+  const items = buildLogItems(entries, true)
+  const kinds = items.map(i => i.type === 'lifecycle' ? `${i.tone}${i.settled ? '(settled)' : ''}` : i.type)
+  assert.equal(kinds[0], 'starting(settled)')
+  assert.equal(kinds[kinds.length - 1], 'ready')
+  assert.ok(!kinds.slice(1, -1).includes('ready'))
+})

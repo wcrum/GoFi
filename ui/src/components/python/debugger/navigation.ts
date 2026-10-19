@@ -1,5 +1,6 @@
 // Pure step-navigation logic for the record-and-replay Python debugger. The
 // worker records every step up front; navigation only moves an index.
+import { t } from '../../../i18n/index.ts'
 
 export interface VariableLike { name: string; type?: string; repr?: string; children?: VariableLike[]; changed?: boolean; truncated?: boolean }
 export interface FrameLike { function: string; line: number }
@@ -75,8 +76,11 @@ export function stdoutAt(stdout: string, step?: StepLike): string {
 
 export interface FlowLike {
   framing?: { mode?: string; python?: { library?: string; function?: string } }
+  decode?: { decoders?: { type: string; python?: { library?: string; function?: string } }[] }
+  /** `decoders` is the legacy location of decode.decoders. */
   parser?: { python?: { library?: string; function?: string }; decoders?: { type: string; python?: { library?: string; function?: string } }[] }
-  stages?: { id: string; kind?: string; python?: { library?: string; function?: string; inlineSource?: string } }[]
+  stages?: { id: string; kind?: string; python?: { library?: string; function?: string; inlineSource?: string }; parse?: { python?: { library?: string; function?: string } } }[]
+  python?: { library?: string }
   sinks?: { type?: string; python?: { library?: string; function?: string } }[]
 }
 export interface PythonStepOption { value: string; label: string; description: string }
@@ -84,12 +88,16 @@ export interface PythonStepOption { value: string; label: string; description: s
 /** Every Python step of a flow, in flow order, as DebugFrame step ids:
  * "framer", "decoder:<index>", "parser", a stage id, or "sink:<index>". */
 export function pythonSteps(flow: FlowLike): PythonStepOption[] {
-  const describe = (ref?: { library?: string; function?: string; inlineSource?: string }) => ref?.inlineSource !== undefined && ref.inlineSource !== '' ? 'inline Python' : ref?.library ? `${ref.library}.${ref.function}` : 'Python'
+  const fallback = flow.python?.library
+  const describe = (ref?: { library?: string; function?: string; inlineSource?: string }) => ref?.inlineSource !== undefined && ref.inlineSource !== '' ? t('gofi.python.debugger.step-inline-python', 'inline Python') : ref?.function && (ref.library || fallback) ? `${ref.library || fallback}.${ref.function}` : ref?.function || t('gofi.python.debugger.step-python', 'Python')
   const options: PythonStepOption[] = []
-  if (flow.framing?.mode === 'python' && flow.framing.python) options.push({ value: 'framer', label: 'Framer', description: describe(flow.framing.python) })
-  ;(flow.parser?.decoders ?? []).forEach((step, index) => { if (step.type === 'python' && step.python) options.push({ value: `decoder:${index}`, label: `Decoder ${index + 1}`, description: describe(step.python) }) })
-  if (flow.parser?.python) options.push({ value: 'parser', label: 'Parser', description: describe(flow.parser.python) })
-  for (const stage of flow.stages ?? []) if (stage.python) options.push({ value: stage.id, label: `Stage ${stage.id}`, description: describe(stage.python) })
-  ;(flow.sinks ?? []).forEach((sink, index) => { if (sink.python) options.push({ value: `sink:${index}`, label: `Sink ${index + 1}`, description: describe(sink.python) }) })
+  if (flow.framing?.mode === 'python' && flow.framing.python) options.push({ value: 'framer', label: t('gofi.python.debugger.step-framer', 'Framer'), description: describe(flow.framing.python) })
+  ;(flow.decode?.decoders ?? flow.parser?.decoders ?? []).forEach((step, index) => { if (step.type === 'python' && step.python) options.push({ value: `decoder:${index}`, label: t('gofi.python.debugger.step-decoder', 'Decoder {{index}}', { index: index + 1 }), description: describe(step.python) }) })
+  if (flow.parser?.python) options.push({ value: 'parser', label: t('gofi.python.debugger.step-parser', 'Parser'), description: describe(flow.parser.python) })
+  for (const stage of flow.stages ?? []) {
+    const ref = stage.python ?? stage.parse?.python
+    if (ref) options.push({ value: stage.id, label: t('gofi.python.debugger.step-stage', 'Stage {{id}}', { id: stage.id }), description: describe(ref) })
+  }
+  ;(flow.sinks ?? []).forEach((sink, index) => { if (sink.python) options.push({ value: `sink:${index}`, label: t('gofi.python.debugger.step-sink', 'Sink {{index}}', { index: index + 1 }), description: describe(sink.python) }) })
   return options
 }

@@ -7,7 +7,7 @@ import { routeHealthFromJson, type RouteHealth } from './api'
 import { flowToProto } from './rpc-model'
 import type { FlowDefinition } from './types'
 
-const client = createClient(KubernetesService, createConnectTransport({ baseUrl: window.location.origin }))
+const client = createClient(KubernetesService, createConnectTransport({ baseUrl: window.location.origin, useBinaryFormat: true }))
 
 export interface ClusterCapability { id: string; name: string; present: boolean; version?: string; detail?: string; evidence?: string[] }
 export interface GatewayListener { name: string; protocol: string; port: number; hostname?: string; allowedRoutes?: string; attachedRoutes?: number; managedByGofi?: boolean }

@@ -22,6 +22,9 @@ spec:
         - name: Network
           type: string
           jsonPath: .spec.source.listen.network
+        - name: State
+          type: string
+          jsonPath: .spec.state
       schema:
         openAPIV3Schema:
           type: object
@@ -38,16 +41,24 @@ spec:
               properties:
                 source:
                   type: object
-                  # Exactly one source: listen, fetch, or subscribe (python is
-                  # planned, docs/flows.md). The controller validates fetch and
-                  # subscribe in full.
+                  # Exactly one source: listen, fetch, subscribe, or python
+                  # (docs/flows.md). The controller validates each in full.
                   minProperties: 1
                   maxProperties: 1
                   properties:
                     fetch:
                       type: object
-                      required: [http]
+                      # Exactly one of http, s3, or sql (plus optional split).
+                      minProperties: 1
                       properties:
+                        s3:
+                          type: object
+                          required: [bucket]
+                          x-kubernetes-preserve-unknown-fields: true
+                        sql:
+                          type: object
+                          required: [driver, query]
+                          x-kubernetes-preserve-unknown-fields: true
                         http:
                           type: object
                           required: [url]
@@ -59,6 +70,9 @@ spec:
                         split:
                           type: string
                           maxLength: 256
+                        leaderOnly:
+                          type: boolean
+                          description: With more than one replica of this flow, only one should poll (every replica polling fetches each response N times). Leader election is not implemented yet; the flag is accepted and recorded, every replica still polls, and the runtime warns at start.
                     subscribe:
                       type: object
                       minProperties: 1
@@ -70,12 +84,56 @@ spec:
                         mqtt:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
+                          properties:
+                            sharedGroup:
+                              type: string
+                              maxLength: 128
+                              # No /, #, + or whitespace: the group becomes the
+                              # $share/<group>/<topic> filter sent to the broker.
+                              pattern: '^[^/#+\s]*$'
+                              description: MQTT 5 shared subscription group ($share/<group>/<topic>). The broker delivers each message to one member of the group, so replicas split the topic instead of each receiving everything. Requires an MQTT 5 broker (Mosquitto 2, EMQX, HiveMQ).
                         websocket:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
                         sse:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
+                        kafka:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        amqp:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        jetstream:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        redis:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        zenoh:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                    python:
+                      # A @gofi.fetcher or @gofi.streamer in a saved library;
+                      # it runs in that library's worker under its egress
+                      # allowlist.
+                      type: object
+                      required: [library, function]
+                      properties:
+                        library:
+                          type: string
+                          minLength: 1
+                          maxLength: 40
+                        function:
+                          type: string
+                          minLength: 1
+                          maxLength: 80
+                        config:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        every:
+                          type: string
+                          maxLength: 32
                     listen:
                       type: object
                       required: [port]
@@ -84,9 +142,12 @@ spec:
                           type: object
                           # A library function reference, or (stages only) inline
                           # source whose managed library GoFi derives and fills in.
+                          # The library defaults to spec.python.library.
                           x-kubernetes-validations:
-                            - rule: "has(self.inlineSource) && size(self.inlineSource) > 0 || (has(self.library) && size(self.library) > 0 && has(self.function) && size(self.function) > 0)"
-                              message: "python requires library and function, or inlineSource"
+                            # library may be omitted when spec.python.library sets
+                            # the flow's default; the controller enforces that.
+                            - rule: "has(self.inlineSource) && size(self.inlineSource) > 0 || (has(self.function) && size(self.function) > 0)"
+                              message: "python requires a function (with a library, or spec.python.library as the default), or inlineSource"
                           properties:
                             library:
                               type: string
@@ -106,7 +167,30 @@ spec:
                           maximum: 65535
                         network:
                           type: string
-                          enum: [tcp, udp]
+                          # quic runs over UDP on `port`; its Service, UDS allow, and Gateway route are UDP.
+                          enum: [tcp, udp, quic]
+                        tls: &tlsConfig
+                          type: object
+                          description: TLS for a quic listener or sink; inline PEM material.
+                          x-kubernetes-preserve-unknown-fields: true
+                          properties:
+                            cert:
+                              type: string
+                            key:
+                              type: string
+                            ca:
+                              type: string
+                            insecureSkipVerify:
+                              type: boolean
+                            serverName:
+                              type: string
+                            alpn:
+                              type: array
+                              maxItems: 16
+                              items:
+                                type: string
+                            requireClientCert:
+                              type: boolean
                         service:
                           type: object
                           required: [type]
@@ -187,13 +271,18 @@ spec:
                     maxBytes:
                       type: integer
                       minimum: 0
-                parser:
+                python:
                   type: object
+                  description: Flow-wide Python settings.
                   properties:
-                    python: *pythonRef
-                    format:
+                    library:
                       type: string
-                      enum: [json, xml, none, python, ""]
+                      maxLength: 40
+                      description: Default library for every Python step (framing, decoders, parser, parse stages, stages, encoders, sinks) that names only a function. Inline source is unaffected.
+                decode:
+                  type: object
+                  description: Decode step, run on each frame between framing and the parser. The raw frame is unchanged.
+                  properties:
                     # Each step is a built-in name ("base64") or {type, python}.
                     decoders:
                       type: array
@@ -203,6 +292,26 @@ spec:
                     maxDecodedBytes:
                       type: integer
                       minimum: 0
+                parser:
+                  type: object
+                  properties:
+                    python: *pythonRef
+                    format:
+                      type: string
+                      enum: [json, xml, none, python, ""]
+                    # Deprecated: moved to spec.decode. Still accepted (GoFi reads
+                    # it as spec.decode and writes only spec.decode); setting both
+                    # with different values is rejected.
+                    decoders:
+                      type: array
+                      maxItems: 16
+                      description: Deprecated, use spec.decode.decoders.
+                      items:
+                        x-kubernetes-preserve-unknown-fields: true
+                    maxDecodedBytes:
+                      type: integer
+                      minimum: 0
+                      description: Deprecated, use spec.decode.maxDecodedBytes.
                     errorPolicy:
                       type: string
                       enum: [continue, drop, ""]
@@ -230,6 +339,39 @@ spec:
                       onError:
                         type: string
                         enum: [pass, drop, ""]
+                      # kind: parse — parse the raw frame or a field again.
+                      parse:
+                        type: object
+                        required: [format]
+                        properties:
+                          from:
+                            type: string
+                            maxLength: 8192
+                            description: CEL expression yielding a string or bytes; empty or "raw" parses the raw frame.
+                          decoders:
+                            type: array
+                            maxItems: 16
+                            items:
+                              x-kubernetes-preserve-unknown-fields: true
+                          format:
+                            type: string
+                            enum: [json, xml, text, python]
+                          python: *pythonRef
+                          into:
+                            type: string
+                            maxLength: 253
+                            description: Empty merges the result into the top-level fields; otherwise it goes to fields[into].
+                          mode:
+                            type: string
+                            enum: [merge, replace, ""]
+                          onError:
+                            type: string
+                            enum: [continue, drop, ""]
+                        x-kubernetes-validations:
+                          - rule: "!has(self.mode) || self.mode != 'replace' || !has(self.into) || size(self.into) == 0"
+                            message: "parse mode replace requires an empty into"
+                          - rule: "self.format != 'python' || has(self.python)"
+                            message: "parse format python requires python"
                 sinks:
                   type: array
                   maxItems: 32
@@ -239,7 +381,8 @@ spec:
                     properties:
                       type:
                         type: string
-                        enum: [stdout, http, tcp, udp, nats, aster, zenoh, loki, python, ""]
+                        enum: [stdout, http, tcp, udp, quic, nats, aster, zenoh, loki, python, ""]
+                      tls: *tlsConfig
                       python: *pythonRef
                       whenRef: *expressionRef
                       kubernetes:
@@ -263,6 +406,10 @@ spec:
                 deadLetterSink:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+                state:
+                  type: string
+                  description: Declared run state. A stopped flow keeps its definition but runs no runtime. Empty means running.
+                  enum: [running, stopped, ""]
                 testCases:
                   type: array
                   items:

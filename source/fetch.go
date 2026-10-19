@@ -10,41 +10,24 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
-	"github.com/wcrum/gofi/observability"
 	"github.com/wcrum/gofi/sink"
 	"github.com/wcrum/gofi/spec"
 )
 
-// runFetch polls on an interval. Polls run one at a time, so a slow response
-// delays the next poll instead of overlapping it.
+// runFetch polls an HTTP endpoint on an interval (pollLoop: no overlapping
+// polls).
 func runFetch(ctx context.Context, flow string, f *spec.FetchSource, emit Emit) error {
 	keys, err := spec.ParseSplit(f.Split)
 	if err != nil {
 		return err
 	}
 	every, timeout := f.HTTP.FetchTimings()
+	warnLeaderOnly(flow, f)
 	client := &http.Client{Timeout: timeout}
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-	for {
-		if err := poll(ctx, client, f.HTTP, keys, f.Split != "", emit); err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			observability.SourceEvent(flow, "fetch", "error")
-			observability.SourceFailure(flow, err)
-			slog.Warn("fetch failed; retrying at the next interval", "flow", flow, "url", f.HTTP.URL, "error", err, "every", every)
-		} else {
-			observability.SourceEvent(flow, "fetch", "ok")
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-		}
-	}
+	return pollLoop(ctx, flow, "fetch", f.HTTP.URL, every, func(ctx context.Context) error {
+		return poll(ctx, client, f.HTTP, keys, f.Split != "", emit)
+	})
 }
 
 func poll(ctx context.Context, client *http.Client, h *spec.HTTPFetch, keys []string, split bool, emit Emit) error {
@@ -130,4 +113,13 @@ func SplitJSON(data []byte, keys []string) ([][]byte, error) {
 		out = append(out, encoded)
 	}
 	return out, nil
+}
+
+// warnLeaderOnly notes a fetch source that asked for leader-only polling.
+// Leader election between replicas is not implemented: every replica polls,
+// and a scaled-out fetch flow emits each response once per replica.
+func warnLeaderOnly(flow string, f *spec.FetchSource) {
+	if f.LeaderOnly {
+		slog.Warn("fetch source is marked leaderOnly, but leader election is not implemented: every replica of this flow polls", "flow", flow)
+	}
 }

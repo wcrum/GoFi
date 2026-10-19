@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { css } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
 import { PanelChrome, useStyles2, useTheme2 } from '@grafana/ui'
+import { formatNumber, t } from '../../i18n'
 
 interface StatPanelProps {
   title: string
@@ -17,16 +18,15 @@ interface StatPanelProps {
 export function StatPanel({ title, value, description, series, unit = '/s' }: StatPanelProps) {
   const styles = useStyles2(getStyles)
   const [hover, setHover] = useState<number | null>(null)
-  const display = typeof value === 'number' ? value.toLocaleString() : value
+  const display = typeof value === 'number' ? formatNumber(value) : value
   return <PanelChrome title={title} description={description}>
     <div className={styles.body}>
       <div className={styles.value} aria-live="polite">{display}</div>
-      <div className={styles.readout}>{series && hover !== null ? `${series.length - 1 - hover}s ago · ${series[hover]}${unit}` : series ? `last ${series.length}s` : ' '}</div>
-      {series && <Sparkline series={series} hover={hover} onHover={setHover} label={`${title} per second, last ${series.length} seconds`} />}
+      <div className={styles.readout}>{series && hover !== null ? t('gofi.dashboard.stat-panel.hover-readout', '{{seconds}}s ago · {{value}}{{unit}}', { seconds: series.length - 1 - hover, value: series[hover], unit }) : series ? t('gofi.dashboard.stat-panel.window', 'last {{seconds}}s', { seconds: series.length }) : ' '}</div>
+      {series && <Sparkline series={series} hover={hover} onHover={setHover} label={t('gofi.dashboard.stat-panel.sparkline-label', '{{title}} per second, last {{seconds}} seconds', { title, seconds: series.length })} />}
     </div>
   </PanelChrome>
 }
-
 const W = 240, H = 40
 function Sparkline({ series, hover, onHover, label }: { series: number[]; hover: number | null; onHover: (index: number | null) => void; label: string }) {
   const theme = useTheme2()

@@ -11,11 +11,12 @@ type delimiterFramer struct {
 	r        *bufio.Reader
 	sentinel []byte
 	maxBytes int
+	buf      []byte // reused across frames; each frame is copied out
 }
 
 func newDelimiter(r io.Reader, sentinel []byte, maxBytes int) Framer {
 	return &delimiterFramer{
-		r:        bufio.NewReaderSize(r, 64*1024),
+		r:        bufio.NewReaderSize(r, initialBufferSize(r, maxBytes)),
 		sentinel: sentinel,
 		maxBytes: maxBytes,
 	}
@@ -23,28 +24,31 @@ func newDelimiter(r io.Reader, sentinel []byte, maxBytes int) Framer {
 
 // ReadFrame accumulates bytes until the sentinel sequence appears at the end
 // of the buffer, then returns the full frame including the sentinel.
-// Mirrors the pattern in gateway/protocol/xml_codec.go.
+//
+// It reads up to each occurrence of the sentinel's last byte in one call
+// rather than byte by byte, and keeps one growing buffer per connection.
 func (f *delimiterFramer) ReadFrame() ([]byte, error) {
-	var buf bytes.Buffer
+	f.buf = f.buf[:0]
+	last := f.sentinel[len(f.sentinel)-1]
 	for {
-		b, err := f.r.ReadByte()
+		chunk, err := f.r.ReadSlice(last)
+		if len(f.buf)+len(chunk) > f.maxBytes {
+			return nil, fmt.Errorf("%w: frame exceeded max size %d", ErrFramer, f.maxBytes)
+		}
+		f.buf = append(f.buf, chunk...)
+		if err == bufio.ErrBufferFull {
+			continue
+		}
 		if err != nil {
-			if err == io.EOF && buf.Len() > 0 {
-				return nil, fmt.Errorf("framing: unexpected EOF before sentinel")
+			if err == io.EOF && len(f.buf) > 0 {
+				return nil, fmt.Errorf("%w: unexpected EOF before sentinel", ErrFramer)
 			}
 			return nil, err
 		}
-		buf.WriteByte(b)
-		if buf.Len() > f.maxBytes {
-			return nil, fmt.Errorf("framing: frame exceeded max size %d", f.maxBytes)
-		}
-		if buf.Len() >= len(f.sentinel) {
-			tail := buf.Bytes()[buf.Len()-len(f.sentinel):]
-			if bytes.Equal(tail, f.sentinel) {
-				out := make([]byte, buf.Len())
-				copy(out, buf.Bytes())
-				return out, nil
-			}
+		if bytes.HasSuffix(f.buf, f.sentinel) {
+			out := make([]byte, len(f.buf))
+			copy(out, f.buf)
+			return out, nil
 		}
 	}
 }

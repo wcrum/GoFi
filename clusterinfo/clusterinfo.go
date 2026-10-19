@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -20,6 +21,8 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/wcrum/gofi/kubeclient"
 )
 
 // Well-known controllers and the route kinds each implementation programs.
@@ -123,9 +126,15 @@ func (c *Client) served(groupVersion, resource string) bool {
 	return set[resource]
 }
 
-// list reads a resource in every namespace GoFi may read (or one namespace).
-// It returns (nil, "", nil) when the API group is not served.
-func (c *Client) list(ctx context.Context, versions map[string]string, group, resource, namespace string) ([]unstructured.Unstructured, error) {
+// MaxListItems bounds every inventory listing. Listings page through the
+// API and stop here; a truncated section is reported as a warning (the
+// portal shows it) instead of failing or silently showing part of the cluster.
+const MaxListItems = 2000
+
+// list reads a resource in every namespace GoFi may read (or one namespace),
+// paging through the API. It returns (nil, nil) when the API group is not
+// served. A listing that stops at MaxListItems appends a warning.
+func (c *Client) list(ctx context.Context, versions map[string]string, group, resource, namespace string, warnings *[]string) ([]unstructured.Unstructured, error) {
 	version := c.versionFor(group, resource)
 	if version == "" {
 		return nil, nil
@@ -134,32 +143,80 @@ func (c *Client) list(ctx context.Context, versions map[string]string, group, re
 	if namespace == "" && !c.Opts.ClusterWide {
 		namespace = c.Opts.Namespace
 	}
-	var (
-		list *unstructured.UnstructuredList
-		err  error
-	)
+	client := c.Dyn.Resource(gvr).Namespace(namespace)
 	if namespace == "" {
-		list, err = c.Dyn.Resource(gvr).List(ctx, metav1.ListOptions{Limit: 500})
-	} else {
-		list, err = c.Dyn.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{Limit: 500})
+		client = c.Dyn.Resource(gvr)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return list.Items, nil
+	return c.pages(ctx, resource, client, warnings)
 }
 
 // listClusterScoped reads a cluster-scoped resource such as GatewayClasses.
-func (c *Client) listClusterScoped(ctx context.Context, versions map[string]string, group, resource string) ([]unstructured.Unstructured, error) {
+func (c *Client) listClusterScoped(ctx context.Context, versions map[string]string, group, resource string, warnings *[]string) ([]unstructured.Unstructured, error) {
 	version := c.versionFor(group, resource)
 	if version == "" {
 		return nil, nil
 	}
-	list, err := c.Dyn.Resource(schema.GroupVersionResource{Group: group, Version: version, Resource: resource}).List(ctx, metav1.ListOptions{Limit: 500})
+	return c.pages(ctx, resource, c.Dyn.Resource(schema.GroupVersionResource{Group: group, Version: version, Resource: resource}), warnings)
+}
+
+// pages lists through a dynamic resource client up to MaxListItems.
+func (c *Client) pages(ctx context.Context, resource string, client dynamic.ResourceInterface, warnings *[]string) ([]unstructured.Unstructured, error) {
+	items, truncated, err := kubeclient.ListAll(ctx, MaxListItems, "", func(ctx context.Context, opts metav1.ListOptions) ([]unstructured.Unstructured, string, error) {
+		ctx, cancel := context.WithTimeout(ctx, kubeclient.CallTimeout)
+		defer cancel()
+		list, err := client.List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.GetContinue(), nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return list.Items, nil
+	if truncated && warnings != nil {
+		*warnings = append(*warnings, kubeclient.TruncationWarning(resource, MaxListItems))
+	}
+	return items, nil
+}
+
+// listServices pages through the Services of a namespace ("" for all).
+func (c *Client) listServices(ctx context.Context, namespace string, warnings *[]string) ([]corev1.Service, error) {
+	items, truncated, err := kubeclient.ListAll(ctx, MaxListItems, "", func(ctx context.Context, opts metav1.ListOptions) ([]corev1.Service, string, error) {
+		ctx, cancel := context.WithTimeout(ctx, kubeclient.CallTimeout)
+		defer cancel()
+		list, err := c.CS.CoreV1().Services(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if truncated && warnings != nil {
+		*warnings = append(*warnings, kubeclient.TruncationWarning("Services", MaxListItems))
+	}
+	return items, nil
+}
+
+// listNamespaces pages through the cluster's namespaces.
+func (c *Client) listNamespaces(ctx context.Context, warnings *[]string) ([]corev1.Namespace, error) {
+	items, truncated, err := kubeclient.ListAll(ctx, MaxListItems, "", func(ctx context.Context, opts metav1.ListOptions) ([]corev1.Namespace, string, error) {
+		ctx, cancel := context.WithTimeout(ctx, kubeclient.CallTimeout)
+		defer cancel()
+		list, err := c.CS.CoreV1().Namespaces().List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if truncated && warnings != nil {
+		*warnings = append(*warnings, kubeclient.TruncationWarning("Namespaces", MaxListItems))
+	}
+	return items, nil
 }
 
 func warning(section string, err error) string {

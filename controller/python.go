@@ -41,6 +41,11 @@ func (e InvalidInlineError) Unwrap() error { return e.Err }
 // on every load path (API, file, CRD) so declarative resources may carry only
 // the inline source.
 func prepareInline(def *spec.FlowDefinition) error {
+	// Read older shapes (parser.decoders) as the current one, so stores and
+	// history only ever write the decode step.
+	if err := def.Normalize(); err != nil {
+		return InvalidInlineError{err}
+	}
 	def.ResolveInlinePython()
 	if err := def.ValidateInlinePlacement(); err != nil {
 		return InvalidInlineError{err}
@@ -48,10 +53,13 @@ func prepareInline(def *spec.FlowDefinition) error {
 	return nil
 }
 
-// validateInline runs the static source check for API edits.
+// validateInline runs the static source check for API edits, and the
+// registry check of a Python source's function.
 func validateInline(def spec.FlowDefinition) error {
 	h := hooks()
-	if h.Validate == nil || len(def.InlineStages()) == 0 {
+	// A Python source is checked too: its function must be a registered
+	// fetcher or streamer when the library's worker can be asked.
+	if h.Validate == nil || (len(def.InlineStages()) == 0 && def.Source.Python == nil) {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

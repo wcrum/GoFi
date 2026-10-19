@@ -1,8 +1,15 @@
-{{- if ne (int .Values.replicaCount) 1 }}
-{{- fail "GoFi requires replicaCount=1 because controller leader election is not implemented" }}
+{{- $replicas := int .Values.replicaCount }}
+{{- if lt $replicas 1 }}
+{{- fail "replicaCount must be at least 1" }}
+{{- end }}
+{{- if and (gt $replicas 1) (not .Values.leaderElection.enabled) }}
+{{- fail "replicaCount > 1 requires leaderElection.enabled=true (controllers coordinate through a coordination.k8s.io Lease)" }}
+{{- end }}
+{{- if and .Values.profile (not (has .Values.profile (list "edge" "default" "large"))) }}
+{{- fail (printf "profile %q must be edge, default, or large" .Values.profile) }}
 {{- end }}
 {{- range .Values.env }}
-{{- if has .name (list "GOFI_DEPLOY_MODE" "GOFI_IMAGE" "GOFI_K8S_NAMESPACE" "INGRESS_API_ADDR" "GOFI_LISTENER_POD_TEMPLATE" "FLOW_SPEC") }}
+{{- if has .name (list "GOFI_DEPLOY_MODE" "GOFI_IMAGE" "GOFI_K8S_NAMESPACE" "INGRESS_API_ADDR" "GOFI_LLM_PROXY_ADDR" "GOFI_LLM_MAX_OUTPUT_TOKENS" "GOFI_LISTENER_POD_TEMPLATE" "FLOW_SPEC" "GOFI_LEADER_ELECTION" "GOFI_LEADER_ELECTION_LEASE" "GOFI_POD_NAME" "GOFI_LISTENER_RESOURCES" "GOFI_LISTENER_SCHEDULING" "GOFI_LISTENER_PROBES" "GOFI_WORKER_RESOURCES" "GOFI_WORKER_SCHEDULING" "GOFI_WORKER_PROBES" "GOFI_WORKER_REPLICAS" "GOFI_TOOLING_IMAGE" "GOFI_LB_ALLOCATE_NODE_PORTS" "GOFI_LB_ANNOTATIONS" "GOFI_GATEWAY_MAX_LISTENERS" "GOFI_KUBE_QPS" "GOFI_KUBE_BURST" "GOFI_PROFILE" "GOFI_LISTENER_ENV" "GOFI_WORKER_ENV" "GOMEMLIMIT" "GOMAXPROCS") }}
 {{- fail (printf "env.%s is reserved by the GoFi chart" .name) }}
 {{- end }}
 {{- end }}
@@ -14,9 +21,17 @@ metadata:
     {{- include "gofi.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ $replicas }}
   strategy:
+    {{- if .Values.leaderElection.enabled }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.strategy.rollingUpdate.maxUnavailable }}
+    {{- else }}
+    # Without leader election two controllers must never run at once.
     type: Recreate
+    {{- end }}
   selector:
     matchLabels:
       {{- include "gofi.selectorLabels" . | nindent 6 }}
@@ -31,11 +46,15 @@ spec:
         app.kubernetes.io/component: controller
     spec:
       serviceAccountName: {{ include "gofi.serviceAccountName" . }}
+      {{- with include "gofi.controllerPriorityClassName" . }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: gofi
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "gofi.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
@@ -48,12 +67,18 @@ spec:
               value: "kubernetes"
             - name: INGRESS_API_ADDR
               value: ":{{ .Values.service.port }}"
+            # The AI proxy that Python libraries with AI on call (its own
+            # listener, so a worker's egress never reaches the portal API).
+            - name: GOFI_LLM_PROXY_ADDR
+              value: ":{{ .Values.llmProxy.port }}"
+            - name: GOFI_LLM_MAX_OUTPUT_TOKENS
+              value: {{ .Values.llmProxy.maxOutputTokens | quote }}
             # GOFI_IMAGE tells the Kubernetes driver (driver/kube.go) which
             # image to spawn for each listener Pod. Derived from the same
             # values as this Deployment's own image so operators never have
             # to configure it twice / risk drift.
             - name: GOFI_IMAGE
-              value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              value: {{ include "gofi.image" . | quote }}
             {{- with .Values.nodePortRange }}
             - name: GOFI_NODE_PORT_RANGE
               value: {{ . | quote }}
@@ -62,22 +87,114 @@ spec:
               value: {{ .Values.discovery.clusterWide | quote }}
             - name: GOFI_MANAGE_GATEWAY_LISTENERS
               value: {{ .Values.gateway.manageListeners | quote }}
+            - name: GOFI_GATEWAY_MAX_LISTENERS
+              value: {{ .Values.gateway.maxListeners | quote }}
+            - name: GOFI_LB_ALLOCATE_NODE_PORTS
+              value: {{ .Values.exposure.loadBalancer.allocateNodePorts | quote }}
+            {{- with .Values.exposure.loadBalancer.annotations }}
+            - name: GOFI_LB_ANNOTATIONS
+              value: {{ . | toJson | quote }}
+            {{- end }}
             - name: GOFI_MANAGE_UDS_ALLOWS
               value: {{ .Values.uds.manageAllows | quote }}
             {{- if .Values.uds.manageAllows }}
             - name: GOFI_UDS_PACKAGE_BASE
               value: {{ .Values.uds.packageBaseConfigMap | quote }}
             {{- end }}
+            - name: GOFI_HISTORY
+              value: {{ ternary "on" "off" .Values.history.enabled | quote }}
+            - name: GOFI_HISTORY_LIMIT
+              value: {{ .Values.history.limit | quote }}
+            - name: GOFI_HISTORY_DELETED_RETENTION
+              value: {{ .Values.history.deletedRetention | quote }}
             - name: GOFI_IMAGE_PULL_POLICY
               value: {{ .Values.image.pullPolicy | quote }}
             - name: GOFI_SANDBOX_IMAGE
-              value: "{{ .Values.sandboxImage.repository }}:{{ .Values.sandboxImage.tag }}"
+              value: {{ include "gofi.sandboxImage" . | quote }}
+            {{- with include "gofi.toolingImage" . }}
+            - name: GOFI_TOOLING_IMAGE
+              value: {{ . | quote }}
+            {{- end }}
+            - name: GOFI_KUBE_QPS
+              value: {{ .Values.kubeClient.qps | quote }}
+            - name: GOFI_KUBE_BURST
+              value: {{ .Values.kubeClient.burst | quote }}
             - name: GOFI_K8S_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: GOFI_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if .Values.leaderElection.enabled }}
+            # Lease-based leader election: only the holder reconciles; every
+            # replica serves the UI/API.
+            - name: GOFI_LEADER_ELECTION
+              value: "true"
+            - name: GOFI_LEADER_ELECTION_LEASE
+              value: {{ .Values.leaderElection.leaseName | default (include "gofi.fullname" .) | quote }}
+            - name: GOFI_LEADER_ELECTION_LEASE_DURATION
+              value: {{ .Values.leaderElection.leaseDuration | quote }}
+            - name: GOFI_LEADER_ELECTION_RENEW_DEADLINE
+              value: {{ .Values.leaderElection.renewDeadline | quote }}
+            - name: GOFI_LEADER_ELECTION_RETRY_PERIOD
+              value: {{ .Values.leaderElection.retryPeriod | quote }}
+            {{- end }}
             - name: GOFI_LISTENER_POD_TEMPLATE
               value: {{ .Values.listenerPodTemplate | toJson | quote }}
+            # Defaults for the Pods the controller creates (docs/deployment.md).
+            - name: GOFI_LISTENER_RESOURCES
+              value: {{ .Values.listenerPods.resources | toJson | quote }}
+            - name: GOFI_LISTENER_SCHEDULING
+              value: {{ include "gofi.podScheduling" (list .Values.listenerPods .) | quote }}
+            - name: GOFI_LISTENER_PROBES
+              value: {{ .Values.listenerPods.probes | toJson | quote }}
+            - name: GOFI_WORKER_RESOURCES
+              value: {{ .Values.workers.resources | toJson | quote }}
+            - name: GOFI_WORKER_SCHEDULING
+              value: {{ include "gofi.podScheduling" (list .Values.workers .) | quote }}
+            - name: GOFI_WORKER_PROBES
+              value: {{ .Values.workers.probes | toJson | quote }}
+            - name: GOFI_WORKER_REPLICAS
+              value: {{ .Values.workers.replicas | quote }}
+            {{- with .Values.profile }}
+            # GOFI_PROFILE presets every GOFI_* tunable (docs/configuration.md)
+            # on the controller; listener Pods get it through GOFI_LISTENER_ENV.
+            - name: GOFI_PROFILE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- $listenerEnv := list }}
+            {{- with .Values.profile }}
+            {{- $listenerEnv = append $listenerEnv (dict "name" "GOFI_PROFILE" "value" .) }}
+            {{- end }}
+            {{- range .Values.listenerPods.extraEnv }}
+            {{- $listenerEnv = append $listenerEnv . }}
+            {{- end }}
+            {{- with $listenerEnv }}
+            # Environment appended to every listener container (profile +
+            # listenerPods.extraEnv); driver-set names keep their values.
+            - name: GOFI_LISTENER_ENV
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            {{- with .Values.workers.extraEnv }}
+            - name: GOFI_WORKER_ENV
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            # Listener Pods drain for this long on stop (grace period follows).
+            - name: GOFI_DRAIN_TIMEOUT
+              value: {{ .Values.drainTimeout | default "20s" | quote }}
+            {{- if and .Values.goRuntime.setMemLimit .Values.resources.limits .Values.resources.limits.memory }}
+            - name: GOMEMLIMIT
+              value: {{ include "gofi.goMemLimit" . | quote }}
+            {{- end }}
+            {{- if and .Values.goRuntime.setMaxProcs .Values.resources.limits .Values.resources.limits.cpu }}
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+                  divisor: "1"
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -85,26 +202,70 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            - name: llm
+              containerPort: {{ .Values.llmProxy.port }}
+              protocol: TCP
+          {{- with .Values.probes.startup }}
+          {{- if .enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .path }}
+              port: http
+            periodSeconds: {{ .periodSeconds }}
+            failureThreshold: {{ .failureThreshold }}
+          {{- end }}
+          {{- end }}
+          {{- with .Values.probes.liveness }}
+          {{- if .enabled }}
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: {{ .path }}
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .initialDelaySeconds }}
+            periodSeconds: {{ .periodSeconds }}
+            timeoutSeconds: {{ .timeoutSeconds }}
+            failureThreshold: {{ .failureThreshold }}
+          {{- end }}
+          {{- end }}
+          {{- with .Values.probes.readiness }}
+          {{- if .enabled }}
           readinessProbe:
             httpGet:
-              path: /readyz
+              path: {{ .path }}
               port: http
-            initialDelaySeconds: 2
-            periodSeconds: 5
+            periodSeconds: {{ .periodSeconds }}
+            timeoutSeconds: {{ .timeoutSeconds }}
+            failureThreshold: {{ .failureThreshold }}
+          {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- if .Values.affinity }}
       affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else if and (gt $replicas 1) .Values.podAntiAffinity }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq .Values.podAntiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                {{- include "gofi.controllerPodSelector" . | nindent 16 }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  {{- include "gofi.controllerPodSelector" . | nindent 18 }}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}

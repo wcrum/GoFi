@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"connectrpc.com/connect"
@@ -26,6 +27,9 @@ func (s *Supervisor) ToolingBinding(ctx context.Context) (Binding, error) {
 	}
 	if s.backend == nil || s.toolingClosed {
 		return Binding{}, fmt.Errorf("Python tooling backend is unavailable")
+	}
+	if s.passive.Load() {
+		return Binding{}, ErrStandby
 	}
 	if s.toolingContext != nil {
 		callCtx, cancel := context.WithCancel(ctx)
@@ -51,7 +55,7 @@ func (s *Supervisor) ToolingBinding(ctx context.Context) (Binding, error) {
 		return Binding{}, err
 	}
 	token := hex.EncodeToString(credential[:])
-	definition := Definition{Name: s.toolingName, SourceCode: toolingSource, TimeoutSeconds: 5, MemoryMiB: 128}
+	definition := Definition{Name: s.toolingName, SourceCode: toolingSource, TimeoutSeconds: 5, MemoryMiB: 128, Image: os.Getenv("GOFI_TOOLING_IMAGE")}
 	endpoint, err := s.backend.Start(ctx, definition, token)
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -124,6 +128,7 @@ func (s *Supervisor) DescribeRuntime(ctx context.Context) (*gofiv1.DescribePytho
 	out := response.Msg
 	out.NetworkPolicy = s.EgressPolicy()
 	out.MaxTimeoutSeconds, out.MaxMemoryMib = 30, 1024
+	out.AiAvailable = s.AIAvailable()
 	return out, nil
 }
 

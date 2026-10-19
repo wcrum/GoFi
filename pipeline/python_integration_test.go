@@ -92,7 +92,7 @@ func pyRef(function string) *spec.PythonRef {
 	return &spec.PythonRef{Library: "telemetry", Function: function}
 }
 func pythonDefinition() spec.FlowDefinition {
-	return spec.FlowDefinition{Name: "python-flow", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 7000, Network: "tcp"}}, Parser: spec.ParserCfg{Format: "python", Python: pyRef("decode"), Decoders: []spec.CodecStep{{Type: "python", Python: pyRef("strip")}}}, Stages: []spec.StageSpec{{ID: "normalize", Kind: "python", Python: pyRef("normalize")}}, Sinks: []spec.SinkCfg{{Type: "python", Python: pyRef("capture")}}}
+	return spec.FlowDefinition{Name: "python-flow", Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 7000, Network: "tcp"}}, Decode: &spec.DecodeCfg{Decoders: []spec.CodecStep{{Type: "python", Python: pyRef("strip")}}}, Parser: spec.ParserCfg{Format: "python", Python: pyRef("decode")}, Stages: []spec.StageSpec{{ID: "normalize", Kind: "python", Python: pyRef("normalize")}}, Sinks: []spec.SinkCfg{{Type: "python", Python: pyRef("capture")}}}
 }
 func executePythonPipeline(t *testing.T, def spec.FlowDefinition, raw string, outputs []sink.Sink, dead sink.Sink) TapEvent {
 	t.Helper()

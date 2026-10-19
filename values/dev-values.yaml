@@ -1,0 +1,5 @@
+# Development overlay: a rebuilt image reuses the same tag, so always pull.
+# Never use in production (every Pod start hits the registry; an outage or
+# rate limit stops listener Pods from scheduling after a node drain).
+image:
+  pullPolicy: Always

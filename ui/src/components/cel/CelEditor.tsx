@@ -5,6 +5,7 @@ import type { GrafanaTheme2 } from '@grafana/data'
 import { CodeEditor, CodeEditorSuggestionItemKind, Text, useStyles2, type CodeEditorSuggestionItem, type Monaco, type MonacoEditor } from '@grafana/ui'
 import { checkExpression, describeEnvironment, type CelEnvironment, type ExpressionDiagnostic, type ResultType } from '../../expression-api'
 import { registerCelLanguage } from './celLanguage'
+import { t } from '../../i18n'
 
 export interface CelEditorProps {
   value: string
@@ -35,7 +36,7 @@ export function CelEditor({ value, onChange, resultType, disabled, placeholder, 
   useEffect(() => { describeEnvironment().then(setEnv).catch(() => {}) }, [])
   suggestionsRef.current = [
     ...(env?.variables ?? []).map(v => ({ label: v.name, kind: CodeEditorSuggestionItemKind.Field, detail: v.type, documentation: v.description })),
-    ...(fieldNames ?? []).map(name => ({ label: `fields["${name}"]`, insertText: `fields["${name}"]`, kind: CodeEditorSuggestionItemKind.Property, detail: 'parsed field' })),
+    ...(fieldNames ?? []).map(name => ({ label: `fields["${name}"]`, insertText: `fields["${name}"]`, kind: CodeEditorSuggestionItemKind.Property, detail: t('gofi.cel.editor.parsed-field', 'parsed field') })),
     ...(env?.functions ?? []).map(f => ({ label: f.name, insertText: f.name, kind: CodeEditorSuggestionItemKind.Method, detail: f.signatures?.[0], documentation: [f.description, ...(f.signatures ?? [])].filter(Boolean).join('\n') })),
     ...KEYWORDS.map(k => ({ label: k, kind: CodeEditorSuggestionItemKind.Constant })),
   ]
@@ -80,7 +81,7 @@ export function CelEditor({ value, onChange, resultType, disabled, placeholder, 
         onEditorDidMount={(instance, api) => { editor.current = instance; monaco.current = api; applyMarkers() }}
         onEditorWillUnmount={() => { editor.current = null; monaco.current = null }}
         monacoOptions={{
-          ariaLabel: ariaLabel ?? 'CEL expression', fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true,
+          ariaLabel: ariaLabel ?? t('gofi.cel.editor.aria-label', 'CEL expression'), fontSize: 13, scrollBeyondLastLine: false, automaticLayout: true,
           glyphMargin: false, folding: false, lineDecorationsWidth: 6, renderLineHighlight: 'none', overviewRulerLanes: 0,
           scrollbar: { vertical: 'auto', horizontal: 'hidden', alwaysConsumeMouseWheel: false },
           padding: { top: 4, bottom: 4 }, fixedOverflowWidgets: true,

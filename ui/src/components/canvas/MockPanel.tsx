@@ -9,9 +9,10 @@ import type { SimulateResult, TestCase } from '../../types'
 import { simulateFlow } from '../../api'
 import { genId } from '../../lib/id'
 import { generateSampleRaw } from '../../lib/mockData'
-import { graphToDefinition, orderedSinkNodeIds } from './convert'
+import { graphToDefinition, orderedSinkNodeIds, type FlowSettings } from './convert'
 import type { FlowNode, MockState } from './types'
 import { MockTraceView } from '../MockTraceView'
+import { formatNumber, t } from '../../i18n'
 
 const AUTO_PLAY_MS = 600
 
@@ -20,6 +21,8 @@ interface Props {
   edges: Edge[]
   name: string
   testCases: TestCase[]
+  /** Flow-wide settings (default Python library) the simulation needs. */
+  settings?: FlowSettings
   setTestCases: Dispatch<SetStateAction<TestCase[]>>
   // readOnly (view mode) disables test-case add/rename/delete/generate since
   // there's no update endpoint to persist edits to an already-created
@@ -87,7 +90,7 @@ function statesForStep(
   return states
 }
 
-export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnly, setMockStates, onClose }: Props) {
+export function MockPanel({ nodes, edges, name, testCases, settings, setTestCases, readOnly, setMockStates, onClose }: Props) {
   const styles = useStyles2(getStyles)
   const addToast = useToast()
   const [selectedId, setSelectedId] = useState<string | null>(testCases[0]?.id ?? null)
@@ -129,7 +132,7 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
   }
 
   function handleAdd() {
-    const tc: TestCase = { id: genId(), name: `Test ${testCases.length + 1}`, raw: '' }
+    const tc: TestCase = { id: genId(), name: t('gofi.canvas.mock-panel.default-test-name', 'Test {{n}}', { n: testCases.length + 1 }), raw: '' }
     setTestCases((prev) => [...prev, tc])
     setSelectedId(tc.id)
     resetPlayback()
@@ -147,7 +150,7 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
     if (!selected) return
     let def
     try {
-      def = graphToDefinition(name, nodes, edges)
+      def = graphToDefinition(name, nodes, edges, settings)
     } catch {
       // A generator only needs the stage/sink expressions, which are readable
       // even from an incomplete graph — but graphToDefinition throws on a broken
@@ -179,7 +182,7 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
     try {
       // Build against the *current* graph. An incomplete draft (e.g. no sink)
       // makes graphToDefinition throw — surface that inline rather than crashing.
-      const def = { ...graphToDefinition(name, nodes, edges), testCases }
+      const def = { ...graphToDefinition(name, nodes, edges, settings), testCases }
       const res = await simulateFlow(def, selected.raw)
       setResult(res)
       setStep(0)
@@ -192,27 +195,27 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
   }
 
   return (
-    <aside className={styles.panel} aria-label="Test flow">
+    <aside className={styles.panel} aria-label={t('gofi.canvas.mock-panel.title', 'Test flow')}>
       <div className={styles.header}>
-        <Text element="h2" variant="h5">Test flow</Text>
-        <IconButton name="times" tooltip="Close test flow" onClick={onClose} />
+        <Text element="h2" variant="h5">{t('gofi.canvas.mock-panel.title', 'Test flow')}</Text>
+        <IconButton name="times" tooltip={t('gofi.canvas.mock-panel.close', 'Close test flow')} onClick={onClose} />
       </div>
 
       <div className={styles.body}>
         {/* Test case list */}
         <Stack direction="column" gap={1}>
           <Stack justifyContent="space-between" alignItems="center">
-            <Text variant="bodySmall" weight="medium" color="secondary">Test cases</Text>
-            {!readOnly && <Button size="sm" variant="secondary" icon="plus" onClick={handleAdd}>Add</Button>}
+            <Text variant="bodySmall" weight="medium" color="secondary">{t('gofi.canvas.mock-panel.test-cases', 'Test cases')}</Text>
+            {!readOnly && <Button size="sm" variant="secondary" icon="plus" onClick={handleAdd}>{t('gofi.common.add', 'Add')}</Button>}
           </Stack>
           {testCases.length === 0 ? (
-            <Text variant="bodySmall" color="secondary">No test cases yet.</Text>
+            <Text variant="bodySmall" color="secondary">{t('gofi.canvas.mock-panel.no-test-cases', 'No test cases yet.')}</Text>
           ) : testCases.map((tc) => (
             <Card key={tc.id} isCompact noMargin isSelected={tc.id === selectedId} onClick={() => { setSelectedId(tc.id); resetPlayback() }}>
               <Card.Heading>{tc.name}</Card.Heading>
-              <Card.Description className={styles.raw}>{tc.raw || '(empty)'}</Card.Description>
+              <Card.Description className={styles.raw}>{tc.raw || t('gofi.canvas.mock-panel.empty-raw', '(empty)')}</Card.Description>
               {!readOnly && <Card.SecondaryActions>
-                <IconButton name="trash-alt" tooltip="Delete test case" onClick={(e) => { e.stopPropagation(); handleDelete(tc.id) }} />
+                <IconButton name="trash-alt" tooltip={t('gofi.canvas.mock-panel.delete-test-case', 'Delete test case')} onClick={(e) => { e.stopPropagation(); handleDelete(tc.id) }} />
               </Card.SecondaryActions>}
             </Card>
           ))}
@@ -222,17 +225,17 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
         {selected && (
           <div className={styles.section}>
             <Stack direction="column" gap={2}>
-              <Field label="Name" noMargin>
-                <Input value={selected.name} disabled={readOnly} onChange={(e) => updateSelected({ name: e.currentTarget.value })} placeholder="Test case name" />
+              <Field label={t('gofi.common.name', 'Name')} noMargin>
+                <Input value={selected.name} disabled={readOnly} onChange={(e) => updateSelected({ name: e.currentTarget.value })} placeholder={t('gofi.canvas.mock-panel.test-case-name-placeholder', 'Test case name')} />
               </Field>
               <Field label={<Stack justifyContent="space-between" alignItems="center">
-                <span>Raw input</span>
-                {!readOnly && <Button size="sm" variant="secondary" fill="text" icon="ai-sparkle" onClick={handleGenerate} tooltip="Generate a heuristic placeholder sample from the pipeline's expressions">Generate</Button>}
+                <span>{t('gofi.canvas.mock-panel.raw-input', 'Raw input')}</span>
+                {!readOnly && <Button size="sm" variant="secondary" fill="text" icon="ai-sparkle" onClick={handleGenerate} tooltip={t('gofi.canvas.mock-panel.generate-tooltip', "Generate a heuristic placeholder sample from the pipeline's expressions")}>{t('gofi.canvas.mock-panel.generate', 'Generate')}</Button>}
               </Stack>} noMargin>
                 <TextArea rows={5} disabled={readOnly} className={styles.mono} value={selected.raw} onChange={(e) => updateSelected({ raw: e.currentTarget.value })} placeholder='{"type":"a-f-G"}' />
               </Field>
               <Button variant="primary" icon={loading ? 'spinner' : 'play'} onClick={handlePlay} disabled={loading} fullWidth>
-                {loading ? 'Running...' : 'Play'}
+                {loading ? t('gofi.canvas.mock-panel.running', 'Running...') : t('gofi.canvas.mock-panel.play', 'Play')}
               </Button>
             </Stack>
           </div>
@@ -244,15 +247,15 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
             <Stack direction="column" gap={2}>
               <Stack alignItems="center" justifyContent="space-between">
                 <ButtonGroup>
-                  <ToolbarButton icon="angle-left" tooltip="Previous step" disabled={step <= 0} onClick={() => { setAutoPlay(false); setStep((s) => Math.max(0, s - 1)) }} />
-                  <ToolbarButton icon="angle-right" tooltip="Next step" disabled={step >= totalSteps - 1} onClick={() => { setAutoPlay(false); setStep((s) => Math.min(totalSteps - 1, s + 1)) }} />
+                  <ToolbarButton icon="angle-left" tooltip={t('gofi.canvas.mock-panel.previous-step', 'Previous step')} disabled={step <= 0} onClick={() => { setAutoPlay(false); setStep((s) => Math.max(0, s - 1)) }} />
+                  <ToolbarButton icon="angle-right" tooltip={t('gofi.canvas.mock-panel.next-step', 'Next step')} disabled={step >= totalSteps - 1} onClick={() => { setAutoPlay(false); setStep((s) => Math.min(totalSteps - 1, s + 1)) }} />
                   <ToolbarButton icon={autoPlay ? 'pause' : 'play'} onClick={() => {
                     // Restart from the top if auto-playing from the end.
                     if (!autoPlay && step >= totalSteps - 1) setStep(0)
                     setAutoPlay((p) => !p)
-                  }}>{autoPlay ? 'Pause' : 'Auto-play'}</ToolbarButton>
+                  }}>{autoPlay ? t('gofi.common.pause', 'Pause') : t('gofi.canvas.mock-panel.auto-play', 'Auto-play')}</ToolbarButton>
                 </ButtonGroup>
-                <Badge text={`step ${step + 1}/${totalSteps}`} color="darkgrey" />
+                <Badge text={t('gofi.canvas.mock-panel.step-counter', 'step {{step}}/{{total}}', { step: formatNumber(step + 1), total: formatNumber(totalSteps) })} color="darkgrey" />
               </Stack>
               <MockTraceView result={result} activeIndex={step - 1} />
             </Stack>
@@ -265,7 +268,8 @@ export function MockPanel({ nodes, edges, name, testCases, setTestCases, readOnl
 
 const getStyles = (theme: GrafanaTheme2) => ({
   panel: css({ width: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, background: theme.colors.background.primary, borderLeft: `1px solid ${theme.colors.border.weak}`, [theme.breakpoints.down('md')]: { width: '100%', position: 'absolute', inset: 0, zIndex: 5 } }),
-  header: css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: theme.spacing(1, 1, 1, 2), borderBottom: `1px solid ${theme.colors.border.weak}`, h2: { margin: 0 } }),
+  // Matches NodeInspector: the close button ends where the fields below end.
+  header: css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: theme.spacing(1, 2), borderBottom: `1px solid ${theme.colors.border.weak}`, h2: { margin: 0 } }),
   body: css({ flex: 1, minHeight: 0, overflowY: 'auto', padding: theme.spacing(2), display: 'flex', flexDirection: 'column', gap: theme.spacing(2) }),
   section: css({ borderTop: `1px solid ${theme.colors.border.weak}`, paddingTop: theme.spacing(2) }),
   raw: css({ fontFamily: theme.typography.fontFamilyMonospace, fontSize: theme.typography.bodySmall.fontSize, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),

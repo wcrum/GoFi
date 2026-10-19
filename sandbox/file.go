@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"log/slog"
 	"os"
-	"path/filepath"
-	"sigs.k8s.io/yaml"
 	"sync"
+
+	"github.com/wcrum/gofi/atomicfile"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 )
 
 type FileStore struct {
@@ -28,14 +30,25 @@ type libraryList struct {
 	Items      []libraryResource `json:"items"`
 }
 
+// load reads the file, or the backup of the last save when the primary is
+// missing or unreadable (atomicfile); the next write heals the primary.
 func (f *FileStore) load() ([]Definition, error) {
-	b, err := os.ReadFile(f.Path)
+	out, recovered, err := atomicfile.Decode(f.Path, decodeLibraries)
 	if os.IsNotExist(err) && !f.loaded {
 		return []Definition{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	if recovered {
+		slog.Warn("sandbox libraries unreadable; recovered from backup", "path", f.Path, "backup", f.Path+atomicfile.BackupSuffix)
+	}
+	f.loaded = true
+	return out, nil
+}
+
+func decodeLibraries(b []byte) ([]Definition, error) {
+	var err error
 	var list libraryList
 	if err = yaml.UnmarshalStrict(b, &list); err != nil {
 		var item libraryResource
@@ -70,7 +83,6 @@ func (f *FileStore) load() ([]Definition, error) {
 		}
 		out = append(out, d)
 	}
-	f.loaded = true
 	return out, nil
 }
 func (f *FileStore) Load(context.Context) ([]Definition, error) {
@@ -94,22 +106,8 @@ func (f *FileStore) write(defs []Definition) error {
 	if e != nil {
 		return e
 	}
-	if e = os.MkdirAll(filepath.Dir(f.Path), 0700); e != nil {
-		return e
-	}
-	tmp, e := os.CreateTemp(filepath.Dir(f.Path), ".gofi-python-*")
-	if e != nil {
-		return e
-	}
-	defer os.Remove(tmp.Name())
-	if _, e = tmp.Write(b); e != nil {
-		tmp.Close()
-		return e
-	}
-	if e = tmp.Close(); e != nil {
-		return e
-	}
-	if e = os.Rename(tmp.Name(), f.Path); e != nil {
+	// Atomic + fsync, keeps .bak, skips unchanged content (see atomicfile).
+	if e = atomicfile.WriteFile(f.Path, b, 0o600); e != nil {
 		return e
 	}
 	f.loaded = true
