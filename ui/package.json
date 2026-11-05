@@ -34,7 +34,7 @@
     "react-i18next": "17.0.18",
     "react-icons": "^5.7.0",
     "react-router-dom-v5-compat": "^6.30.6",
-    "yaml": "^2.8.1"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.74.0",
@@ -52,5 +52,9 @@
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1",
+    "glob": "^14.0.2"
   }
 }

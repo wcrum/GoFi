@@ -43,6 +43,9 @@ const ts = loadTypeScript()
 export const PROP_NAMES = new Set(['label', 'placeholder', 'title', 'tooltip', 'aria-label', 'description', 'text', 'message', 'confirmText', 'subTitle'])
 const IGNORE_TOKEN = 'i18n-ignore'
 const TRANSLATION_CALLS = new Set(['t', 'Trans'])
+/** Emotion style builders. Their objects are CSS, never UI text, and their
+ * `label` is Emotion's class-name hint (`label: 'FieldRow'` -> css-xxx-FieldRow). */
+const STYLE_CALLS = new Set(['css', 'keyframes', 'injectGlobal'])
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -129,6 +132,8 @@ export function lintSource(fileName, source, allowlist) {
       const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : ''
       // Anything inside t('…', '…') is a key or an English default.
       if (TRANSLATION_CALLS.has(name)) return
+      // Anything inside css({…}) is a style declaration, not a string to translate.
+      if (STYLE_CALLS.has(name)) return
     }
     if (isTransElement(node)) return
     if (ts.isJsxText(node)) {

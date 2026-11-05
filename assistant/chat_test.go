@@ -88,7 +88,7 @@ func (f *fakeMessages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 	if stream, _ := req["stream"].(bool); !stream {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"msg_p","type":"message","role":"assistant","model":"claude-test","content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":1}}`)
+		_, _ = io.WriteString(w, `{"id":"msg_p","type":"message","role":"assistant","model":"test-model","content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":1}}`)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -109,7 +109,7 @@ func sse(events ...string) string {
 
 func toolUseReply(name, input string) string {
 	return sse(
-		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}`,
+		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"test-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Looking. "}}`,
 		`{"type":"content_block_stop","index":0}`,
@@ -123,7 +123,7 @@ func toolUseReply(name, input string) string {
 
 func textReply(text string) string {
 	return sse(
-		`{"type":"message_start","message":{"id":"msg_2","type":"message","role":"assistant","model":"claude-test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"output_tokens":1}}}`,
+		`{"type":"message_start","message":{"id":"msg_2","type":"message","role":"assistant","model":"test-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"output_tokens":1}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":%q}}`, text),
 		`{"type":"content_block_stop","index":0}`,
@@ -141,7 +141,7 @@ func newTestService(t *testing.T, fake *fakeMessages, allowChanges bool) (*Servi
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 	m := NewManager(&FileStore{Path: filepath.Join(t.TempDir(), "assistant.yaml")})
-	if _, err := m.Save(context.Background(), Configuration{Enabled: true, APIKey: "sk-test", BaseURL: server.URL, Model: "claude-test", AllowChanges: allowChanges, MaxToolSteps: 2, Effort: "low"}); err != nil {
+	if _, err := m.Save(context.Background(), Configuration{Enabled: true, APIKey: "sk-test", BaseURL: server.URL, Model: "test-model", AllowChanges: allowChanges, MaxToolSteps: 2, Effort: "low"}); err != nil {
 		t.Fatal(err)
 	}
 	actions := &stubActions{}
@@ -182,7 +182,7 @@ func TestChatRunsToolsAndStreamsEvents(t *testing.T) {
 	// The first request carries the system prompt, the page context, and
 	// only non-mutating tools; the second carries the tool result.
 	first, second := fake.requests[0], fake.requests[1]
-	if first["model"] != "claude-test" || first["output_config"].(map[string]any)["effort"] != "low" {
+	if first["model"] != "test-model" || first["output_config"].(map[string]any)["effort"] != "low" {
 		t.Fatalf("request params: %v", first)
 	}
 	if !strings.Contains(fmt.Sprint(first["messages"]), "#/flows") {
@@ -428,7 +428,7 @@ func TestEnvironmentLocksEndpointAndKey(t *testing.T) {
 	if _, err := m.Save(ctx, Configuration{Enabled: true, APIKey: "sk-other"}); err == nil || !strings.Contains(err.Error(), "environment") {
 		t.Fatalf("key change accepted: %v", err)
 	}
-	c, err := m.Save(ctx, Configuration{Enabled: true, Model: "claude-opus-5-5"})
+	c, err := m.Save(ctx, Configuration{Enabled: true, Model: "model-one"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestEnvironmentLocksEndpointAndKey(t *testing.T) {
 
 func TestEveryMutatingCallBecomesAProposal(t *testing.T) {
 	two := sse(
-		`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"claude-test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"test-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"a","name":"apply_flow","input":{}}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"flow_yaml\":\"name: a\"}"}}`,
 		`{"type":"content_block_stop","index":0}`,

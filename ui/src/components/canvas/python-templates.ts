@@ -133,25 +133,25 @@ def binary_object(data: bytes) -> dict:
         value = cbor2.loads(data)
     return value if isinstance(value, dict) else {"value": value}
 `),
-  template('pydantic', () => t('gofi.canvas.python-templates.pydantic', 'Validated parser (pydantic)'), () => t('gofi.canvas.python-templates.pydantic-description', 'Declare the frame shape as a model; frames that do not match are dropped'), `from pydantic import BaseModel, Field, ValidationError
+  template('pydantic', () => t('gofi.canvas.python-templates.pydantic', 'Validated parser (pydantic)'), () => t('gofi.canvas.python-templates.pydantic-description', 'Declare the frame shape as a model; the decorator types and checks every frame against it'), `from pydantic import BaseModel, ConfigDict, Field
 
 
 class Reading(BaseModel):
-    """The shape of one frame. Unknown keys are ignored; types are coerced."""
+    """The shape of one frame: types are coerced ("31.5" -> 31.5), constraints checked. extra="allow" keeps unknown keys."""
+
+    model_config = ConfigDict(extra="allow")
 
     sensor: str = Field(min_length=1)
     temperature: float = Field(ge=-50, le=150)
     unit: str = "C"
 
 
-@gofi.parser("reading")
+# model= validates what the function returns; on_invalid="flag" (default) keeps a
+# failing frame and adds "_invalid" so a filter can route it, "drop" rejects it.
+@gofi.parser("reading", model=Reading)
 def reading(data: bytes) -> dict | None:
-    """Parse JSON into a Reading and return its fields; drop frames that do not validate."""
-    try:
-        return Reading.model_validate_json(data).model_dump()
-    except ValidationError as error:
-        print("rejected:", error.errors(include_url=False, include_input=False))
-        return None
+    """Parse one JSON object per frame into a Reading."""
+    return gofi.JSON(data)
 `),
   template('ai-classify', () => t('gofi.canvas.python-templates.ai-classify', 'AI classify / route'), () => t('gofi.canvas.python-templates.ai-classify-description', 'Have the AI pick one label from a list, then drop or route by it; needs the AI endpoint enabled for functions under Administration'), `# Needs "Functions may use the AI endpoint" on under Administration › AI assistant; GoFi supplies the endpoint and egress.
 @gofi.transformer("ai_classify")
@@ -340,7 +340,15 @@ export function discoverFunctions(source: string): DiscoveredFunction[] {
   const lines = source.split('\n')
   const found: DiscoveredFunction[] = []
   for (let index = 0; index < lines.length; index++) {
-    const decorator = /^@gofi\.(fetcher|streamer|framer|decoder|parser|transformer|encoder|sink)\b\s*(?:\((.*)\))?\s*$/.exec(lines[index].trim())
+    const trimmed = lines[index].trim()
+    // `gofi.parser("name", format="keyvalue", ...)` with no body registers a tokenizer as the function.
+    const bodiless = /^(?:[A-Za-z_]\w*\s*=\s*)?gofi\.(parser)\((.*\bformat\s*=.*)\)\s*$/.exec(trimmed)
+    if (bodiless) {
+      const name = /^\s*["']([^"']+)["']/.exec(bodiless[2])?.[1]
+      if (name) found.push({ name, kind: bodiless[1] as StepKind, line: index + 1, defLine: index + 1 })
+      continue
+    }
+    const decorator = /^@gofi\.(fetcher|streamer|framer|decoder|parser|transformer|encoder|sink)\b\s*(?:\((.*)\))?\s*$/.exec(trimmed)
     if (!decorator) continue
     let defLine = index + 1
     while (defLine < lines.length && (lines[defLine].trim().startsWith('@') || !lines[defLine].trim())) defLine++

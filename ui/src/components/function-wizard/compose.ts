@@ -270,9 +270,8 @@ function parseBody(format: ParseFormat, columns: string[]): string {
   switch (format) {
     case 'json': return 'return json.loads(data)'
     case 'csv': return `text = data.decode("utf-8", errors="replace").strip()\nif not text:\n    return None\nvalues = next(csv.reader([text]))\nreturn dict(zip(COLUMNS, values))`
-    // KEY=VALUE pairs: a regex tokenizer (newlines, commas, and quoted values
-    // are fine) and a pydantic model that types and checks the fields.
-    case 'keyvalue': return `pairs = {m.group(1): m.group(3) if m.group(3) is not None else m.group(4) if m.group(4) is not None else m.group(5) for m in PAIR.finditer(data.decode("utf-8", errors="replace"))}\nif not pairs:\n    return None\ntry:\n    return Fields.model_validate(pairs).model_dump()\nexcept ValidationError as error:\n    return {**pairs, "_invalid": error.errors()[0]["msg"]}`
+    // KEY=VALUE pairs: gofi.text tokenizes, the decorator's model= types.
+    case 'keyvalue': return `return gofi.KeyValue(data)`
     case 'binary': return ''
   }
 }
@@ -330,8 +329,8 @@ export function composeSource(answers: WizardAnswers, templates: FunctionTemplat
       if (body) snippet = replaceBody(snippet, name, body)
       if (answers.parseFormat === 'json') snippet = ensureImport(snippet, 'json')
       if (answers.parseFormat === 'csv') snippet = `import csv\n\nCOLUMNS = ${pythonList(columns.length ? columns : ['column_1', 'column_2'])}\n\n\n${snippet}`
-      if (answers.parseFormat === 'keyvalue') snippet = `import re\n\nfrom pydantic import BaseModel, ConfigDict, Field, ValidationError\n\nPAIR = re.compile(r'([A-Za-z_][\\w.\\-]*)=("([^"]*)"|\\'([^\\']*)\\'|([^\\s,]+))')\n\n\n${keyValueModel(answers.sample)}\n\n\n${snippet}`
-      const label = { json: 'Parse one JSON object per frame into fields.', csv: 'Parse one CSV row per frame into COLUMNS.', keyvalue: 'Parse KEY=VALUE pairs (any whitespace, newlines, or commas between them; values may be quoted) into fields typed by the Fields model.', binary: 'Parse a fixed-layout binary frame; adjust the struct format to your layout.' }[answers.parseFormat]
+      if (answers.parseFormat === 'keyvalue') snippet = `from pydantic import BaseModel, ConfigDict, Field\n\n\n${keyValueModel(answers.sample)}\n\n\n${snippet.replace(`@gofi.parser(${pythonString(name)})`, `@gofi.parser(${pythonString(name)}, model=Fields)`)}`
+      const label = { json: 'Parse one JSON object per frame into fields.', csv: 'Parse one CSV row per frame into COLUMNS.', keyvalue: 'Parse KEY=VALUE pairs (any whitespace, newlines, or commas between them; values may be quoted) into fields; the decorator types them with the Fields model.', binary: 'Parse a fixed-layout binary frame; adjust the struct format to your layout.' }[answers.parseFormat]
       snippet = setDocstringSummary(snippet, name, answers.sample.trim() ? `${label} Example input: ${sampleLine(answers.sample)}` : label)
       if (answers.sample.trim() && answers.parseFormat !== 'binary') test = { name: 'Sample input', function: name, kind: 'parser', raw: answers.sample }
       break

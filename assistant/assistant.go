@@ -14,9 +14,6 @@ import (
 	"time"
 )
 
-// DefaultModel is used when the configuration names none.
-const DefaultModel = "claude-opus-5-5"
-
 const (
 	DefaultMaxToolSteps = 8
 	MaxToolSteps        = 20
@@ -116,6 +113,9 @@ func Normalize(c Configuration) (Configuration, error) {
 }
 
 // ModelOrDefault is the model the chat uses.
+// DefaultModel is used when the configuration names none.
+const DefaultModel = "claude-opus-5-5"
+
 func (c Configuration) ModelOrDefault() string {
 	if c.Model == "" {
 		return DefaultModel

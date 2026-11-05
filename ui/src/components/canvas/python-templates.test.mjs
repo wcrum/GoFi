@@ -141,3 +141,9 @@ test('every template belongs to exactly one picker group', () => {
   assert.equal(new Set(grouped).size, grouped.length)
   for (const group of TEMPLATE_GROUPS) assert.ok(group.label)
 })
+
+test('discoverFunctions sees the no-body parser form and decorators with keyword arguments', async () => {
+  const { discoverFunctions } = await import('./python-templates.ts')
+  const source = 'import gofi\n\nkv = gofi.parser("key_value", format="keyvalue", model=Fields)\n\n\n@gofi.parser("reading", model=Reading, on_invalid="drop")\ndef reading(data: bytes) -> dict | None:\n    return gofi.JSON(data)\n'
+  assert.deepEqual(discoverFunctions(source).map(fn => `${fn.kind}:${fn.name}`), ['parser:key_value', 'parser:reading'])
+})

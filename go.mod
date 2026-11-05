@@ -1,12 +1,13 @@
 module github.com/wcrum/gofi
 
-go 1.27.2
+go 1.27.3
 
 require (
 	cel.dev/cel-go v0.32.0
 	connectrpc.com/connect v1.21.0
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/andybalholm/brotli v1.2.6
+	github.com/anthropics/anthropic-sdk-go v1.82.0
 	github.com/coder/websocket v1.8.14
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
@@ -29,7 +30,7 @@ require (
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20261013022759-7b6cac30a57a
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	google.golang.org/protobuf v1.36.12
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
@@ -41,7 +42,6 @@ require (
 	cel.dev/expr v0.25.3 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.4 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.82.0 // indirect
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

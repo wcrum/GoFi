@@ -34,7 +34,7 @@ func TestFileStoreRoundTripKeepsKey(t *testing.T) {
 	if c, err := m.Get(ctx); err != nil || c.Enabled {
 		t.Fatalf("empty store: %+v %v", c, err)
 	}
-	if _, err := m.Save(ctx, Configuration{Enabled: true, APIKey: "sk-secret", Model: "claude-opus-5-5"}); err != nil {
+	if _, err := m.Save(ctx, Configuration{Enabled: true, APIKey: "sk-secret", Model: "model-one"}); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -42,8 +42,8 @@ func TestFileStoreRoundTripKeepsKey(t *testing.T) {
 		t.Fatalf("file mode: %v %v", info, err)
 	}
 	// A save without a key (the portal never sees it) keeps the stored one.
-	saved, err := m.Save(ctx, Configuration{Enabled: true, Model: "claude-sonnet-5-5", AllowChanges: true})
-	if err != nil || saved.APIKey != "sk-secret" || saved.Model != "claude-sonnet-5-5" {
+	saved, err := m.Save(ctx, Configuration{Enabled: true, Model: "model-two", AllowChanges: true})
+	if err != nil || saved.APIKey != "sk-secret" || saved.Model != "model-two" {
 		t.Fatalf("key not kept: %+v %v", saved, err)
 	}
 	if saved, err = m.Save(ctx, Configuration{Enabled: true, APIKey: "***"}); err != nil || saved.APIKey != "sk-secret" {

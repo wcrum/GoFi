@@ -132,7 +132,7 @@ func TestKubernetesAIWorkerCarriesPlainEnvAndControllerEgress(t *testing.T) {
 	c.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) { cancel(); return false, nil, nil })
 	k := &Kubernetes{Client: c, Namespace: "gofi", Image: DefaultImage}
 	d := Definition{Name: "ai", SourceCode: "import gofi", TimeoutSeconds: 5, MemoryMiB: 128, AI: true,
-		Env:    map[string]string{AIEnvProxyURL: "http://gofi.gofi.svc.cluster.local:9090/gofi/llm", AIEnvProvider: "anthropic", AIEnvModel: "claude-haiku-4-5"},
+		Env:    map[string]string{AIEnvProxyURL: "http://gofi.gofi.svc.cluster.local:9090/gofi/llm", AIEnvProvider: "anthropic", AIEnvModel: "model-small"},
 		Egress: []EgressRule{{Namespace: "gofi", PodSelector: map[string]string{"app.kubernetes.io/name": "gofi"}, Port: 9090, Protocol: "tcp", Description: AIEgressReason}}}
 	_, _ = k.Start(ctx, d, "secret")
 	pod, err := c.CoreV1().Pods("gofi").Get(context.Background(), "gofi-python-ai", metav1.GetOptions{})
@@ -143,7 +143,7 @@ func TestKubernetesAIWorkerCarriesPlainEnvAndControllerEgress(t *testing.T) {
 	for _, e := range pod.Spec.Containers[0].Env {
 		env[e.Name] = e.Value
 	}
-	if env[AIEnvProxyURL] != d.Env[AIEnvProxyURL] || env[AIEnvProvider] != "anthropic" || env[AIEnvModel] != "claude-haiku-4-5" {
+	if env[AIEnvProxyURL] != d.Env[AIEnvProxyURL] || env[AIEnvProvider] != "anthropic" || env[AIEnvModel] != "model-small" {
 		t.Fatalf("env: %v", env)
 	}
 	secret, _ := c.CoreV1().Secrets("gofi").Get(context.Background(), "gofi-python-ai", metav1.GetOptions{})
@@ -165,7 +165,7 @@ func TestKubernetesAIWorkerCarriesPlainEnvAndControllerEgress(t *testing.T) {
 		t.Fatal("the derived AI egress rule must not change the definition hash")
 	}
 	changed := d
-	changed.Env = map[string]string{AIEnvProxyURL: d.Env[AIEnvProxyURL], AIEnvProvider: "anthropic", AIEnvModel: "claude-sonnet-4-5"}
+	changed.Env = map[string]string{AIEnvProxyURL: d.Env[AIEnvProxyURL], AIEnvProvider: "anthropic", AIEnvModel: "model-large"}
 	if definitionHash(d, DefaultImage) == definitionHash(changed, DefaultImage) {
 		t.Fatal("a changed model must change the definition hash")
 	}

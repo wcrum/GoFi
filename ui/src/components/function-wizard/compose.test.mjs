@@ -162,12 +162,12 @@ test('suggestName and assistantMessage reflect the answers', () => {
 
 test('the key=value parser tokenizes with a regex and types fields with a pydantic model from the sample', () => {
   const { source } = composeSource(answers({ goal: 'parse', parseFormat: 'keyvalue', sample: 'host=a1 temperature=31.5\nok=true, src-ip="10.0.0.1" count=3' }), FUNCTION_TEMPLATES)
-  assert.match(source, /^import re$/m)
-  assert.match(source, /^from pydantic import BaseModel, ConfigDict, Field, ValidationError$/m)
-  assert.match(source, /^PAIR = re\.compile\(/m)
+  assert.match(source, /^from pydantic import BaseModel, ConfigDict, Field$/m)
+  assert.doesNotMatch(source, /import re|PAIR|ValidationError|model_validate/)
   assert.match(source, /class Fields\(BaseModel\):/)
+  assert.match(source, /@gofi\.parser\("parse", model=Fields\)/)
+  assert.match(source, /return gofi\.KeyValue\(data\)/)
   assert.match(source, /    host: str \| None = None\n    temperature: float \| None = None\n    ok: bool \| None = None\n    src_ip: str \| None = Field\(default=None, alias="src-ip"\)\n    count: int \| None = None/)
-  assert.match(source, /Fields\.model_validate\(pairs\)\.model_dump\(\)/)
   assert.equal(discoverFunctions(source).length, 1)
   assert.match(keyValueModel(''), /# Add the fields you expect/)
 })

@@ -654,7 +654,7 @@
         "parser": "Parser",
         "parser-description": "bytes → fields dict",
         "pydantic": "Validated parser (pydantic)",
-        "pydantic-description": "Declare the frame shape as a model; frames that do not match are dropped",
+        "pydantic-description": "Declare the frame shape as a model; the decorator types and checks every frame against it",
         "sink": "Sink",
         "sink-description": "Print-only unless the library has egress rules",
         "streamer": "Streamer (source)",

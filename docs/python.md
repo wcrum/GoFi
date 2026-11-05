@@ -100,45 +100,54 @@ data arguments become per-node configuration, and only their annotations
 (`str`, `int`, `float`, `bool`, `list`, `dict`) are read by GoFi; data and
 return annotations are never interpreted at runtime.
 
-The worker image includes [pydantic](https://docs.pydantic.dev/), so a library
-can declare the shape of a frame once and validate against it. Returning `None`
-from a parser drops the frame, so a model is a compact way to reject malformed
-input with a logged reason:
+The worker image includes [pydantic](https://docs.pydantic.dev/), and the
+`parser` and `transformer` decorators take a model: `model=` validates and
+coerces whatever the function returns ("31.5" becomes a float, aliases and
+defaults apply, constraints are checked), so the function only has to say how
+the bytes are laid out. Four tokenizers cover the common layouts; each
+returns plain strings and never guesses the format:
+
+| Helper | Input | Returns |
+| --- | --- | --- |
+| `gofi.KeyValue(data)` | `host=a1 temperature=31.5 msg="disk full"` (any whitespace, newlines, or commas between pairs; quoted values) | `{"host": "a1", "temperature": "31.5", ...}` |
+| `gofi.JSON(data)` | one JSON object | its dict (JSON types), `ValueError` otherwise |
+| `gofi.CSV(data, columns, delimiter=",")` | one row | `{column: cell}` |
+| `gofi.Delimited(data, sep, columns=None)` | positional fields | `{column: cell}` or `{"f0": ..., "f1": ...}` |
 
 ```python
-from pydantic import BaseModel, Field, ValidationError
 import gofi
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class Reading(BaseModel):
-    """One telemetry frame. Unknown keys are ignored; types are coerced."""
+class Fields(BaseModel):
+    """extra="allow" keeps keys the model does not name; pydantic's default drops them."""
 
-    sensor: str = Field(min_length=1)
-    temperature: float = Field(ge=-50, le=150)
-    unit: str = "C"
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-
-@gofi.parser("reading")
-def reading(data: bytes) -> dict | None:
-    try:
-        return Reading.model_validate_json(data).model_dump()
-    except ValidationError as error:
-        print("rejected:", error.errors(include_url=False, include_input=False))
-        return None
+    host: str
+    temperature: float | None = Field(default=None, ge=-50, le=150)
+    src_ip: str | None = Field(default=None, alias="src-ip")
 
 
-@gofi.transformer("fahrenheit")
-def fahrenheit(fields: dict, meta: dict) -> dict:
-    reading = Reading.model_validate(fields)  # fields already validated upstream
-    return reading.model_copy(update={"temperature": reading.temperature * 9 / 5 + 32, "unit": "F"}).model_dump()
+@gofi.parser("key_value", model=Fields)
+def key_value(data: bytes) -> dict | None:
+    return gofi.KeyValue(data)
 ```
 
-`model_dump()` returns plain JSON-compatible values, which is what a parser or
-transformer must return. `include_input=False` keeps the rejected frame's
-contents out of the printed line: worker stdout is shipped to the live log
-stream and to central logs, so echo a rejected frame only when you mean to.
-Avoid `ImportString` fields on frame data; they let a frame name code to
-import. Keep models at module level so the warm executor
+`on_invalid` decides what a frame the model rejects becomes: `"flag"` (the
+default) keeps the fields and adds `_invalid` with the first problem, so a
+filter stage can route it to the dead-letter sink; `"drop"` rejects the frame
+(the function returns `None`); `"raise"` lets the `ValidationError` propagate
+and the message fails loudly. A parser that only tokenizes needs no body at
+all: `gofi.parser("key_value", format="keyvalue", model=Fields)` registers the
+helper as the function (`format` is `keyvalue`, `json`, `csv`, or `delimited`;
+extra keyword arguments such as `columns=[...]` go to the helper). The
+New-function wizard writes this shape for "Parse a format"; the "Validated
+parser (pydantic)" template is the JSON variant.
+
+`model_dump()` values are plain JSON-compatible values, which is what a parser
+or transformer must return. Avoid `ImportString` fields on frame data; they let
+a frame name code to import. Keep models at module level so the warm executor
 builds their validators once rather than on every frame.
 
 ### AI and LangChain integrations
@@ -584,7 +593,7 @@ library's [egress rules](#outbound-network-egress) allow:
 | `pydantic` | 2.14.1 | Typed models that validate frames and fields |
 | `langchain-core` | 1.6.12 | LangChain messages, runnables, structured output (`gofi.llm`) |
 | `langchain-openai` | 1.7.2 (`openai` 3.35.1, `tiktoken` 0.14.0) | `ChatOpenAI`: OpenAI and every OpenAI-compatible endpoint (network) |
-| `langchain-anthropic` | 1.7.6 (`anthropic` 1.15.0) | `ChatAnthropic`: Claude models (network) |
+| `langchain-anthropic` | 1.7.6 (`anthropic` 1.15.0) | `ChatAnthropic`: Anthropic models (network) |
 | `langchain-protocol` | 0.0.19 | LangChain's shared interfaces (pure Python) |
 | `langsmith` | 0.14.11 | LangChain tracing client; idle unless configured (pure Python) |
 | `httpx` 0.28.1, `httpcore` 1.0.9, `httpx2` 2.13.1, `httpcore2` 2.13.1 | | HTTP clients the SDKs use (pure Python) |

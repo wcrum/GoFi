@@ -32,6 +32,7 @@ Keyword parameters after the data arguments are per-node configuration::
 """
 from dataclasses import dataclass, field
 import asyncio
+import functools
 import inspect
 import linecache
 import re
@@ -190,7 +191,75 @@ def _params(kind, callback):
     return tuple(out)
 
 
-def _decorate(kind, name=None, every=None):
+ON_INVALID = ("flag", "drop", "raise")
+
+
+def _validated(kind, key, callback, model, on_invalid):
+    """Wraps a parser or transformer so its mapping passes through a pydantic
+    model: coercion ("31.5" -> 31.5), aliases, defaults, and constraints live
+    in the model, not in every function. ``on_invalid`` decides what a frame
+    the model rejects becomes: "flag" keeps the fields and adds ``_invalid``
+    (a filter can route it to the dead-letter sink), "drop" rejects it (the
+    function returns None), "raise" lets the error propagate (the message
+    fails loudly and counts as an error)."""
+    if on_invalid not in ON_INVALID:
+        raise ValueError(f"{kind} {key}: on_invalid must be one of {', '.join(ON_INVALID)}")
+    validate = getattr(model, "model_validate", None)
+    if validate is None:
+        raise TypeError(f"{kind} {key}: model must be a pydantic model class")
+
+    def apply(result):
+        if result is None or (kind == "parser" and result == {}):
+            # No fields means no message: a tokenizer that found nothing
+            # rejects the frame instead of validating an empty mapping.
+            return None
+        if not isinstance(result, dict):
+            raise TypeError(f"{kind} {key}: expected a dict to validate, got {type(result).__name__}")
+        try:
+            return validate(result).model_dump(by_alias=False)
+        except Exception as error:  # pydantic.ValidationError, without importing pydantic here
+            if on_invalid == "raise" or type(error).__name__ != "ValidationError":
+                raise
+            if on_invalid == "drop":
+                return None
+            first = error.errors()[0] if hasattr(error, "errors") else {"msg": str(error)}
+            where = ".".join(str(part) for part in first.get("loc", ()))
+            return {**result, "_invalid": f"{where}: {first.get('msg', 'invalid')}" if where else first.get("msg", "invalid")}
+
+    if inspect.iscoroutinefunction(callback):
+        async def wrapped(*args, **kwargs):
+            return apply(await callback(*args, **kwargs))
+    else:
+        def wrapped(*args, **kwargs):
+            return apply(callback(*args, **kwargs))
+    functools.update_wrapper(wrapped, callback)
+    wrapped.__gofi_model__ = model
+    return wrapped
+
+
+_FORMATS = {"keyvalue", "json", "csv", "delimited"}
+
+
+def _format_callback(kind, key, format, options):
+    """The default body for ``@gofi.parser(name, format=...)``: tokenize with
+    gofi.text and nothing else (a model does the typing)."""
+    if format not in _FORMATS:
+        raise ValueError(f"{kind} {key}: format must be one of {', '.join(sorted(_FORMATS))}")
+    if kind != "parser":
+        raise ValueError(f"{kind} {key}: format= registers a default body for parsers only")
+    from . import text as _text_module
+    helper = getattr(_text_module, format)
+
+    def parse(data: bytes) -> dict | None:
+        fields = helper(data, **options)
+        return fields or None
+    parse.__name__ = key
+    parse.__qualname__ = key
+    parse.__doc__ = f"Parse one {format} frame into fields (gofi.text.{format})."
+    return parse
+
+
+def _decorate(kind, name=None, every=None, *, model=None, on_invalid="flag", format=None, **format_options):
     every = _every(every)
 
     def register(callback):
@@ -201,22 +270,65 @@ def _decorate(kind, name=None, every=None):
             raise ValueError(f"duplicate {kind} function: {key}")
         if kind == "streamer" and not (inspect.isgeneratorfunction(callback) or inspect.isasyncgenfunction(callback)):
             raise TypeError(f"streamer {key} must be a generator function (use yield)")
-        _functions[kind, key] = Function(key, kind, (callback.__doc__ or "").strip(), callback, _params(kind, callback), every)
+        wrapped = _validated(kind, key, callback, model, on_invalid) if model is not None else callback
+        _functions[kind, key] = Function(key, kind, (callback.__doc__ or "").strip(), wrapped, _params(kind, callback), every)
         return callback
+    if format is not None:
+        # No body: ``gofi.parser("key_value", format="keyvalue", model=Fields)``
+        # registers the tokenizer as the function and returns it.
+        if callable(name) or not isinstance(name, str) or not name:
+            raise ValueError(f"{kind}: format= needs the function name as the first argument")
+        return register(_format_callback(kind, name, format, format_options))
+    if format_options:
+        raise TypeError(f"{kind}: unexpected arguments {', '.join(sorted(format_options))} (they belong with format=)")
     if callable(name):
         callback, name = name, None
         return register(callback)
     return register
 
 
-def parser(name=None):
-    """Decode one frame (bytes) into a fields mapping, or None to reject it."""
-    return _decorate("parser", name)
+def KeyValue(data, *, encoding="utf-8"):
+    """``host=a1 temperature=31.5 msg="disk full"`` -> ``{"host": "a1", ...}``
+    (strings; any whitespace, newlines, or commas between pairs; quoted
+    values). Pair it with ``model=`` on the decorator for typing."""
+    from . import text
+    return text.keyvalue(data, encoding=encoding)
 
 
-def transformer(name=None):
-    """Return new fields, or None to drop the message. Usable as a flow stage."""
-    return _decorate("transformer", name)
+def JSON(data, *, encoding="utf-8"):
+    """One JSON object per frame -> its dict; ValueError for anything else."""
+    from . import text
+    return text.json(data, encoding=encoding)
+
+
+def CSV(data, columns, *, delimiter=",", encoding="utf-8"):
+    """One CSV row per frame -> ``{column: cell}`` for the named columns."""
+    from . import text
+    return text.csv(data, columns, delimiter=delimiter, encoding=encoding)
+
+
+def Delimited(data, sep, columns=None, *, encoding="utf-8"):
+    """A positional frame split on ``sep`` -> ``{column: cell}`` (or f0, f1, ...)."""
+    from . import text
+    return text.delimited(data, sep, columns, encoding=encoding)
+
+
+def parser(name=None, *, model=None, on_invalid="flag", format=None, **format_options):
+    """Decode one frame (bytes) into a fields mapping, or None to reject it.
+
+    ``model=`` (a pydantic class) types and checks the mapping the function
+    returns; ``on_invalid`` is "flag" (default: keep the fields, add
+    ``_invalid``), "drop", or "raise". ``format="keyvalue" | "json" | "csv" |
+    "delimited"`` registers a function with no body of your own, tokenizing
+    with ``gofi.text`` (extra keyword arguments go to the helper, e.g.
+    ``columns=[...]``)."""
+    return _decorate("parser", name, model=model, on_invalid=on_invalid, format=format, **format_options)
+
+
+def transformer(name=None, *, model=None, on_invalid="flag"):
+    """Return new fields, or None to drop the message. Usable as a flow stage.
+    ``model=`` and ``on_invalid`` work as for ``parser``."""
+    return _decorate("transformer", name, model=model, on_invalid=on_invalid)
 
 
 def sink(name=None):
@@ -285,6 +397,11 @@ def __getattr__(name):
         import importlib
 
         return importlib.import_module("gofi.llm")
+    if name == "text":
+        # gofi.text: stdlib-only tokenizers (keyvalue, json, csv, delimited).
+        import importlib
+
+        return importlib.import_module("gofi.text")
     if name in _REMOVED:
         raise AttributeError(_REMOVED[name])
     raise AttributeError(f"module 'gofi' has no attribute {name!r}")
