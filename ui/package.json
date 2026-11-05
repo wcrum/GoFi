@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "e2e": "node e2e/run.mjs",
     "e2e:i18n": "node e2e/i18n-sweep.mjs",
-    "test": "node --experimental-strip-types --test src/*.test.mjs src/components/canvas/*.test.mjs src/components/python/*.test.mjs src/components/*.test.mjs src/components/assistant/*.test.mjs src/components/tutorial/*.test.mjs src/components/function-wizard/*.test.mjs src/components/cel/*.test.mjs src/lib/*.test.mjs src/theme/*.test.mjs src/shell/*.test.mjs src/i18n/*.test.mjs scripts/*.test.mjs",
+    "test": "node --experimental-strip-types --test src/*.test.mjs src/components/canvas/*.test.mjs src/components/logs/*.test.mjs src/components/python/*.test.mjs src/components/*.test.mjs src/components/assistant/*.test.mjs src/components/tutorial/*.test.mjs src/components/function-wizard/*.test.mjs src/components/cel/*.test.mjs src/lib/*.test.mjs src/theme/*.test.mjs src/shell/*.test.mjs src/i18n/*.test.mjs scripts/*.test.mjs",
     "i18n:extract": "i18next -c i18next-parser.config.mjs",
     "i18n:check": "node scripts/i18n-check.mjs --allow-missing",
     "i18n:check:strict": "node scripts/i18n-check.mjs",

@@ -1,7 +1,7 @@
 import type { TapEvent } from '../../types'
 
-/** Pure helpers behind LogsExplorer: batching, precomputed search text, and
- * row windowing. No React here so node tests can cover them. */
+/** Pure helpers behind LogsExplorer: batching, precomputed search text, row
+ * windowing, and paging. No React here so node tests can cover them. */
 
 export type Level = 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'unknown'
 export type VolumeLevel = 'error' | 'warn' | 'info' | 'debug' | 'unknown'
@@ -43,11 +43,12 @@ export function matches(item: CapturedEvent, filters: Filters, query = filters.q
   return !query || item.search.includes(query)
 }
 
-/** Appends a batch to a bounded buffer, oldest first, keeping at most max. */
-export function appendBounded<T>(buffer: T[], batch: T[], max: number): T[] {
+/** Prepends a batch (arrival order, oldest first) to a newest-first buffer,
+ * keeping at most max. The batch is copied so callers keep theirs. */
+export function prependBounded<T>(buffer: T[], batch: T[], max: number): T[] {
   if (!batch.length) return buffer
-  const next = buffer.length + batch.length <= max ? buffer.concat(batch) : buffer.concat(batch).slice(-max)
-  return next
+  const next = batch.slice().reverse().concat(buffer)
+  return next.length <= max ? next : next.slice(0, max)
 }
 
 /**
@@ -105,4 +106,32 @@ export function windowRows(count: number, scrollTop: number, viewport: number, r
   let bottom = 0
   for (let index = end; index < count; index++) bottom += height(index)
   return { start, end, top, bottom }
+}
+
+/** A plain number[], not a readonly tuple: `.includes(number)` has to typecheck. */
+export const PAGE_SIZES: number[] = [25, 50, 100, 250, 500]
+export const DEFAULT_PAGE_SIZE = 100
+
+/** A stored rows-per-page is user-editable text; anything off the menu falls back. */
+export function pageSizeOf(stored: string | null): number {
+  const value = Number(stored)
+  return PAGE_SIZES.includes(value) ? value : DEFAULT_PAGE_SIZE
+}
+
+/** Pages always count at least one, so "Page 1 of 1" holds for an empty buffer. */
+export function pageCount(total: number, size: number): number {
+  return Math.max(1, Math.ceil(total / size))
+}
+
+/** The rows to render for a page, with the page clamped: filters and the
+ * buffer cap shrink the result under a page the user is already on. */
+export function pageSlice(total: number, page: number, size: number): { page: number; start: number; end: number } {
+  const clamped = Math.min(Math.max(1, Math.floor(page)), pageCount(total, size))
+  const start = (clamped - 1) * size
+  return { page: clamped, start, end: Math.min(total, start + size) }
+}
+
+/** The page holding the row that was at the top of `page` before the size changed. */
+export function pageForSize(page: number, from: number, to: number): number {
+  return Math.floor(((page - 1) * from) / to) + 1
 }

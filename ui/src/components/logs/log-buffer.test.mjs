@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Batcher, appendBounded, capture, matches, windowRows } from './log-buffer.ts'
+import { Batcher, prependBounded, pageSizeOf, pageCount, pageSlice, pageForSize, capture, matches, windowRows } from './log-buffer.ts'
 
 const event = (over = {}) => ({ ts: '2026-10-17T12:00:00.000Z', dropped: false, fields: { message: 'Hello World', level: 'INFO' }, meta: { source: 'syslog' }, raw: 'Hello World', ...over })
 
@@ -28,11 +28,48 @@ test('matches applies severity, status, and query against precomputed text', () 
   assert.equal(matches(rejected, { ...all, query: 'filter' }), true, 'droppedBy is searchable')
 })
 
-test('appendBounded keeps the newest max items', () => {
-  assert.deepEqual(appendBounded([1, 2], [3], 5), [1, 2, 3])
-  assert.deepEqual(appendBounded([1, 2, 3], [4, 5, 6], 4), [3, 4, 5, 6])
+test('prependBounded puts the newest batch at the front', () => {
+  assert.deepEqual(prependBounded([3, 2, 1], [4], 5), [4, 3, 2, 1])
+  assert.deepEqual(prependBounded([], [1, 2, 3], 5), [3, 2, 1], 'arrival order is reversed into newest-first')
+  assert.deepEqual(prependBounded([3, 2, 1], [4, 5, 6], 4), [6, 5, 4, 3], 'the oldest fall off the end at the cap')
+  const batch = [1, 2]
+  prependBounded([], batch, 5)
+  assert.deepEqual(batch, [1, 2], 'the caller’s batch is not mutated')
   const same = [1]
-  assert.equal(appendBounded(same, [], 4), same, 'empty batch returns the same array')
+  assert.equal(prependBounded(same, [], 4), same, 'empty batch returns the same array')
+})
+
+test('pageSizeOf falls back for anything off the menu', () => {
+  assert.equal(pageSizeOf('250'), 250)
+  assert.equal(pageSizeOf('25'), 25)
+  assert.equal(pageSizeOf('500'), 500)
+  for (const stored of [null, '', 'abc', '37', '0', '1e3']) assert.equal(pageSizeOf(stored), 100, 'a stored value is user-editable text')
+})
+
+test('pageCount always counts at least one page', () => {
+  assert.equal(pageCount(0, 100), 1)
+  assert.equal(pageCount(1, 100), 1)
+  assert.equal(pageCount(100, 100), 1)
+  assert.equal(pageCount(101, 100), 2)
+  assert.equal(pageCount(1000, 25), 40)
+  assert.equal(pageCount(1000, 500), 2)
+})
+
+test('pageSlice clamps the page and cuts the last one short', () => {
+  assert.deepEqual(pageSlice(1000, 1, 100), { page: 1, start: 0, end: 100 })
+  assert.deepEqual(pageSlice(101, 2, 100), { page: 2, start: 100, end: 101 })
+  assert.deepEqual(pageSlice(1000, 99, 100), { page: 10, start: 900, end: 1000 }, 'a page beyond the end shows the oldest page')
+  assert.equal(pageSlice(1000, 0, 100).page, 1)
+  assert.equal(pageSlice(1000, -3, 100).page, 1)
+  assert.deepEqual(pageSlice(0, 3, 100), { page: 1, start: 0, end: 0 }, 'an empty buffer is page 1 of 1')
+})
+
+test('pageForSize keeps the top row when rows-per-page changes', () => {
+  assert.equal(pageForSize(1, 100, 25), 1, 'page 1 stays page 1')
+  assert.equal(pageForSize(1, 25, 500), 1, 'page 1 stays page 1')
+  assert.equal(pageForSize(3, 100, 25), 9)
+  assert.equal(pageForSize(9, 25, 100), 3)
+  assert.equal(pageForSize(2, 500, 25), 21)
 })
 
 test('batcher flushes many pushes as one batch per schedule tick', () => {

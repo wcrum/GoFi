@@ -21,7 +21,7 @@ const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.t
 /** The same destinations as the top-bar "New" menu. */
 const actions = (): Entry[] => [
   { id: 'action:new-flow', section: 'Actions', label: t('gofi.shell.search.action-new-flow', 'New flow'), icon: 'exchange-alt', href: paths.newFlow(), keywords: t('gofi.shell.search.action-new-flow-keywords', 'create add flow') },
-  { id: 'action:new-library', section: 'Actions', label: t('gofi.shell.search.action-new-function-library', 'New function library'), icon: 'brackets-curly', href: paths.libraries(), keywords: t('gofi.shell.search.action-new-python-library-keywords', 'create add python library') },
+  { id: 'action:new-library', section: 'Actions', label: t('gofi.shell.search.action-new-function-library', 'New function library'), icon: 'brackets-curly', href: paths.newFunction(), keywords: t('gofi.shell.search.action-new-python-library-keywords', 'create add python library') },
   { id: 'action:new-cel', section: 'Actions', label: t('gofi.shell.search.action-new-cel-expression', 'New CEL expression'), icon: 'book-open', href: paths.expressions('new'), keywords: t('gofi.shell.search.action-new-cel-expression-keywords', 'create add cel expression') },
 ]
 

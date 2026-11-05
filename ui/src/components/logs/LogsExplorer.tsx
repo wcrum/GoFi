@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { css, cx } from '@emotion/css'
 import type { GrafanaTheme2 } from '@grafana/data'
-import { Alert, Button, Combobox, FilterInput, Icon, PanelChrome, RadioButtonGroup, Spinner, Stack, Text, useStyles2, useTheme2 } from '@grafana/ui'
+import { Alert, Button, Combobox, FilterInput, Icon, Pagination, PanelChrome, RadioButtonGroup, Spinner, Stack, Text, useStyles2, useTheme2 } from '@grafana/ui'
 import type { SimulateResult, TapEvent } from '../../types'
 import { getFlow, simulateFlow, streamAllFlows, streamFlow } from '../../api'
 import { MockTraceView } from '../MockTraceView'
@@ -10,12 +10,13 @@ import { FrameDebugDrawer } from '../python/debugger/FrameDebugDrawer'
 import { pythonSteps } from '../python/debugger/navigation'
 import { PanelEmpty } from '../PanelEmpty'
 import { formatNumber, t } from '../../i18n'
-import { Batcher, VOLUME_LEVELS, appendBounded, capture, matches, volumeLevel, windowRows, type CapturedEvent, type VolumeLevel } from './log-buffer'
+import { Batcher, DEFAULT_PAGE_SIZE, PAGE_SIZES, VOLUME_LEVELS, capture, matches, pageCount, pageForSize, pageSizeOf, pageSlice, prependBounded, volumeLevel, windowRows, type CapturedEvent, type VolumeLevel } from './log-buffer'
 
 const MAX_EVENTS = 1000
 const VOLUME_SECONDS = 60
 /** Collapsed rows have one fixed height so the list can be windowed. */
 const ROW_HEIGHT = 30
+const ROWS_KEY = 'gofi.logs.rowsPerPage'
 type Detail = 'fields' | 'metadata' | 'raw' | 'json'
 
 function source(event: TapEvent): string { return event.meta.source || event.meta.remoteAddr || String(event.fields.source ?? '—') }
@@ -35,8 +36,8 @@ function levelColors(theme: GrafanaTheme2): Record<VolumeLevel, string> {
 /**
  * Grafana Explore-style live log view for one flow ('' = all). Events are
  * batched per animation frame (at most one re-render per frame under load),
- * searched against text lowercased once on arrival, and only the rows in
- * view are rendered.
+ * searched against text lowercased once on arrival, held newest-first in
+ * pages, and only the rows in view are rendered.
  */
 export function LogsExplorer({ flow }: { flow: string }) {
   const styles = useStyles2(getStyles)
@@ -44,10 +45,12 @@ export function LogsExplorer({ flow }: { flow: string }) {
   const [events, setEvents] = useState<CapturedEvent[]>([])
   const [connected, setConnected] = useState(false)
   const [paused, setPaused] = useState(false)
-  const [autoScroll, setAutoScroll] = useState(true)
   const [query, setQuery] = useState('')
   const [severity, setSeverity] = useState('all')
   const [status, setStatus] = useState('all')
+  // Rows per page is remembered per browser; the retained buffer stays MAX_EVENTS.
+  const [pageSize, setPageSizeState] = useState(() => { try { return pageSizeOf(localStorage.getItem(ROWS_KEY)) } catch { return DEFAULT_PAGE_SIZE } })
+  const [page, setPage] = useState(1)
   // Events the controller skipped for this stream because this tab fell behind.
   const [dropped, setDropped] = useState(0)
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
@@ -66,9 +69,9 @@ export function LogsExplorer({ flow }: { flow: string }) {
   pausedRef.current = paused
 
   useEffect(() => {
-    setConnected(false); setEvents([]); setDropped(0); setExpanded(new Set()); setExtras(new Map()); volume.current.clear(); pendingDrops.current = 0
+    setConnected(false); setEvents([]); setDropped(0); setExpanded(new Set()); setExtras(new Map()); setPage(1); volume.current.clear(); pendingDrops.current = 0
     const batcher = new Batcher<CapturedEvent>(batch => {
-      setEvents(previous => appendBounded(previous, batch, MAX_EVENTS))
+      setEvents(previous => prependBounded(previous, batch, MAX_EVENTS))
       if (pendingDrops.current) { const drops = pendingDrops.current; pendingDrops.current = 0; setDropped(value => value + drops) }
     })
     const receive = (name: string, event: TapEvent) => {
@@ -96,15 +99,30 @@ export function LogsExplorer({ flow }: { flow: string }) {
 
   const filters = useMemo(() => ({ query, severity, status }), [query, severity, status])
   const filtered = useMemo(() => { const lower = query.toLowerCase(); return events.filter(item => matches(item, filters, lower)) }, [events, filters, query])
-  // Expanded rows keep their measured extra height by id; windowing wants it by index.
+  const pages = pageCount(filtered.length, pageSize)
+  // `current`, not `page`, drives every render and handler: a stale high page
+  // after a filter or a Clear then shows the oldest page, not blank rows.
+  const { page: current, start, end } = pageSlice(filtered.length, page, pageSize)
+  const pageRows = useMemo(() => filtered.slice(start, end), [filtered, start, end])
+  // Expanded rows keep their measured extra height by id; windowing wants it
+  // by index into the rendered page. Entries off the page are never looked up,
+  // so an expanded row keeps its height when the user pages away and back.
   const extraByIndex = useMemo(() => {
     const map = new Map<number, number>()
     if (!extras.size) return map
-    filtered.forEach((item, index) => { const extra = extras.get(item.id); if (extra) map.set(index, extra) })
+    pageRows.forEach((item, index) => { const extra = extras.get(item.id); if (extra) map.set(index, extra) })
     return map
-  }, [filtered, extras])
-  const window_ = useMemo(() => windowRows(filtered.length, scrollTop, viewport, ROW_HEIGHT, extraByIndex), [filtered.length, scrollTop, viewport, extraByIndex])
-  useLayoutEffect(() => { if (autoScroll && !paused && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [filtered, autoScroll, paused])
+  }, [pageRows, extras])
+  const window_ = useMemo(() => windowRows(pageRows.length, scrollTop, viewport, ROW_HEIGHT, extraByIndex), [pageRows.length, scrollTop, viewport, extraByIndex])
+  // A page opens on its newest row; the window is index-based, so the scroll
+  // position has to reset with the page or it indexes past a shorter one.
+  // Rows-per-page counts too: resizing page 1 from 500 to 25 keeps `current`
+  // at 1, and a retained scrollTop would open it on its oldest rows.
+  useLayoutEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; setScrollTop(0) }, [current, pageSize])
+  // `pageSlice` clamps, but the clamp has to stick: left unreconciled, a page
+  // the buffer has rolled past stays in state and re-asserts itself the moment
+  // the filtered count grows again, moving the view under the reader.
+  useEffect(() => { if (page !== current) setPage(current) }, [page, current])
   // The scroller mounts only once the panel has measured itself, after this
   // component's own mount, so the viewport is read when the element appears
   // (a callback ref), not in a one-time effect that found no element and
@@ -128,18 +146,24 @@ export function LogsExplorer({ flow }: { flow: string }) {
     if (extra) next.set(id, extra); else next.delete(id)
     return next
   }), [])
-  const scrollToNewest = () => { setAutoScroll(true); if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }
-  const clear = () => { setEvents([]); setDropped(0); setExpanded(new Set()); setExtras(new Map()) }
+  const changePageSize = (next: number) => {
+    setPage(pageForSize(current, pageSize, next))
+    setPageSizeState(next)
+    try { localStorage.setItem(ROWS_KEY, String(next)) } catch { /* private mode */ }
+  }
+  const clear = () => { setEvents([]); setDropped(0); setExpanded(new Set()); setExtras(new Map()); setPage(1) }
   const columns = all ? styles.columnsAll : styles.columns
 
   return <div className={styles.root}>
     <div className={styles.toolbar} role="toolbar" aria-label={t('gofi.logs.explorer.controls-label', 'Log controls')}>
       <RadioButtonGroup aria-label={t('gofi.logs.explorer.stream-mode-label', 'Stream mode')} value={paused ? 'paused' : 'live'} onChange={value => setPaused(value === 'paused')}
         options={[{ value: 'live', label: t('gofi.logs.explorer.mode-live', 'Live'), icon: 'play' }, { value: 'paused', label: t('gofi.logs.explorer.mode-paused', 'Paused'), icon: 'pause' }]} />
-      <div className={styles.search}><FilterInput aria-label={t('gofi.logs.explorer.search-label', 'Search traffic logs')} value={query} onChange={setQuery} placeholder={t('gofi.logs.explorer.search-placeholder', 'Search fields, metadata, or raw traffic')} /></div>
-      <Combobox aria-label={t('gofi.logs.explorer.level-filter-label', 'Level filter')} width={18} value={severity} onChange={option => setSeverity(option.value)}
+      {/* Every filter resets the page: an index means nothing across a different
+          result set, and whoever just typed one wants the newest matches. */}
+      <div className={styles.search}><FilterInput aria-label={t('gofi.logs.explorer.search-label', 'Search traffic logs')} value={query} onChange={value => { setQuery(value); setPage(1) }} placeholder={t('gofi.logs.explorer.search-placeholder', 'Search fields, metadata, or raw traffic')} /></div>
+      <Combobox aria-label={t('gofi.logs.explorer.level-filter-label', 'Level filter')} width={18} value={severity} onChange={option => { setSeverity(option.value); setPage(1) }}
         options={['all', 'error', 'warn', 'info', 'debug', 'trace'].map(value => ({ value, label: value === 'all' ? t('gofi.logs.explorer.all-levels', 'All levels') : value.toUpperCase() }))} />
-      <Combobox aria-label={t('gofi.logs.explorer.status-filter-label', 'Status filter')} width={18} value={status} onChange={option => setStatus(option.value)}
+      <Combobox aria-label={t('gofi.logs.explorer.status-filter-label', 'Status filter')} width={18} value={status} onChange={option => { setStatus(option.value); setPage(1) }}
         options={[{ value: 'all', label: t('gofi.logs.explorer.status-all', 'All traffic') }, { value: 'accepted', label: t('gofi.logs.explorer.status-accepted', 'Accepted') }, { value: 'rejected', label: t('gofi.logs.explorer.status-rejected', 'Rejected') }, { value: 'parse-error', label: t('gofi.logs.explorer.status-parse-errors', 'Parse errors') }]} />
       <Button variant="secondary" fill="outline" icon="trash-alt" onClick={clear}>{t('gofi.logs.explorer.clear', 'Clear')}</Button>
     </div>
@@ -162,20 +186,41 @@ export function LogsExplorer({ flow }: { flow: string }) {
             <span className={cx(styles.dot, !connected ? styles.dotWarn : paused ? styles.dotIdle : styles.dotLive)} />
             {!connected ? t('gofi.logs.explorer.state-reconnecting', 'Reconnecting…') : paused ? t('gofi.logs.explorer.state-paused', 'Paused') : t('gofi.logs.explorer.state-streaming', 'Streaming')}
           </span>
-          {!autoScroll && <Button size="sm" variant="secondary" icon="arrow-down" onClick={scrollToNewest}>{t('gofi.logs.explorer.scroll-to-newest', 'Scroll to newest')}</Button>}
         </Stack>}>
         {(_innerWidth, innerHeight) => <div className={styles.logsBody} style={{ height: innerHeight }}>
           <div className={cx(styles.headerRow, columns)} aria-hidden="true">
-            <span /><span>{t('gofi.logs.explorer.column-time', 'Time (UTC)')}</span><span>{t('gofi.logs.explorer.column-level', 'Level')}</span><span>{t('gofi.logs.explorer.column-status', 'Status')}</span>{all && <span>{t('gofi.logs.explorer.column-flow', 'Flow')}</span>}<span>{t('gofi.logs.explorer.column-source', 'Source')}</span><span>{t('gofi.logs.explorer.column-message', 'Message')}</span><span />
+            <span /><span>{t('gofi.logs.explorer.column-time', 'Time (UTC)')} <Icon name="arrow-down" size="xs" title={t('gofi.logs.explorer.newest-first', 'Newest first')} /></span><span>{t('gofi.logs.explorer.column-level', 'Level')}</span><span>{t('gofi.logs.explorer.column-status', 'Status')}</span>{all && <span>{t('gofi.logs.explorer.column-flow', 'Flow')}</span>}<span>{t('gofi.logs.explorer.column-source', 'Source')}</span><span>{t('gofi.logs.explorer.column-message', 'Message')}</span><span />
           </div>
-          <div ref={setScroller} className={styles.rows}
-            onScroll={event => { const target = event.currentTarget; setScrollTop(target.scrollTop); const away = target.scrollHeight - target.scrollTop - target.clientHeight > 40; if (away && autoScroll) setAutoScroll(false) }}>
+          <div ref={setScroller} className={styles.rows} onScroll={event => setScrollTop(event.currentTarget.scrollTop)}>
             {!filtered.length && <PanelEmpty icon={!events.length ? 'signal' : 'filter'} text={!events.length ? t('gofi.logs.explorer.empty-waiting', 'Waiting for observed traffic…') : t('gofi.logs.explorer.empty-no-match', 'No buffered events match these filters.')} detail={!events.length ? t('gofi.logs.explorer.empty-waiting-detail', 'Frames appear here as soon as the flow receives them.') : undefined} />}
-            {filtered.length > 0 && <div style={{ height: window_.top, flexShrink: 0 }} aria-hidden="true" />}
-            {filtered.slice(window_.start, window_.end).map(item => <LogRow key={item.id} item={item} showFlow={all} columns={columns} expanded={expanded.has(item.id)} onToggle={toggle} onMeasure={measure} />)}
-            {filtered.length > 0 && <div style={{ height: window_.bottom, flexShrink: 0 }} aria-hidden="true" />}
+            {pageRows.length > 0 && <div style={{ height: window_.top, flexShrink: 0 }} aria-hidden="true" />}
+            {pageRows.slice(window_.start, window_.end).map(item => <LogRow key={item.id} item={item} showFlow={all} columns={columns} expanded={expanded.has(item.id)} onToggle={toggle} onMeasure={measure} />)}
+            {pageRows.length > 0 && <div style={{ height: window_.bottom, flexShrink: 0 }} aria-hidden="true" />}
           </div>
-          <div className={styles.footer}><Text variant="bodySmall" color="secondary">{paused ? t('gofi.logs.explorer.footer-paused', 'Paused · incoming events are not appended') : t('gofi.logs.explorer.footer-observed', 'Observed traffic; destination processing is not confirmed')}</Text></div>
+          <div className={styles.footer}>
+            <Text variant="bodySmall" color="secondary">{paused ? t('gofi.logs.explorer.footer-paused', 'Paused · incoming events are not appended') : t('gofi.logs.explorer.footer-observed', 'Observed traffic; destination processing is not confirmed')}</Text>
+            {/* Index paging keeps the page number, not the rows: while live, an
+                older page's contents drift as new events land at the front. */}
+            {!paused && current > 1 && <Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.live-paging-hint', 'New events land on page 1; pause to freeze this page')}</Text>}
+            {/* No rows, nothing to page: the empty and no-match states stay as
+                clean as they were before paging existed. */}
+            {filtered.length > 0 && <span className={styles.pager} role="group" aria-label={t('gofi.logs.explorer.pages-label', 'Log pages')}>
+              {/* The header row's arrow is inside an aria-hidden subtree, so the
+                  order the rows just inverted to is stated here instead. */}
+              <Text variant="bodySmall" color="secondary">{t('gofi.logs.explorer.newest-first', 'Newest first')}</Text>
+              <Combobox aria-label={t('gofi.logs.explorer.rows-per-page-label', 'Rows per page')} width={9} value={pageSize} onChange={option => changePageSize(option.value)}
+                options={PAGE_SIZES.map(value => ({ value, label: formatNumber(value) }))} />
+              {/* Pagination's prev/next keep focus on themselves and announce
+                  nothing, so the page the user landed on is the live region. */}
+              <Text variant="bodySmall" color="secondary" tabular><span role="status">{t('gofi.logs.explorer.page-of', 'Page {{page}} of {{pages}}', { page: formatNumber(current), pages: formatNumber(pages) })}</span></Text>
+              <span className={styles.pagination}><Pagination currentPage={current} numberOfPages={pages} onNavigate={setPage} showSmallVersion hideWhenSinglePage /></span>
+              {/* Mounted on every page: conditional rendering unmounted the
+                  button under the keyboard that had just activated it, dropping
+                  focus to document.body (and `disabled` does the same in Chrome).
+                  On page 1 it is a no-op. */}
+              <Button size="sm" variant="secondary" icon="arrow-up" onClick={() => setPage(1)}>{t('gofi.logs.explorer.jump-to-newest', 'Jump to newest')}</Button>
+            </span>}
+          </div>
         </div>}
       </PanelChrome>}
     </Sized>
@@ -337,7 +382,11 @@ const getStyles = (theme: GrafanaTheme2) => {
     }),
     rows: css({ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }),
     empty: css({ padding: theme.spacing(4, 2) }),
-    footer: css({ flexShrink: 0, padding: theme.spacing(0.5, 1), borderTop: `1px solid ${theme.colors.border.weak}` }),
+    footer: css({ flexShrink: 0, display: 'flex', alignItems: 'center', gap: theme.spacing(1), flexWrap: 'wrap', padding: theme.spacing(0.5, 1), borderTop: `1px solid ${theme.colors.border.weak}` }),
+    pager: css({ display: 'inline-flex', alignItems: 'center', gap: theme.spacing(1), marginLeft: 'auto' }),
+    // Grafana's Pagination floats right and spaces its list for a page footer;
+    // a descendant selector beats its own single class whatever the insertion order.
+    pagination: css({ display: 'inline-flex', '> div': { float: 'none' }, ol: { margin: 0, display: 'inline-flex', alignItems: 'center' }, li: { marginBottom: 0, paddingLeft: theme.spacing(0.5) } }),
     row: css({ borderBottom: `1px solid ${theme.colors.border.weak}`, flexShrink: 0, boxSizing: 'border-box' }),
     rowExpanded: css({ background: theme.colors.background.secondary }),
     rowButton: css({
