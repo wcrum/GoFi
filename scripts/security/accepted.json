@@ -1,0 +1,28 @@
+{
+  "$comment": [
+    "Vulnerabilities govulncheck reports that this project has assessed and accepted.",
+    "An entry needs a reason that explains why the code is not reachable or not at",
+    "risk, and a review date. scripts/security/vulncheck.py fails the build on any",
+    "finding that is not listed here, and also on any entry whose review date has",
+    "passed, so an acceptance cannot be forgotten.",
+    "Remove an entry as soon as a fixed version exists: the gate does not check that."
+  ],
+  "go": [
+    {
+      "id": "GO-2026-4887",
+      "aliases": ["CVE-2026-34040", "GHSA-x744-4wpc-v9h2"],
+      "module": "github.com/docker/docker",
+      "summary": "Moby AuthZ plugin bypass via oversized request bodies",
+      "reason": "Daemon-side: the flaw is in Moby's API server AuthZ middleware. GoFi links only the Docker client and api/types packages (verify with `go list -deps ./... | grep docker/docker`); it never imports api/server, middleware or plugin. The advisory carries no symbol data, so govulncheck can only flag the whole module. No fixed version is published for the Go module.",
+      "review_by": "2026-12-15"
+    },
+    {
+      "id": "GO-2026-4883",
+      "aliases": ["CVE-2026-33997", "GHSA-pxq6-2prw-chj9"],
+      "module": "github.com/docker/docker",
+      "summary": "Moby off-by-one in plugin privilege validation",
+      "reason": "Daemon-side: the flaw is in Moby's plugin install privilege check. GoFi never installs Docker plugins and does not import the plugin packages. Same module-level false positive as GO-2026-4887. No fixed version is published for the Go module.",
+      "review_by": "2026-12-15"
+    }
+  ]
+}

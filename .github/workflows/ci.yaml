@@ -163,6 +163,11 @@ jobs:
         run: |
           npm --prefix ui ci
           ui/node_modules/.bin/playwright-core install --with-deps chromium
+      # embed.go embeds ui/dist, so the portal must be built before the
+      # controller: without it the build fails on "pattern ui/dist: no
+      # matching files found" and the smoke tests never run.
+      - name: Build the portal
+        run: npm --prefix ui run build
       - name: Build the controller
         run: CGO_ENABLED=0 go build -trimpath -o bin/gofi-e2e .
       - name: Smoke every page, flow lifecycle, live traffic, reconnect
@@ -177,3 +182,47 @@ jobs:
         with:
           name: reports-ui
           path: testenv/reports/
+  security:
+    name: Dependency vulnerabilities (Go, portal, Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.0"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # Blocks on any advisory govulncheck believes the code calls and that is
+      # not accepted in scripts/security/accepted.json, where every waiver
+      # carries a reason and a review date that expires.
+      - name: Go modules called by this code
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@latest
+          PATH="$RUNNER_TEMP/bin:$PATH" python3 scripts/security/vulncheck.py --mode symbol
+      # The whole module graph, reachable or not. Advisory only: an unreachable
+      # flaw in a transitive module is worth seeing, not worth blocking a merge.
+      - name: Go module graph (advisory)
+        continue-on-error: true
+        run: PATH="$RUNNER_TEMP/bin:$PATH" python3 scripts/security/vulncheck.py --mode module
+      # Blocks on high and critical. The portal carries moderate advisories that
+      # only a breaking @grafana/ui downgrade would clear; the next step keeps
+      # them visible so they are not forgotten.
+      - name: Portal dependencies
+        run: npm --prefix ui audit --audit-level=high
+      - name: Portal dependencies, moderate and low (advisory)
+        continue-on-error: true
+        run: npm --prefix ui audit
+      - name: Python worker dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/pip" install -q pip-audit
+          "$RUNNER_TEMP/audit/bin/pip-audit" --progress-spinner off \
+            -r python/requirements.txt -r python/requirements-tooling.txt
