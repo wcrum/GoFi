@@ -6,7 +6,7 @@ require (
 	cel.dev/cel-go v0.32.0
 	connectrpc.com/connect v1.21.0
 	github.com/alicebob/miniredis/v2 v2.40.0
-	github.com/andybalholm/brotli v1.2.6
+	github.com/andybalholm/brotli v1.2.8
 	github.com/anthropics/anthropic-sdk-go v1.82.0
 	github.com/coder/websocket v1.8.14
 	github.com/containerd/errdefs v1.0.0
