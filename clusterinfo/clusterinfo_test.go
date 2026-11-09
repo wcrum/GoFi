@@ -155,3 +155,77 @@ func TestImageTagStripsZarfSuffix(t *testing.T) {
 		}
 	}
 }
+
+// An address on its own does not tell a sender what name to use. The Istio
+// Gateway fronted by a load balancer holds the hosts, and UDS Core's
+// ClusterConfig holds the domains those hosts complete.
+func TestDescribeNamesHostsBehindLoadBalancersAndUDSDomains(t *testing.T) {
+	cs := fake.NewSimpleClientset(
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "admin-ingressgateway", Namespace: "istio-admin-gateway"},
+			Spec:   corev1.ServiceSpec{Type: corev1.ServiceTypeLoadBalancer, Selector: map[string]string{"app": "admin-ingressgateway", "istio": "ingress"}, Ports: []corev1.ServicePort{{Port: 443, Protocol: corev1.ProtocolTCP}}},
+			Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.21.0.200"}}}}},
+		// Another namespace's load balancer must not inherit those hosts.
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "flow-udp", Namespace: "gofi"},
+			Spec:   corev1.ServiceSpec{Type: corev1.ServiceTypeLoadBalancer, Selector: map[string]string{"gofi.io/listener": "radar"}, Ports: []corev1.ServicePort{{Port: 30001, Protocol: corev1.ProtocolUDP}}},
+			Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.21.0.202"}}}}},
+	)
+	disc := cs.Discovery().(*fakediscovery.FakeDiscovery)
+	disc.Resources = []*metav1.APIResourceList{
+		{GroupVersion: "networking.istio.io/v1", APIResources: []metav1.APIResource{{Name: "gateways", Namespaced: true, Kind: "Gateway"}}},
+		{GroupVersion: "uds.dev/v1alpha1", APIResources: []metav1.APIResource{{Name: "clusterconfig", Kind: "ClusterConfig"}}},
+	}
+	istioGVR := schema.GroupVersionResource{Group: "networking.istio.io", Version: "v1", Resource: "gateways"}
+	configGVR := schema.GroupVersionResource{Group: "uds.dev", Version: "v1alpha1", Resource: "clusterconfig"}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+		istioGVR:  "GatewayList",
+		configGVR: "ClusterConfigList",
+	})
+	// Seeded objects land under a guessed plural ("clusterconfigs"), so create
+	// these two under the resource names the cluster actually serves.
+	config := obj("uds.dev/v1alpha1", "ClusterConfig", "", "uds-cluster-config", map[string]any{
+		"spec": map[string]any{"expose": map[string]any{"domain": "uds.dev", "adminDomain": "admin.uds.dev"}}})
+	if _, err := dyn.Resource(configGVR).Create(context.Background(), config, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	gateway := obj("networking.istio.io/v1", "Gateway", "istio-admin-gateway", "admin-gateway", map[string]any{
+		"spec": map[string]any{"selector": map[string]any{"app": "admin-ingressgateway"}, "servers": []any{
+			map[string]any{"port": map[string]any{"number": int64(443), "protocol": "HTTPS"}, "hosts": []any{"*.admin.uds.dev"}},
+			map[string]any{"port": map[string]any{"number": int64(80), "protocol": "HTTP"}, "hosts": []any{"keycloak.admin.uds.dev", "*.admin.uds.dev"}},
+		}},
+	})
+	if _, err := dyn.Resource(istioGVR).Namespace("istio-admin-gateway").Create(context.Background(), gateway, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	client := &Client{CS: cs, Dyn: dyn, Disc: disc, Opts: Options{Namespace: "gofi", ClusterWide: true}}
+	out, err := client.Describe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.UdsDomain != "uds.dev" || out.UdsAdminDomain != "admin.uds.dev" {
+		t.Fatalf("UDS domains: %q / %q", out.UdsDomain, out.UdsAdminDomain)
+	}
+	hosts := map[string][]string{}
+	for _, lb := range out.LoadBalancers {
+		hosts[lb.Namespace+"/"+lb.Name] = lb.Hosts
+	}
+	admin := hosts["istio-admin-gateway/admin-ingressgateway"]
+	if len(admin) != 2 || admin[0] != "*.admin.uds.dev" || admin[1] != "keycloak.admin.uds.dev" {
+		t.Fatalf("admin gateway hosts, sorted and deduplicated: %v", admin)
+	}
+	if got := hosts["gofi/flow-udp"]; len(got) != 0 {
+		t.Fatalf("a load balancer no Istio Gateway fronts has no hosts: %v", got)
+	}
+}
+
+func TestSelectorCoversOnlyWhenEveryGatewayLabelIsOnTheService(t *testing.T) {
+	gateway := map[string]string{"app": "ingress"}
+	if !selectorCovers(gateway, map[string]string{"app": "ingress", "istio": "ingress"}) {
+		t.Fatal("a Service selecting more labels still fronts the Gateway's Pods")
+	}
+	if selectorCovers(gateway, map[string]string{"app": "other"}) {
+		t.Fatal("a different value is a different workload")
+	}
+	if selectorCovers(gateway, nil) || selectorCovers(nil, map[string]string{"app": "ingress"}) {
+		t.Fatal("an empty selector matches nothing in particular, so it must not match")
+	}
+}

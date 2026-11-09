@@ -13,12 +13,13 @@ export interface ClusterCapability { id: string; name: string; present: boolean;
 export interface GatewayListener { name: string; protocol: string; port: number; hostname?: string; allowedRoutes?: string; attachedRoutes?: number; managedByGofi?: boolean }
 export interface GatewayInfo { namespace: string; name: string; className: string; controller?: string; addresses?: string[]; programmed?: boolean; listeners?: GatewayListener[]; implementation?: string; waypoint?: boolean; routeKinds?: string[] }
 export interface AddressPool { namespace: string; name: string; addresses?: string[]; autoAssign?: boolean }
-export interface LoadBalancerInfo { namespace: string; name: string; className?: string; addresses?: string[]; ports?: string[] }
+export interface LoadBalancerInfo { namespace: string; name: string; className?: string; addresses?: string[]; ports?: string[]; hosts?: string[] }
 export interface ClusterInfo {
   kubernetesVersion?: string; namespace: string; clusterWide?: boolean
   capabilities: ClusterCapability[]; gatewayClasses?: { name: string; controller: string; accepted?: boolean; implementation?: string }[]
   gateways: GatewayInfo[]; addressPools: AddressPool[]; loadBalancerClasses: string[]; loadBalancers: LoadBalancerInfo[]
   nodePortMin?: number; nodePortMax?: number; warnings: string[]; manageGatewayListeners?: boolean; manageUdsAllows?: boolean; namespaces: string[]
+  udsDomain?: string; udsAdminDomain?: string
 }
 export interface NetworkingObject { kind: string; apiVersion: string; namespace: string; name: string; engine: string; summary: string; details: string[]; yaml: string; affectedFlows: string[] }
 export interface ClusterNetworking { objects: NetworkingObject[]; namespaces: string[]; warnings: string[] }

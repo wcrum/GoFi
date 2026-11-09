@@ -170,6 +170,12 @@ jobs:
         run: npm --prefix ui run build
       - name: Build the controller
         run: CGO_ENABLED=0 go build -trimpath -o bin/gofi-e2e .
+      # The smoke test drives the portal the controller embeds (the bundle
+      # built above), not a Vite dev server. The dev server withholds every
+      # module request until its dependency pre-bundling finishes, and here it
+      # never got past that: it answered / with index.html, no page rendered a
+      # character, and all twenty page checks failed as "page rendered no
+      # text". GOFI_UI_E2E_VITE=1 smokes the dev server instead, locally.
       - name: Smoke every page, flow lifecycle, live traffic, reconnect
         env:
           GOFI_UI_E2E_OWN_BACKEND: "1"

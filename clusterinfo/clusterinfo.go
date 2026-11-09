@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -245,6 +246,21 @@ func conditionTrue(obj map[string]any, kind string) bool {
 		}
 	}
 	return false
+}
+
+// SupportsRouteKind reports whether a GatewayClass controller is known to
+// serve a Gateway API route kind. Istio serves no UDPRoute: it rejects a
+// UDP listener outright and writes no route status for a kind it does not
+// implement, so a UDPRoute created against an Istio Gateway stays unattached
+// with nothing to diagnose. `known` is false for a controller GoFi has no
+// table entry for -- another conformant implementation may well serve the
+// kind, so callers must not refuse on that alone.
+func SupportsRouteKind(controller, kind string) (supported, known bool) {
+	kinds, ok := routeKinds[implementation(controller)]
+	if !ok {
+		return false, false
+	}
+	return slices.Contains(kinds, kind), true
 }
 
 func implementation(controller string) string {

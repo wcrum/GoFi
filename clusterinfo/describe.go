@@ -3,6 +3,7 @@ package clusterinfo
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -117,6 +118,9 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 	}
 
 	lbClasses := map[string]bool{}
+	// Each load balancer's own selector, to match it to the Istio Gateways
+	// whose Pods it fronts below.
+	lbSelectors := map[string]map[string]string{}
 	serviceNamespace := ""
 	if !c.Opts.ClusterWide {
 		serviceNamespace = c.Opts.Namespace
@@ -140,9 +144,56 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 			for _, port := range svc.Spec.Ports {
 				info.Ports = append(info.Ports, fmt.Sprintf("%d/%s", port.Port, port.Protocol))
 			}
+			lbSelectors[svc.Namespace+"/"+svc.Name] = svc.Spec.Selector
 			out.LoadBalancers = append(out.LoadBalancers, info)
 		}
 	}
+	// The hostnames behind each load balancer address: an Istio Gateway holds
+	// the hosts it serves and a selector for its gateway Pods, which is the
+	// Service's own selector. Knowing them turns an address into the name a
+	// sender actually uses.
+	if len(out.LoadBalancers) > 0 {
+		istioGateways, err := c.list(ctx, versions, "networking.istio.io", "gateways", "", &out.Warnings)
+		if err != nil {
+			out.Warnings = append(out.Warnings, warning("Istio Gateways", err))
+		}
+		for _, gw := range istioGateways {
+			selector, _, _ := unstructured.NestedStringMap(gw.Object, "spec", "selector")
+			var hosts []string
+			for _, raw := range slice(gw.Object, "spec", "servers") {
+				server, ok := raw.(map[string]any)
+				if !ok {
+					continue
+				}
+				for _, host := range slice(server, "hosts") {
+					hosts = append(hosts, fmt.Sprint(host))
+				}
+			}
+			for _, lb := range out.LoadBalancers {
+				if lb.Namespace != gw.GetNamespace() || !selectorCovers(selector, lbSelectors[lb.Namespace+"/"+lb.Name]) {
+					continue
+				}
+				for _, host := range hosts {
+					if !slices.Contains(lb.Hosts, host) {
+						lb.Hosts = append(lb.Hosts, host)
+					}
+				}
+			}
+		}
+		for _, lb := range out.LoadBalancers {
+			sort.Strings(lb.Hosts)
+		}
+	}
+
+	// UDS Core's domains complete a published name: a Package exposing host
+	// "gofi" on the admin gateway is reachable at gofi.<adminDomain>.
+	if configs, err := c.listClusterScoped(ctx, versions, "uds.dev", "clusterconfig", &out.Warnings); err != nil {
+		out.Warnings = append(out.Warnings, warning("UDS ClusterConfig", err))
+	} else if len(configs) > 0 {
+		out.UdsDomain = str(configs[0].Object, "spec", "expose", "domain")
+		out.UdsAdminDomain = str(configs[0].Object, "spec", "expose", "adminDomain")
+	}
+
 	for class := range lbClasses {
 		out.LoadBalancerClasses = append(out.LoadBalancerClasses, class)
 	}
@@ -291,6 +342,20 @@ func allowedRoutes(listener map[string]any) string {
 		return "Selector: " + labelString(stringMap(labels))
 	}
 	return from
+}
+
+// selectorCovers reports whether a Service's selector includes every label a
+// Gateway selects, i.e. the Service fronts that Gateway's Pods.
+func selectorCovers(gatewaySelector, serviceSelector map[string]string) bool {
+	if len(gatewaySelector) == 0 || len(serviceSelector) == 0 {
+		return false
+	}
+	for key, value := range gatewaySelector {
+		if serviceSelector[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func firstNonEmpty(values ...string) string {

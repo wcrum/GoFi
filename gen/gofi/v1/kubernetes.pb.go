@@ -1912,12 +1912,15 @@ func (x *AddressPoolInfo) GetAutoAssign() bool {
 }
 
 type LoadBalancerInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	ClassName     string                 `protobuf:"bytes,3,opt,name=class_name,json=className,proto3" json:"class_name,omitempty"`
-	Addresses     []string               `protobuf:"bytes,4,rep,name=addresses,proto3" json:"addresses,omitempty"`
-	Ports         []string               `protobuf:"bytes,5,rep,name=ports,proto3" json:"ports,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	ClassName string                 `protobuf:"bytes,3,opt,name=class_name,json=className,proto3" json:"class_name,omitempty"`
+	Addresses []string               `protobuf:"bytes,4,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	Ports     []string               `protobuf:"bytes,5,rep,name=ports,proto3" json:"ports,omitempty"`
+	// Hostnames reached through this load balancer, from the Istio Gateways
+	// whose Pods it fronts (e.g. "*.admin.uds.dev").
+	Hosts         []string `protobuf:"bytes,6,rep,name=hosts,proto3" json:"hosts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1987,6 +1990,13 @@ func (x *LoadBalancerInfo) GetPorts() []string {
 	return nil
 }
 
+func (x *LoadBalancerInfo) GetHosts() []string {
+	if x != nil {
+		return x.Hosts
+	}
+	return nil
+}
+
 type DescribeClusterResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	KubernetesVersion string                 `protobuf:"bytes,1,opt,name=kubernetes_version,json=kubernetesVersion,proto3" json:"kubernetes_version,omitempty"`
@@ -2008,9 +2018,14 @@ type DescribeClusterResponse struct {
 	// GoFi maintains a UDS Package with each flow's network allows.
 	ManageUdsAllows bool `protobuf:"varint,14,opt,name=manage_uds_allows,json=manageUdsAllows,proto3" json:"manage_uds_allows,omitempty"`
 	// Namespaces GoFi can read (for destination pickers).
-	Namespaces    []string `protobuf:"bytes,15,rep,name=namespaces,proto3" json:"namespaces,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Namespaces []string `protobuf:"bytes,15,rep,name=namespaces,proto3" json:"namespaces,omitempty"`
+	// UDS Core's domains (ClusterConfig uds-cluster-config): a name published
+	// through the tenant gateway resolves at <host>.<uds_domain>, through the
+	// admin gateway at <host>.<uds_admin_domain>. Empty off UDS Core.
+	UdsDomain      string `protobuf:"bytes,16,opt,name=uds_domain,json=udsDomain,proto3" json:"uds_domain,omitempty"`
+	UdsAdminDomain string `protobuf:"bytes,17,opt,name=uds_admin_domain,json=udsAdminDomain,proto3" json:"uds_admin_domain,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DescribeClusterResponse) Reset() {
@@ -2146,6 +2161,20 @@ func (x *DescribeClusterResponse) GetNamespaces() []string {
 		return x.Namespaces
 	}
 	return nil
+}
+
+func (x *DescribeClusterResponse) GetUdsDomain() string {
+	if x != nil {
+		return x.UdsDomain
+	}
+	return ""
+}
+
+func (x *DescribeClusterResponse) GetUdsAdminDomain() string {
+	if x != nil {
+		return x.UdsAdminDomain
+	}
+	return ""
 }
 
 type ListClusterNetworkingRequest struct {
@@ -2804,14 +2833,15 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1c\n" +
 	"\taddresses\x18\x03 \x03(\tR\taddresses\x12\x1f\n" +
 	"\vauto_assign\x18\x04 \x01(\bR\n" +
-	"autoAssign\"\x97\x01\n" +
+	"autoAssign\"\xad\x01\n" +
 	"\x10LoadBalancerInfo\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
 	"class_name\x18\x03 \x01(\tR\tclassName\x12\x1c\n" +
 	"\taddresses\x18\x04 \x03(\tR\taddresses\x12\x14\n" +
-	"\x05ports\x18\x05 \x03(\tR\x05ports\"\xde\x05\n" +
+	"\x05ports\x18\x05 \x03(\tR\x05ports\x12\x14\n" +
+	"\x05hosts\x18\x06 \x03(\tR\x05hosts\"\xa7\x06\n" +
 	"\x17DescribeClusterResponse\x12-\n" +
 	"\x12kubernetes_version\x18\x01 \x01(\tR\x11kubernetesVersion\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12!\n" +
@@ -2830,7 +2860,10 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\x11manage_uds_allows\x18\x0e \x01(\bR\x0fmanageUdsAllows\x12\x1e\n" +
 	"\n" +
 	"namespaces\x18\x0f \x03(\tR\n" +
-	"namespaces\"<\n" +
+	"namespaces\x12\x1d\n" +
+	"\n" +
+	"uds_domain\x18\x10 \x01(\tR\tudsDomain\x12(\n" +
+	"\x10uds_admin_domain\x18\x11 \x01(\tR\x0eudsAdminDomain\"<\n" +
 	"\x1cListClusterNetworkingRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"\x80\x02\n" +
 	"\x10NetworkingObject\x12\x12\n" +

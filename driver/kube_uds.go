@@ -352,19 +352,124 @@ func UDSAllows(defs []spec.FlowDefinition) []any {
 			}
 		}
 	}
-	sort.SliceStable(allows, func(i, j int) bool {
-		return fmt.Sprint(allows[i]["description"]) < fmt.Sprint(allows[j]["description"])
-	})
-	out := make([]any, 0, len(allows))
+	// Identical entries first (a dead-letter sink repeating a sink), so only
+	// rules that differ in what they allow survive to be renamed.
+	unique := make([]map[string]any, 0, len(allows))
 	seen := map[string]bool{}
 	for _, entry := range allows {
 		key := fmt.Sprint(entry)
 		if !seen[key] {
 			seen[key] = true
-			out = append(out, entry)
+			unique = append(unique, entry)
 		}
 	}
+	uniqueDescriptions(unique)
+	sort.SliceStable(unique, func(i, j int) bool {
+		return fmt.Sprint(unique[i]["description"]) < fmt.Sprint(unique[j]["description"])
+	})
+	out := make([]any, 0, len(unique))
+	for _, entry := range unique {
+		out = append(out, entry)
+	}
 	return out
+}
+
+// uniqueDescriptions makes every allow's description unique. UDS names each
+// generated NetworkPolicy after the description, and Pepr denies the whole
+// Package when two rules would collide ("The combination of characteristics of
+// this network allow rule would create a duplicate NetworkPolicy ... add a
+// unique description field"). One flow with two destinations in the same
+// namespace collides that way, and the denial takes every other flow's allows
+// with it, so append what distinguishes the rules -- the port, then the remote
+// selector, then an ordinal -- until nothing collides. A description that is
+// already unique is left alone, so existing policy names do not churn.
+func uniqueDescriptions(allows []map[string]any) {
+	suffixes := []func(entry map[string]any, index int) string{
+		// Port and protocol, protocol last: a description ending in digits
+		// loses them to the sanitizer, so "on 8080" and "on 8081" would still
+		// collide while "on 8080/TCP" and "on 8081/TCP" do not.
+		func(entry map[string]any, _ int) string {
+			if port, ok := entry["port"].(int64); ok {
+				protocol, _ := entry["remoteProtocol"].(string)
+				if protocol == "" {
+					protocol = "TCP"
+				}
+				return fmt.Sprintf("on %d/%s", port, protocol)
+			}
+			return ""
+		},
+		func(entry map[string]any, _ int) string {
+			selector, _ := entry["remoteSelector"].(map[string]any)
+			if len(selector) == 0 {
+				return ""
+			}
+			keys := make([]string, 0, len(selector))
+			for key := range selector {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			parts := make([]string, 0, len(keys))
+			for _, key := range keys {
+				parts = append(parts, fmt.Sprintf("%s=%v", key, selector[key]))
+			}
+			return strings.Join(parts, ",")
+		},
+		// Letters, not numbers: an ordinal "#2" would be stripped as well.
+		func(_ map[string]any, index int) string { return "rule " + string(rune('a'+index%26)) },
+	}
+	for _, suffix := range suffixes {
+		// Grouped by the name UDS will generate, not by the description: two
+		// descriptions that sanitize to one name are the collision Pepr denies.
+		groups := map[string][]map[string]any{}
+		for _, entry := range allows {
+			groups[peprPolicyName(fmt.Sprint(entry["description"]))] = append(groups[peprPolicyName(fmt.Sprint(entry["description"]))], entry)
+		}
+		for _, group := range groups {
+			if len(group) < 2 {
+				continue
+			}
+			for index, entry := range group {
+				if added := suffix(entry, index); added != "" {
+					entry["description"] = fmt.Sprint(entry["description"]) + " " + added
+				}
+			}
+		}
+	}
+}
+
+// peprPolicyName mirrors uds-core's sanitizeResourceName (src/pepr/operator/
+// controllers/utils.ts), which names each generated NetworkPolicy: lowercased,
+// every run of non-alphanumerics collapsed to one "-", truncated to 250
+// characters, then leading and trailing characters that are not letters
+// removed. That last step drops a trailing port number, so two descriptions
+// differing only in their final digits name one policy -- which is the
+// collision Pepr denies.
+func peprPolicyName(description string) string {
+	letter := func(b byte) bool { return b >= 'a' && b <= 'z' }
+	var name strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(description) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			name.WriteRune(r)
+			dash = false
+		case !dash:
+			name.WriteByte('-')
+			dash = true
+		}
+	}
+	out := name.String()
+	if len(out) > 250 {
+		out = out[:250]
+	}
+	start, end := 0, len(out)
+	for start < end && !letter(out[start]) {
+		start++
+	}
+	for end > start && !letter(out[end-1]) {
+		end--
+	}
+	return out[start:end]
 }
 
 func peerName(peer spec.PeerRef) string {

@@ -270,7 +270,7 @@
         "load-balancer-default-description": "The cluster default load balancer serves this Service.",
         "load-balancer-description": "An external address on any port, such as 60084",
         "no-gateway-api": "Gateway API is not installed",
-        "no-gateways": "No Gateways found. Create one with Envoy Gateway or Istio first.",
+        "no-gateways": "No Gateway API Gateway can carry this flow{{waypoints}}. GoFi does not create Gateways — each brings its own proxy and address, so a cluster admin adds one (Envoy Gateway for UDP, Istio for TCP) — or expose this flow with LoadBalancer or NodePort.",
         "no-load-balancer": "No load balancer detected in this cluster",
         "no-route-support": "no {{routeKind}} support",
         "node-port-description": "A port on every node ({{min}}–{{max}})",
@@ -285,7 +285,10 @@
         "service-annotations": "Service annotations",
         "service-annotations-description": "For load balancer or platform integrations (for example kube-vip or cloud provider settings).",
         "uds-allow-managed": "GoFi adds the network allow for this exposure to its gofi-flows network policy Package.",
-        "uds-allow-unmanaged": "The cluster's network policy blocks this ingress unless a Package allows it. Enable managed allows in the chart (uds.manageAllows), or add an allow for this port."
+        "uds-allow-unmanaged": "The cluster's network policy blocks this ingress unless a Package allows it. Enable managed allows in the chart (uds.manageAllows), or add an allow for this port.",
+        "no-udp-gateway": "Nothing here can carry a UDPRoute: Istio implements none, and this cluster has no Envoy Gateway GatewayClass. Expose this flow with LoadBalancer or NodePort, or have Envoy Gateway installed first (on UDS Core, the envoy-gateway component).",
+        "no-gateway-for-route": "None of the {{count}} Gateway(s) GoFi can see carries a {{routeKind}}. GoFi does not create Gateways — each brings its own proxy and address, so a cluster admin adds one — or expose this flow with LoadBalancer or NodePort.",
+        "waypoints-only": " ({{count}} mesh waypoint(s) here serve the mesh only)"
       },
       "flow-canvas": {
         "example-drop-debug": "Drop a debug event",
@@ -717,7 +720,7 @@
         "check-failed": "Destination check failed",
         "choose-package-workload": "Choose a Package workload",
         "delivery": "Delivery",
-        "delivery-all": "Every Pod",
+        "delivery-all": "Every matching Pod",
         "delivery-all-description": "Every matching ready Pod receives each message (replay to all).",
         "delivery-one": "One Pod",
         "delivery-one-description": "Each message goes to one matching Pod, load-balanced.",
@@ -738,6 +741,7 @@
         "pick-package": "Pick from a network policy Package",
         "pick-package-description": "Workloads other Packages expose or admit on {{transport}}. Fills namespace, labels, and port; the Connectivity tab verifies the Package admits GoFi.",
         "pod-labels": "Pod labels",
+        "pod-labels-required": "Add at least one label. GoFi finds destination Pods by label, so a label-less selector would match nothing; \"Every matching Pod\" below means every Pod carrying these labels, not every Pod in the namespace.",
         "pods-by-label": "Kubernetes pods by label",
         "preview-pods": "Preview matching pods",
         "resolving": "Resolving...",
@@ -1837,7 +1841,9 @@
         "tab-overview": "Overview",
         "title": "Cluster",
         "warnings-title": "Some cluster details could not be read",
-        "waypoint": "waypoint"
+        "waypoint": "waypoint",
+        "column-hosts": "Hosts",
+        "uds-domains": "UDS domains: {{tenant}} for the tenant gateway, {{admin}} for the admin gateway — a name published there resolves as <host>.<domain>."
       },
       "endpoints": {
         "column-destination-urls": "Destination URLs",

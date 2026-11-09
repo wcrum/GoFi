@@ -35,16 +35,35 @@ export function ExposureSettings({ listen, onChange, readOnly, deployment }: { l
     value: `${pkg.namespace}|${pkg.name}|${workload}`, label: workload ? `${pkg.namespace}/${pkg.name} · ${workload}` : t('gofi.canvas.exposure-settings.any-workload', '{{package}} · any workload', { package: `${pkg.namespace}/${pkg.name}` }), description: pkg.phase ? t('gofi.canvas.exposure-settings.package-phase', 'Package {{phase}}', { phase: pkg.phase }) : undefined })))
   const senderValues = (service?.allowFrom ?? []).map(peer => `${peer.namespace}|${peer.package ?? ''}|${Object.entries(peer.selector ?? {}).map(([k, v]) => `${k}=${v}`).join(',')}`)
   const network = (listen.network || 'tcp').toUpperCase()
+  // QUIC is published as UDP — Service port, Gateway listener and route kind
+  // all follow the transport, not the name (driver.transportOf does the same).
+  const transport = network === 'QUIC' ? 'UDP' : network
   const set = (next: Partial<ServiceExposure> | undefined) => onChange({ ...listen, service: next === undefined ? undefined : { ...service!, ...next } })
   const range = { min: deployment?.nodePortMin || info?.nodePortMin || NODE_PORT_RANGE.min, max: deployment?.nodePortMax || info?.nodePortMax || NODE_PORT_RANGE.max }
   const nodePort = service?.nodePort
   const nodePortProblem = nodePort && (nodePort < range.min || nodePort > range.max) ? t('gofi.canvas.exposure-settings.node-port-range', 'This cluster accepts NodePorts {{min}}–{{max}}. For another port, use LoadBalancer or a Gateway route.', { min: range.min, max: range.max }) : undefined
 
   const gateways = (info?.gateways ?? []).filter(gw => !gw.waypoint)
-  const routeKind = network === 'UDP' ? 'UDPRoute' : 'TCPRoute'
+  const routeKind = transport === 'UDP' ? 'UDPRoute' : 'TCPRoute'
   const supports = (gw: GatewayInfo) => !gw.routeKinds?.length || gw.routeKinds.includes(routeKind)
   const selectedGateway = service?.gateway ? gateways.find(gw => gw.namespace === service.gateway!.namespace && gw.name === service.gateway!.name) : undefined
-  const listeners = (selectedGateway?.listeners ?? []).filter(l => l.protocol.toUpperCase() === network && !l.managedByGofi)
+  // Why the picker may offer nothing usable, said once, with the way out.
+  // GoFi does not create Gateways: each one brings its own data plane (Istio
+  // and Envoy Gateway deploy a proxy per Gateway and take a load-balancer
+  // address), which makes it a cluster-level object, not a per-flow one. And
+  // for UDP only Envoy Gateway can serve a route at all -- Istio implements
+  // no UDPRoute and rejects a UDP listener.
+  const eligibleGateways = gateways.filter(supports)
+  const envoyAvailable = (info?.gatewayClasses ?? []).some(cls => cls.implementation === 'envoy-gateway')
+  const waypointCount = (info?.gateways ?? []).filter(gw => gw.waypoint).length
+  const gatewayHelp = eligibleGateways.length
+    ? t('gofi.canvas.exposure-settings.gateway-field-description', 'Gateways that can carry a {{routeKind}}.', { routeKind })
+    : routeKind === 'UDPRoute' && !envoyAvailable
+      ? t('gofi.canvas.exposure-settings.no-udp-gateway', 'Nothing here can carry a UDPRoute: Istio implements none, and this cluster has no Envoy Gateway GatewayClass. Expose this flow with LoadBalancer or NodePort, or have Envoy Gateway installed first (on UDS Core, the envoy-gateway component).')
+      : gateways.length
+        ? t('gofi.canvas.exposure-settings.no-gateway-for-route', 'None of the {{count}} Gateway(s) GoFi can see carries a {{routeKind}}. GoFi does not create Gateways — each brings its own proxy and address, so a cluster admin adds one — or expose this flow with LoadBalancer or NodePort.', { count: gateways.length, routeKind })
+        : t('gofi.canvas.exposure-settings.no-gateways', 'No Gateway API Gateway can carry this flow{{waypoints}}. GoFi does not create Gateways — each brings its own proxy and address, so a cluster admin adds one (Envoy Gateway for UDP, Istio for TCP) — or expose this flow with LoadBalancer or NodePort.', { waypoints: waypointCount ? t('gofi.canvas.exposure-settings.waypoints-only', ' ({{count}} mesh waypoint(s) here serve the mesh only)', { count: waypointCount }) : '' })
+  const listeners = (selectedGateway?.listeners ?? []).filter(l => l.protocol.toUpperCase() === transport && !l.managedByGofi)
   const gatewayPort = service?.gateway?.port || listen.port
   const senderAddress = exposure === 'Gateway' && selectedGateway
     ? `${selectedGateway.addresses?.[0] ?? '<gateway address>'}:${service?.gateway?.listener ? (listeners.find(l => l.name === service.gateway!.listener)?.port ?? '?') : gatewayPort}`
@@ -83,17 +102,17 @@ export function ExposureSettings({ listen, onChange, readOnly, deployment }: { l
     </Field>}
 
     {exposure === 'Gateway' && <>
-      <Field label={t('gofi.canvas.exposure-settings.gateway', 'Gateway')} description={gateways.length ? t('gofi.canvas.exposure-settings.gateway-field-description', 'Gateways that can carry a {{routeKind}}.', { routeKind }) : t('gofi.canvas.exposure-settings.no-gateways', 'No Gateways found. Create one with Envoy Gateway or Istio first.')}>
+      <Field label={t('gofi.canvas.exposure-settings.gateway', 'Gateway')} description={gatewayHelp}>
         <Combobox disabled={readOnly} value={service?.gateway ? `${service.gateway.namespace}/${service.gateway.name}` : null}
           options={gateways.map(gw => ({ value: `${gw.namespace}/${gw.name}`, label: `${gw.namespace}/${gw.name}`,
             description: [gw.implementation || gw.className, gw.addresses?.length ? gw.addresses.join(', ') : '', supports(gw) ? '' : t('gofi.canvas.exposure-settings.no-route-support', 'no {{routeKind}} support', { routeKind }), gw.programmed === false ? t('gofi.canvas.exposure-settings.not-programmed', 'not programmed') : ''].filter(Boolean).join(' · ') }))}
           onChange={option => { const [namespace, name] = option.value.split('/'); set({ gateway: { namespace, name } }) }} />
       </Field>
-      {selectedGateway && !supports(selectedGateway) && <Alert severity="warning" title={t('gofi.canvas.exposure-settings.gateway-no-route', '{{gateway}} does not route {{network}}', { gateway: selectedGateway.implementation || selectedGateway.className, network })} bottomSpacing={0}>{t('gofi.canvas.exposure-settings.choose-envoy-gateway', 'Choose an Envoy Gateway Gateway for {{routeKind}}s.', { routeKind })}</Alert>}
+      {selectedGateway && !supports(selectedGateway) && <Alert severity="warning" title={t('gofi.canvas.exposure-settings.gateway-no-route', '{{gateway}} does not route {{network}}', { gateway: selectedGateway.implementation || selectedGateway.className, network: transport })} bottomSpacing={0}>{t('gofi.canvas.exposure-settings.choose-envoy-gateway', 'Choose an Envoy Gateway Gateway for {{routeKind}}s.', { routeKind })}</Alert>}
       {selectedGateway && <Field label={t('gofi.canvas.exposure-settings.listener', 'Listener')} description={info?.manageGatewayListeners ? t('gofi.canvas.exposure-settings.listener-managed-description', 'Use an existing listener, or let GoFi add one for this flow.') : t('gofi.canvas.exposure-settings.listener-unmanaged-description', 'GoFi may not add listeners here (chart gateway.manageListeners); pick an existing one.')}>
         <Combobox disabled={readOnly} value={service?.gateway?.listener || (info?.manageGatewayListeners ? ADD_LISTENER : null)}
           options={[
-            ...(info?.manageGatewayListeners ? [{ value: ADD_LISTENER, label: t('gofi.canvas.exposure-settings.add-listener', 'Add a listener for this flow'), description: t('gofi.canvas.exposure-settings.add-listener-description', 'GoFi adds gofi-<flow> ({{network}}) to {{gateway}}', { network, gateway: `${selectedGateway.namespace}/${selectedGateway.name}` }) }] : []),
+            ...(info?.manageGatewayListeners ? [{ value: ADD_LISTENER, label: t('gofi.canvas.exposure-settings.add-listener', 'Add a listener for this flow'), description: t('gofi.canvas.exposure-settings.add-listener-description', 'GoFi adds gofi-<flow> ({{network}}) to {{gateway}}', { network: transport, gateway: `${selectedGateway.namespace}/${selectedGateway.name}` }) }] : []),
             ...listeners.map(l => ({ value: l.name, label: `${l.name} · ${l.protocol} ${l.port}`, description: t('gofi.canvas.exposure-settings.listener-routes', 'Routes from {{allowedRoutes}} · {{n}} attached', { allowedRoutes: l.allowedRoutes || 'Same', n: l.attachedRoutes ?? 0 }) })),
           ]}
           onChange={option => set({ gateway: { ...service!.gateway!, listener: option.value === ADD_LISTENER ? undefined : option.value, port: option.value === ADD_LISTENER ? service?.gateway?.port : undefined } })} />

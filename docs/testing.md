@@ -140,19 +140,29 @@ add a toleration through `GOFI_LISTENER_POD_TEMPLATE`), then
 
 ## Portal smoke (`ui/e2e/run.mjs`)
 
-Playwright (`playwright-core`, headless Chromium) against the Vite dev server
-and a controller: every page renders in dark and light with no console errors,
+Playwright (`playwright-core`, headless Chromium) against a controller and the
+portal it serves: every page renders in dark and light with no console errors,
 page errors, failed requests, or 5xx responses (RPC-level 4xx such as
 NotFound for a stopped flow's runtime are application semantics and ignored);
 a flow goes through create, edit (YAML editor), stop, start, restart, rollback
 (Resource tab, "Restore this version"), and delete entirely through the UI;
 the Live traffic tab shows a sent message; and, when the runner owns the
-backend (`GOFI_UI_E2E_OWN_BACKEND=1` spawns `bin/gofi-e2e` and Vite), the
+backend (`GOFI_UI_E2E_OWN_BACKEND=1` spawns `bin/gofi-e2e`), the
 live view is checked after a backend restart. That last check is a warning
 unless `GOFI_UI_E2E_STRICT=1`: today the live view does not resume without a
 page reload. Screenshots land in `testenv/reports/ui/`, results in
 `testenv/reports/ui-smoke.json`. `npx playwright-core install chromium` once;
 `GOFI_PW_MODULES` points at another `node_modules` holding playwright-core.
+
+With its own backend the portal under test is the one the controller embeds
+(`ui/dist`, so build it first) — the bundle that ships, and no dev server to
+stall: on the GitHub runner Vite served `index.html` and then never served the
+module graph, so all twenty page checks failed as "page rendered no text" for
+24 minutes with nothing in the log. `GOFI_UI_E2E_VITE=1` smokes the dev server
+instead (it adds a warm-up pass for Vite's dependency pre-bundling). A page
+that renders nothing is now reported with its own errors, the requests still
+in flight, and an HTML dump plus screenshot in `testenv/reports/ui/`; the
+child processes' output is kept in `testenv/reports/ui/logs/`.
 
 ## Reading the reports
 

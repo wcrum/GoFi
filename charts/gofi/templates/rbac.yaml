@@ -110,8 +110,10 @@ rules:
   - apiGroups: ["security.istio.io"]
     resources: ["authorizationpolicies", "peerauthentications"]
     verbs: ["get", "list"]
+  # clusterconfig carries UDS Core's domains, which turn a published host into
+  # the FQDN senders use; it is cluster-scoped, so it lives in this role.
   - apiGroups: ["uds.dev"]
-    resources: ["packages"]
+    resources: ["packages", "clusterconfig"]
     verbs: ["get", "list"]
   - apiGroups: ["metallb.io"]
     resources: ["ipaddresspools", "l2advertisements"]

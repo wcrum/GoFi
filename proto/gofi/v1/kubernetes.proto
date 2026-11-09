@@ -236,6 +236,9 @@ message LoadBalancerInfo {
   string class_name = 3;
   repeated string addresses = 4;
   repeated string ports = 5;
+  // Hostnames reached through this load balancer, from the Istio Gateways
+  // whose Pods it fronts (e.g. "*.admin.uds.dev").
+  repeated string hosts = 6;
 }
 message DescribeClusterResponse {
   string kubernetes_version = 1;
@@ -258,6 +261,11 @@ message DescribeClusterResponse {
   bool manage_uds_allows = 14;
   // Namespaces GoFi can read (for destination pickers).
   repeated string namespaces = 15;
+  // UDS Core's domains (ClusterConfig uds-cluster-config): a name published
+  // through the tenant gateway resolves at <host>.<uds_domain>, through the
+  // admin gateway at <host>.<uds_admin_domain>. Empty off UDS Core.
+  string uds_domain = 16;
+  string uds_admin_domain = 17;
 }
 
 message ListClusterNetworkingRequest {

@@ -163,3 +163,85 @@ func TestUDSAllowsLimitClusterIPSendersToChosenPackages(t *testing.T) {
 		t.Fatal("destination egress must still be generated")
 	}
 }
+
+// A flow may fan out to several destinations in one namespace. UDS names each
+// generated NetworkPolicy after the allow's description, and Pepr denies the
+// whole Package when two would collide, so every rule that differs in what it
+// allows needs its own description -- while a repeated destination still
+// collapses to one rule.
+func TestUDSAllowsKeepMultipleSinksInOneNamespaceDistinct(t *testing.T) {
+	target := func(namespace string, selector map[string]string, port int) *spec.KubernetesTarget {
+		return &spec.KubernetesTarget{Namespace: namespace, Selector: selector, Port: port}
+	}
+	keycloak := map[string]string{"app.kubernetes.io/name": "keycloak"}
+	admin := map[string]string{"app.kubernetes.io/name": "keycloak-admin"}
+	defs := []spec.FlowDefinition{{
+		Name:   "fanout",
+		Source: spec.FlowSource{Listen: &spec.ListenSource{Port: 30001, Network: "udp", Service: &spec.ServiceExposure{Type: "LoadBalancer"}}},
+		Sinks: []spec.SinkCfg{
+			{Type: "tcp", Kubernetes: target("keycloak", keycloak, 8081)},
+			{Type: "tcp", Kubernetes: target("keycloak", keycloak, 8080)}, // same namespace, other port
+			{Type: "tcp", Kubernetes: target("keycloak", admin, 8080)},    // same namespace and port, other workload
+			{Type: "tcp", Kubernetes: target("monitoring", map[string]string{"app": "sink"}, 9000)},
+			{Type: "tcp", Kubernetes: target("keycloak", keycloak, 8081)}, // repeat: one rule, not two
+		},
+		DeadLetterSink: &spec.SinkCfg{Type: "tcp", Kubernetes: target("keycloak", keycloak, 8081)}, // also a repeat
+	}}
+	allows := allowsByDescription(defs)
+	// One ingress plus four distinct destinations; descriptions keyed the map,
+	// so a collision would have lost an entry.
+	if len(allows) != 5 {
+		t.Fatalf("want 5 allows (1 ingress + 4 distinct destinations), got %d: %v", len(allows), allows)
+	}
+	egress := map[string]map[string]any{}
+	for description, entry := range allows {
+		if entry["direction"] == "Egress" {
+			egress[description] = entry
+		}
+	}
+	if len(egress) != 4 {
+		t.Fatalf("want 4 egress rules, got %d: %v", len(egress), egress)
+	}
+	ports := map[int64]int{}
+	for _, entry := range egress {
+		port, _ := entry["port"].(int64)
+		ports[port]++
+	}
+	if ports[8081] != 1 || ports[8080] != 2 || ports[9000] != 1 {
+		t.Fatalf("one rule per destination, two of them on 8080: %v", ports)
+	}
+	// What Pepr compares is the generated policy name, not the description.
+	names := map[string]string{}
+	for description := range egress {
+		if !strings.HasPrefix(description, udsEntryPrefix) {
+			t.Fatalf("a generated rule must keep the %q prefix so the next reconcile recycles it: %q", udsEntryPrefix, description)
+		}
+		name := peprPolicyName(description)
+		if other, clash := names[name]; clash {
+			t.Fatalf("two rules would generate the NetworkPolicy %q and Pepr denies the whole Package: %q and %q", name, other, description)
+		}
+		names[name] = description
+	}
+}
+
+// uds-core's sanitizeResourceName drops leading and trailing characters that
+// are not letters, so a description ending in a port number loses it. GoFi has
+// to predict that name to keep its descriptions apart.
+func TestPeprPolicyNameMirrorsUDSSanitizer(t *testing.T) {
+	cases := map[string]string{
+		"GoFi flow test to keycloak pods":          "gofi-flow-test-to-keycloak-pods",
+		"GoFi flow test to keycloak pods on 8080":  "gofi-flow-test-to-keycloak-pods-on",
+		"GoFi flow test to keycloak pods on 8081":  "gofi-flow-test-to-keycloak-pods-on",
+		"GoFi flow t to keycloak pods on 8081/TCP": "gofi-flow-t-to-keycloak-pods-on-8081-tcp",
+		"GoFi flow x to pods rule a":               "gofi-flow-x-to-pods-rule-a",
+		"  123 GoFi // flow  ":                     "gofi-flow",
+	}
+	for description, want := range cases {
+		if got := peprPolicyName(description); got != want {
+			t.Errorf("peprPolicyName(%q) = %q, want %q", description, got, want)
+		}
+	}
+	if a, b := peprPolicyName("x on 8080"), peprPolicyName("x on 8081"); a != b {
+		t.Errorf("trailing digits are stripped, so these must collide: %q vs %q", a, b)
+	}
+}

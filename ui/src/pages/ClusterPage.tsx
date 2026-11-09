@@ -89,6 +89,7 @@ function OverviewTab({ info }: { info: ClusterInfo }) {
           : t('gofi.pages.cluster.address-pool', '{{name}} ({{addresses}})', { name: pool.name, addresses: (pool.addresses ?? []).join(', ') })).join(' · ') })}</Text>}
         {info.loadBalancers.length ? <InteractiveTable columns={lbColumns} data={info.loadBalancers.map(lb => ({ ...lb, id: `${lb.namespace}/${lb.name}` }))} getRowId={row => row.id} />
           : <Text color="secondary">{t('gofi.pages.cluster.no-load-balancers', 'No LoadBalancer Services.')}</Text>}
+        {(info.udsDomain || info.udsAdminDomain) && <Text variant="bodySmall" color="secondary">{t('gofi.pages.cluster.uds-domains', 'UDS domains: {{tenant}} for the tenant gateway, {{admin}} for the admin gateway — a name published there resolves as <host>.<domain>.', { tenant: info.udsDomain || '—', admin: info.udsAdminDomain || '—' })}</Text>}
         <Text variant="bodySmall" color="secondary">{nodePortSummary}</Text>
       </Stack>
     </section>
@@ -102,7 +103,7 @@ const buildGatewayColumns = (): Array<Column<GatewayRow>> => [
   { id: 'state', header: t('gofi.pages.cluster.column-state', 'State'), cell: ({ row: { original } }) => <StatusIndicator tone={original.programmed ? 'success' : 'warning'} text={original.programmed ? t('gofi.pages.cluster.programmed', 'Programmed') : t('gofi.pages.cluster.not-programmed', 'Not programmed')} /> },
   { id: 'addresses', header: t('gofi.pages.cluster.column-addresses', 'Addresses'), cell: ({ row: { original } }) => <Text variant="code">{original.addresses?.join(', ') || '—'}</Text> },
   { id: 'listeners', header: t('gofi.pages.cluster.column-listeners', 'Listeners'), cell: ({ row: { original } }) => <Stack direction="column" gap={0.5}>{(original.listeners ?? []).map(l => <Stack key={l.name} gap={1} alignItems="center">
-    <Text variant="code">{l.protocol} {l.port}</Text><Text color="secondary">{t('gofi.pages.cluster.listener-summary', '{{name}} · routes from {{allowedRoutes}} · {{count}} attached', { name: l.name, allowedRoutes: l.allowedRoutes, count: l.attachedRoutes ?? 0 })}</Text>{l.managedByGofi && <Badge color="green" text="GoFi" />}
+    <Text variant="code">{l.protocol} {l.port}{l.hostname ? ` ${l.hostname}` : ''}</Text><Text color="secondary">{t('gofi.pages.cluster.listener-summary', '{{name}} · routes from {{allowedRoutes}} · {{count}} attached', { name: l.name, allowedRoutes: l.allowedRoutes, count: l.attachedRoutes ?? 0 })}</Text>{l.managedByGofi && <Badge color="green" text="GoFi" />}
   </Stack>)}</Stack> },
   { id: 'routes', header: t('gofi.pages.cluster.column-route-kinds', 'Route kinds'), cell: ({ row: { original } }) => <Text color="secondary">{original.routeKinds?.join(', ') || '—'}</Text> },
 ]
@@ -112,6 +113,7 @@ const buildLbColumns = (): Array<Column<LBRow>> => [
   { id: 'class', header: t('gofi.pages.cluster.column-class', 'Class'), cell: ({ row: { original } }) => <Text color="secondary">{original.className || t('gofi.pages.cluster.class-default', 'default')}</Text> },
   { id: 'addresses', header: t('gofi.pages.cluster.column-addresses', 'Addresses'), cell: ({ row: { original } }) => <Text variant="code">{original.addresses?.join(', ') || t('gofi.pages.cluster.addresses-pending', 'pending')}</Text> },
   { id: 'ports', header: t('gofi.pages.cluster.column-ports', 'Ports'), cell: ({ row: { original } }) => <Text variant="code">{original.ports?.join(', ') || '—'}</Text> },
+  { id: 'hosts', header: t('gofi.pages.cluster.column-hosts', 'Hosts'), cell: ({ row: { original } }) => <Text variant="code">{original.hosts?.join(', ') || '—'}</Text> },
 ]
 
 type ObjectRow = NetworkingObject & { id: string }

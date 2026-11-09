@@ -75,7 +75,7 @@ func (k *Kube) AnalyzeConnectivity(ctx context.Context, def spec.FlowDefinition,
 		} else {
 			local = []unstructured.Unstructured{*desired}
 			_, err := packages.Namespace(k.namespace).Apply(ctx, desired.GetName(), desired, metav1.ApplyOptions{FieldManager: udsFieldManager, Force: true, DryRun: []string{metav1.DryRunAll}})
-			note := "Pepr admission accepts GoFi's Package with this flow."
+			note := "Pepr admission accepts GoFi's Package with this flow. Admission only: it does not check whether the path is allowed."
 			if err != nil {
 				note = "Pepr admission rejects GoFi's Package with this flow: " + err.Error()
 			}

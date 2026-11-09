@@ -190,6 +190,37 @@ func GatewayListenerName(namespace, flow string) string {
 }
 
 var gatewaysGVR = schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gateways"}
+var gatewayClassesGVR = schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gatewayclasses"}
+
+// checkRouteSupport refuses a route kind the chosen Gateway's implementation
+// is known not to serve, before GoFi adds a listener or writes a route. The
+// API server accepts a UDPRoute against an Istio Gateway and Istio then
+// ignores it -- no status, no attachment, no error -- so the flow would look
+// healthy while carrying nothing. UDP ingress needs Envoy Gateway, or a
+// LoadBalancer/NodePort Service instead of a Gateway route.
+//
+// Reads that fail (no RBAC for cluster-scoped GatewayClasses, or the objects
+// are gone) leave the decision alone: this only ever refuses a combination it
+// can prove is dead, so an implementation GoFi has no entry for still works.
+func (k *Kube) checkRouteSupport(ctx context.Context, namespace, name, kind string) error {
+	gateway, err := k.dyn.Resource(gatewaysGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil
+	}
+	class, _, _ := unstructured.NestedString(gateway.Object, "spec", "gatewayClassName")
+	if class == "" {
+		return nil
+	}
+	gatewayClass, err := k.dyn.Resource(gatewayClassesGVR).Get(ctx, class, metav1.GetOptions{})
+	if err != nil {
+		return nil
+	}
+	controller, _, _ := unstructured.NestedString(gatewayClass.Object, "spec", "controllerName")
+	if supported, known := clusterinfo.SupportsRouteKind(controller, kind); known && !supported {
+		return fmt.Errorf("Gateway %s/%s serves no %s: GatewayClass %s is %s. Expose this flow with a LoadBalancer or NodePort Service, or choose a Gateway whose class supports %s (Envoy Gateway for UDP)", namespace, name, kind, class, controller, kind)
+	}
+	return nil
+}
 
 func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinition) error {
 	listen := def.Source.Listen
@@ -203,6 +234,9 @@ func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinitio
 	kind, resource := routeKind(listen.Network)
 	gvr, err := k.routeGVR(resource)
 	if err != nil {
+		return err
+	}
+	if err := k.checkRouteSupport(ctx, gw.Namespace, gw.Name, kind); err != nil {
 		return err
 	}
 	servicePort := listen.Service.Port

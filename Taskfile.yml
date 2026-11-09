@@ -144,7 +144,7 @@ tasks:
     cmd: scripts/load/scale-ladder.sh '{{default "10,100,500" .LADDER}}'
 
   test:ui:e2e:
-    desc: Portal smoke (Playwright) against the dev server :5180 and backend :19190; OWN=1 spawns its own backend and Vite
+    desc: Portal smoke (Playwright) against the dev server :5180 and backend :19190; OWN=1 spawns its own backend and smokes the portal it embeds (GOFI_UI_E2E_VITE=1 for Vite)
     dir: ui
     cmd: '{{if eq (default "" .OWN) "1"}}GOFI_UI_E2E_OWN_BACKEND=1 GOFI_BINARY={{.ROOT_DIR}}/bin/gofi-e2e {{end}}node e2e/run.mjs'
 

@@ -8,13 +8,19 @@
 //
 //   node ui/e2e/run.mjs                      # against :5180 (UI) and :19190 (API)
 //   GOFI_UI_URL=http://127.0.0.1:5180 GOFI_API_URL=http://127.0.0.1:19190 node ui/e2e/run.mjs
-//   GOFI_UI_E2E_OWN_BACKEND=1 node ui/e2e/run.mjs   # spawns bin/gofi-e2e + vite; adds the reconnect test
+//   GOFI_UI_E2E_OWN_BACKEND=1 node ui/e2e/run.mjs   # spawns bin/gofi-e2e, smokes its embedded portal; adds the reconnect test
+//   GOFI_UI_E2E_OWN_BACKEND=1 GOFI_UI_E2E_VITE=1 node ui/e2e/run.mjs   # ... through a Vite dev server instead
+//
+// Child process output lands in <report dir>/ui/logs/ and a blank page is
+// dumped (HTML + screenshot) next to the other screenshots, so a failure says
+// why the page was empty rather than only that it was.
 //
 // playwright-core resolves from ui/node_modules (GOFI_PW_MODULES overrides);
 // install Chromium once with `npx playwright-core install chromium`.
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile, mkdtemp } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { mkdir, open, writeFile, mkdtemp } from 'node:fs/promises'
 import { createConnection, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -28,7 +34,29 @@ const { chromium } = createRequire(path.join(pwModules, 'package.json'))('playwr
 
 const reportDir = process.env.GOFI_REPORT_DIR ?? path.join(repo, 'testenv', 'reports')
 const shotDir = path.join(reportDir, 'ui')
-await mkdir(shotDir, { recursive: true })
+const logDir = path.join(shotDir, 'logs')
+await mkdir(logDir, { recursive: true })
+
+// Child stdout and stderr go to files under the report directory (CI uploads
+// it) instead of being discarded: when the portal does not come up, what the
+// dev server or the controller said is the whole diagnosis.
+// The handles stay in the map for the whole run: a FileHandle closed by the
+// garbage collector takes the child's open descriptor with it.
+const logHandles = new Map()
+const logPaths = new Map()
+async function logFd(name) {
+  if (!logHandles.has(name)) {
+    const file = path.join(logDir, `${name}.log`)
+    logHandles.set(name, await open(file, 'a'))
+    logPaths.set(name, file)
+  }
+  return logHandles.get(name).fd
+}
+function tailLog(name, lines = 12) {
+  const file = logPaths.get(name)
+  if (!file) return ''
+  try { return readFileSync(file, 'utf8').trim().split('\n').slice(-lines).join(' / ').slice(-1500) } catch { return '' }
+}
 
 const results = []
 const startedAt = new Date()
@@ -36,7 +64,10 @@ let failed = 0
 function record(name, ok, detail = {}) {
   results.push({ name, ok, ...detail })
   if (!ok) failed++
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail.error ? `: ${detail.error}` : ''}`)
+  // A tolerated shortfall prints WARN: PASS would claim the behaviour was
+  // observed when it was not.
+  const label = !ok ? 'FAIL' : detail.warning ? 'WARN' : 'PASS'
+  console.log(`${label} ${name}${detail.error ? `: ${detail.error}` : ''}${detail.warning ? `: ${detail.warning}` : ''}`)
 }
 async function step(name, fn) {
   try {
@@ -72,25 +103,47 @@ async function startBackend(dir, port) {
   const bin = process.env.GOFI_BINARY ?? path.join(repo, 'bin', 'gofi-e2e')
   const child = spawn(bin, [], {
     env: { ...process.env, GOFI_DRIVER: 'inprocess', GOFI_DEPLOY_MODE: 'binary', GOFI_CONFIG_FILE: path.join(dir, 'listeners.yaml'), GOFI_HISTORY_DIR: path.join(dir, 'history'), INGRESS_API_ADDR: `127.0.0.1:${port}`, TAP_RELAY_ADDR: '127.0.0.1:0', GOFI_DRAIN_TIMEOUT: '3s' },
-    stdio: ['ignore', 'ignore', 'inherit'],
+    stdio: ['ignore', await logFd('controller'), await logFd('controller')],
   })
   children.push(child)
   await waitHttp(`http://127.0.0.1:${port}/readyz`)
   return child
 }
+// With an owned backend the portal comes from the controller's embedded
+// ui/dist: that is the bundle that ships, and it keeps the Vite dev server out
+// of CI. On the GitHub runner that dev server served index.html but no page
+// ever rendered a character of the app, for the whole 24-minute run, with
+// nothing on its stderr -- the shape of a dev server that never served the
+// module graph (it withholds module requests until dependency pre-bundling
+// completes). The built bundle has no such step. The same run passes locally,
+// so keep GOFI_UI_E2E_VITE=1 for smoking the dev server on purpose.
+const useVite = Boolean(process.env.GOFI_UI_E2E_VITE)
 if (process.env.GOFI_UI_E2E_OWN_BACKEND) {
   const dir = await mkdtemp(path.join(tmpdir(), 'gofi-ui-e2e-'))
   const apiPort = await freePort()
-  const uiPort = await freePort()
   backend = { dir, port: apiPort, child: await startBackend(dir, apiPort) }
   apiUrl = `http://127.0.0.1:${apiPort}`
-  const vite = spawn(process.execPath, [path.join(uiDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(uiPort), '--strictPort', '--host', '127.0.0.1'], {
-    cwd: uiDir, env: { ...process.env, GOFI_API_PROXY: apiUrl }, stdio: ['ignore', 'ignore', 'inherit'],
-  })
-  children.push(vite)
-  uiUrl = `http://127.0.0.1:${uiPort}`
-  await waitHttp(uiUrl, 90000)
+  uiUrl = apiUrl
+  if (useVite) {
+    const uiPort = await freePort()
+    const vite = spawn(process.execPath, [path.join(uiDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(uiPort), '--strictPort', '--host', '127.0.0.1'], {
+      cwd: uiDir, env: { ...process.env, GOFI_API_PROXY: apiUrl }, stdio: ['ignore', await logFd('vite'), await logFd('vite')],
+    })
+    children.push(vite)
+    uiUrl = `http://127.0.0.1:${uiPort}`
+    await waitHttp(uiUrl, 90000)
+  } else {
+    // Without ui/dist the controller serves its RPC services only; say so once
+    // here rather than through twenty blank pages.
+    const index = await fetch(`${uiUrl}/`).then(res => res.text()).catch(() => '')
+    if (!/<div id="root"/.test(index)) {
+      console.error(`FAIL ${uiUrl}/ serves no portal: build it (npm --prefix ui run build) and rebuild the controller, or set GOFI_UI_E2E_VITE=1. Controller log: ${tailLog('controller')}`)
+      process.exit(1)
+    }
+  }
 }
+// The embedded bundle needs no warm-up and has no module graph to compile.
+const embedded = uiUrl === apiUrl
 process.on('exit', () => { for (const c of children) { try { c.kill('SIGTERM') } catch { /* gone */ } } })
 
 // --- API helpers (Connect JSON) -------------------------------------------
@@ -121,7 +174,14 @@ function sendLines(port, lines) {
 // --- browser ---------------------------------------------------------------
 const browser = await chromium.launch()
 const ignoredConsole = [/ResizeObserver loop/, /favicon/, /Download the React DevTools/, /\[vite\]/, /Monaco/, /source map/i]
-function attach(page, errors) {
+// @grafana/ui's CSS and <Icon> point at Grafana core's asset tree
+// (/public/fonts/..., /public/build/img/icons/...) and the package ships only
+// part of it, so a missing font or the spinner icon 404s off the real bundle.
+// Cosmetic, and the dev server hid it behind its SPA fallback. These 404s are
+// counted into the report rather than failing the page -- and only 404: a 5xx
+// or a broken path anywhere else still counts as an error.
+const missingGrafanaAsset = /\/public\/(fonts|build\/img\/icons)\//
+function attach(page, errors, pending, missing) {
   // RPC errors are application semantics (Connect maps NotFound to 404 while
   // a stopped flow has no runtime); the browser still logs them as resource
   // failures. Only non-RPC failures and 5xx responses count.
@@ -130,15 +190,27 @@ function attach(page, errors) {
   // ERR_ABORTED is the browser cancelling a request (navigation, removed
   // image), not a server failure; 4xx/5xx responses are what matter.
   page.on('requestfailed', req => { const text = req.failure()?.errorText ?? ''; if (!/ABORTED/.test(text) && !/favicon|hot-update|sockjs|\/@vite\/client|ws:/.test(req.url())) errors.push(`request failed: ${req.url()} ${text}`) })
-  page.on('response', res => { if (res.status() >= 400 && !/favicon|sockjs|hot-update/.test(res.url()) && !(res.status() < 500 && /\/gofi\.v1\./.test(res.url()))) errors.push(`HTTP ${res.status()}: ${res.url()}`) })
+  page.on('response', res => {
+    if (res.status() < 400 || /favicon|sockjs|hot-update/.test(res.url())) return
+    if (res.status() === 404 && missingGrafanaAsset.test(res.url())) { missing.push(res.url()); return }
+    if (res.status() < 500 && /\/gofi\.v1\./.test(res.url())) return
+    errors.push(`HTTP ${res.status()}: ${res.url()}`)
+  })
+  // A request that never settles is the signature of a server that accepted
+  // the connection and then held it: the page stays blank with nothing logged.
+  page.on('request', req => pending.set(req, req.url()))
+  page.on('requestfinished', req => pending.delete(req))
+  page.on('requestfailed', req => pending.delete(req))
 }
 async function newPage(theme) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: theme === 'grafana-light' ? 'light' : 'dark' })
   await context.addInitScript(([key, value]) => { try { localStorage.setItem(key, value) } catch { /* ignore */ } }, ['gofi.theme', theme])
   const page = await context.newPage()
   const errors = []
-  attach(page, errors)
-  return { context, page, errors }
+  const pending = new Map()
+  const missing = []
+  attach(page, errors, pending, missing)
+  return { context, page, errors, pending, missing }
 }
 // Poll until the app has rendered text (lazy pages compile on first visit in
 // the Vite dev server).
@@ -152,11 +224,33 @@ async function waitForText(page, timeoutMs = 30000) {
   }
   return text
 }
+// "No text" on its own says nothing about why. Keep the evidence: the page's
+// own errors, the requests still in flight, the document, a screenshot, and
+// what the child processes last said. The dumps sit with the screenshots, so
+// CI's uploaded report carries them.
+async function blankPageReport(page, slug, errors, pending, headline = 'page rendered no text') {
+  const parts = [headline]
+  await page.screenshot({ path: path.join(shotDir, `${slug}-blank.png`) }).catch(() => {})
+  // A page still navigating can refuse to serialise; that is not the same as
+  // a document without a #root, so do not report it as one.
+  const html = (await page.content().catch(() => '')) || (await page.evaluate(() => document.documentElement?.outerHTML ?? '').catch(() => ''))
+  if (html) await writeFile(path.join(shotDir, `${slug}-blank.html`), html).catch(() => {})
+  parts.push(!html ? 'the document could not be read' : /<div id="root">\s*<\/div>/.test(html) ? 'empty #root: the scripts never mounted' : /<div id="root"/.test(html) ? '#root is present but rendered nothing' : 'the document has no #root at all')
+  if (pending.size) parts.push(`requests still in flight: ${[...pending.values()].slice(0, 5).join(', ')}`)
+  if (errors.length) parts.push(`page errors: ${errors.slice(0, 5).join(' | ')}`)
+  for (const name of ['vite', 'controller']) {
+    const tail = tailLog(name)
+    if (tail) parts.push(`${name} log: ${tail}`)
+  }
+  return parts.join('; ')
+}
+
 const pages = [['home', '#/'], ['flows', '#/flows'], ['new-flow', '#/flows/new'], ['explore', '#/explore'], ['libraries', '#/libraries'], ['expressions', '#/cel'], ['endpoints', '#/connections/endpoints'], ['cluster', '#/cluster'], ['cluster-networking', '#/cluster/networking'], ['not-found', '#/nope']]
 
 // Warm the dev server: the first visit of each lazy page triggers Vite's
-// dependency optimisation, which can reload the page mid-render.
-{
+// dependency optimisation, which can reload the page mid-render. The built
+// bundle needs none of this.
+if (!embedded) {
   const { context, page } = await newPage('grafana-dark')
   for (const [, hash] of pages) { await page.goto(`${uiUrl}/${hash}`, { waitUntil: 'load' }).catch(() => {}); await waitForText(page, 60000) }
   await context.close()
@@ -165,17 +259,21 @@ const pages = [['home', '#/'], ['flows', '#/flows'], ['new-flow', '#/flows/new']
 for (const theme of ['grafana-dark', 'grafana-light']) {
   for (const [name, hash] of pages) {
     await step(`render ${name} (${theme})`, async () => {
-      const { context, page, errors } = await newPage(theme)
+      const { context, page, errors, pending, missing } = await newPage(theme)
       try {
-        await page.goto(`${uiUrl}/${hash}`, { waitUntil: 'load' })
+        // A navigation that never finishes is as opaque as a blank page:
+        // report it the same way.
+        await page.goto(`${uiUrl}/${hash}`, { waitUntil: 'load' }).catch(async error => {
+          throw new Error(await blankPageReport(page, `${name}-${theme}`, errors, pending, `navigation never finished: ${String(error.message).split('\n')[0]}`))
+        })
         const text = await waitForText(page)
         await page.waitForTimeout(800)
-        if (text.trim().length < 20) throw new Error('page rendered no text')
+        if (text.trim().length < 20) throw new Error(await blankPageReport(page, `${name}-${theme}`, errors, pending))
         if (/Something went wrong|Unexpected Application Error|Minified React error/i.test(text)) throw new Error('error boundary rendered')
         await page.screenshot({ path: path.join(shotDir, `${name}-${theme}.png`) })
         if (errors.length) throw new Error(errors.slice(0, 5).join(' | '))
-        return { textLength: text.length }
-      } finally { await context.close() }
+        return { textLength: text.length, ...(missing.length ? { missingAssets: [...new Set(missing)].length } : {}) }
+      } finally { await context.close().catch(() => { /* a failing close must not replace the step's own error */ }) }
     })
   }
 }
@@ -254,7 +352,7 @@ await step('lifecycle create→edit→stop→start→restart→rollback→delete
     if (errors.length) throw new Error(errors.slice(0, 5).join(' | '))
     return { revisions: revisions.length, apiFallbacks }
   } finally {
-    await context.close()
+    await context.close().catch(() => { /* see above */ })
     await rpc('GoFiService', 'DeleteFlow', { name }).catch(() => {})
   }
 })
@@ -285,7 +383,7 @@ await step('live traffic shows events', async () => {
       throw new Error(`no live traffic row showed the sent id; page text: ${text.replace(/\s+/g, ' ').slice(0, 600)}`)
     }
     if (errors.length) throw new Error(errors.slice(0, 5).join(' | '))
-  } finally { await context.close() }
+  } finally { await context.close().catch(() => { /* a failing close must not replace the step's own error */ }) }
 })
 
 // --- reconnect after backend restart ------------------------------------------
@@ -313,12 +411,12 @@ await step('live view reconnects after backend restart', async () => {
       return { warning: message, pageErrors: errors.length }
     }
     return { pageErrors: errors.length }
-  } finally { await context.close() }
+  } finally { await context.close().catch(() => { /* a failing close must not replace the step's own error */ }) }
 })
 await rpc('GoFiService', 'DeleteFlow', { name: liveName }).catch(() => {})
 
 await browser.close()
-const summary = { name: 'ui-smoke', deployment: 'ui', startedAt, finishedAt: new Date(), uiUrl, apiUrl, passed: failed === 0, failed, results }
+const summary = { name: 'ui-smoke', deployment: 'ui', portal: embedded ? 'embedded bundle' : 'vite dev server', startedAt, finishedAt: new Date(), uiUrl, apiUrl, passed: failed === 0, failed, results }
 await writeFile(path.join(reportDir, 'ui-smoke.json'), JSON.stringify(summary, null, 2))
 console.log(`${results.length - failed}/${results.length} passed; report ${path.join(reportDir, 'ui-smoke.json')}`)
 process.exit(failed ? 1 : 0)

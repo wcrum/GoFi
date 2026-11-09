@@ -16,7 +16,7 @@ The checks below were run by hand; the repeatable suites live behind
 | `task test:e2e`, `task test:e2e:k3d` | chaos scenarios against the binary or Compose, or on a throwaway k3d cluster (`tests/e2e`, tag `e2e`) |
 | `task test:chaos` | the binary chaos subset plus the edge profile under `docker --memory=128m`, with JSON reports under `testenv/reports/` |
 | `task test:scale` | the 10→100→500 flow ladder against a running controller (`scripts/load/scale-ladder.sh`) |
-| `task test:ui:e2e` | the Playwright portal smoke against the dev server |
+| `task test:ui:e2e` | the Playwright portal smoke against the dev server, or with `OWN=1` against the portal the controller embeds |
 | `task test:bench` | framing/codec/parser/filter/pipeline/sink benchmarks into `testenv/reports/bench.txt` |
 | `scripts/chart-test.sh` | strict `helm lint`, every values overlay rendered, the `charts/gofi/tests` helm-unittest suites, `zarf dev lint` |
 
