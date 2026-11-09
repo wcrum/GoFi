@@ -1,4 +1,4 @@
-connectrpc==0.12.1
+connectrpc==0.13.0
 protobuf==7.36.2
 uvicorn==0.54.0
 # Curated, compute-only decoders available to user libraries. Pinned to
