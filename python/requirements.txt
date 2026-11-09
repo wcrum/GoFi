@@ -12,12 +12,13 @@ PyYAML==6.0.3
 # cp314 manylinux wheels for amd64 and arm64).
 pydantic==2.14.1
 # AI / LangChain integrations (docs/python.md#ai-and-langchain-integrations).
-# langchain-core, langchain-openai and langchain-anthropic are pure Python;
-# their compiled transitive dependencies all ship cp314 manylinux wheels for
-# amd64 and arm64 (verified on PyPI 2026-10-18): jiter, orjson, pydantic-core,
-# regex, tiktoken, uuid-utils, xxhash, zstandard. The openai SDK pulls
-# tiktoken; nothing in the closure needs a compiler. These packages make
-# network calls, but only where the library's egress rules allow.
+# The deployment's endpoint speaks OpenAI-compatible Chat Completions, which
+# is all gofi.llm builds. langchain-core and langchain-openai are pure
+# Python; their compiled transitive dependencies all ship cp314 manylinux
+# wheels for amd64 and arm64 (verified on PyPI 2026-10-18): jiter, orjson,
+# pydantic-core, regex, tiktoken, uuid-utils, xxhash, zstandard. The openai
+# SDK pulls tiktoken; nothing in the closure needs a compiler. These
+# packages make network calls, but only where the library's egress rules
+# allow.
 langchain-core==1.6.12
 langchain-openai==1.7.2
-langchain-anthropic==1.7.6

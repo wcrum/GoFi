@@ -6,9 +6,9 @@ questions about this deployment and, through server-side tools, inspects and
 function libraries. It opens from the portal's chat control once an
 administrator enables it under **Administration**.
 
-What it is: one conversation loop in the controller over the
-[Anthropic Messages API](https://docs.anthropic.com/en/api/messages), using the
-official Go SDK. The controller holds the API key; browsers never see it. The
+What it is: one conversation loop in the controller over an
+OpenAI-compatible Chat Completions endpoint, spoken over plain HTTP (no
+vendor SDK). The controller holds the API key; browsers never see it. The
 model only sees what a tool returns or a user types. Apart from a small
 readiness probe (below), nothing is sent to the model endpoint unless a user
 chats or an administrator presses **Check connection**.
@@ -57,8 +57,7 @@ endpoint answers, so an idle controller sends nothing.
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `false` | Off hides the chat control; `Chat` fails. |
-| `provider` | `anthropic` | The protocol the endpoint speaks: `anthropic` (the Messages API, used through the official SDK) or `openai` (Chat Completions with streaming and function calling: Groq, vLLM, LiteLLM, Ollama, OpenRouter, Azure-style gateways). |
-| `baseUrl` | empty (`https://api.anthropic.com`, or `https://api.openai.com/v1` for `openai`) | The model endpoint. Set it for a gateway or proxy that speaks the Anthropic Messages API. Must be an `http(s)` URL with a host and no credentials. Ignored and read-only when `GOFI_ASSISTANT_BASE_URL` pins it (`endpointLocked`). |
+| `baseUrl` | empty (`https://api.openai.com/v1`) | The OpenAI-compatible API root, conventionally ending in `/v1`. Must be an `http(s)` URL with a host and no credentials. Ignored and read-only when `GOFI_ASSISTANT_BASE_URL` pins it (`endpointLocked`). |
 | `model` | empty (`claude-opus-5-5`) | Model id, at most 128 characters. The server default lives in `assistant.DefaultModel`. |
 | `apiKey` | empty | Write-only: never returned by reads. Empty on save keeps the stored key; the redaction sentinel `***` is treated the same way; `clearApiKey` on the request forgets it. Refused when the environment supplies the key (`keyLocked`). |
 | `hasApiKey` | read-only | A key is stored or supplied by the environment. |
@@ -67,7 +66,7 @@ endpoint answers, so an idle controller sends nothing.
 | `allowFunctions` | `false` | On: every Python library may call this endpoint through `gofi.llm` via the controller's LLM proxy (the key never reaches a worker; each call is checked). Off: `gofi.llm` raises in every library. One switch for the deployment; the per-library `ai` flag is deprecated and ignored. See [python.md](python.md#ai-and-langchain-integrations). |
 | `instructions` | empty | Extra operator text appended to the system prompt, at most 8192 bytes. |
 | `maxToolSteps` | `8` | Tool calls per user message before the model must answer; 1 to 20. Every call counts, including proposals. |
-| `effort` | empty (model default) | `low`, `medium`, or `high`; passed as the request's output effort (`reasoning_effort` for `openai`). |
+| `effort` | empty (model default) | `low`, `medium`, or `high`; sent as `reasoning_effort` (ignored by endpoints without it). |
 | `toolApproval` | `changes` | `changes`: only apply tools wait, as proposals decided after the reply. `all`: every tool call pauses the reply until the user approves or denies it in the chat (two minutes, then it is denied). |
 
 Validation (`assistant.Normalize`) rejects a save that breaks these bounds with
@@ -86,19 +85,22 @@ the portal: while one is set, saves that carry a key are refused
 (`FailedPrecondition`) and the portal shows `keyLocked`. The portal shows
 which source applies as `apiKeySource`.
 
-### Providers and base URLs
+### The endpoint
 
-Two wire protocols are supported, chosen with `provider`:
+Every endpoint speaks OpenAI-compatible Chat Completions: OpenAI, Groq,
+vLLM, LiteLLM, Ollama, OpenRouter, Azure-style gateways, or any other server
+that implements `POST /chat/completions` with streaming and function
+calling, including a vendor's own OpenAI-compatibility layer.
 
-| Provider | Base URL | Model | Notes |
-| --- | --- | --- | --- |
-| `anthropic` | empty, or a gateway root such as `https://llm-gateway.example` (a trailing `/v1` is removed; the SDK adds `/v1/messages`) | `claude-opus-5-5` (default) | Effort maps to the request's output effort; the system prompt is cached. |
-| `openai` | the API root ending in `/v1`, for example `https://api.groq.com/openai/v1` | the endpoint's model id, for example `openai/gpt-oss-120b` | Streaming via `stream: true` with usage; tools as functions; effort is sent as `reasoning_effort` (ignored by endpoints without it). |
+| Setting | Value |
+| --- | --- |
+| `baseUrl` | the API root ending in `/v1`, for example `https://api.groq.com/openai/v1` |
+| `model` | the endpoint's model id, for example `openai/gpt-oss-120b` |
+| Wire details | streaming via `stream: true` with usage; tools as functions; `effort` sent as `reasoning_effort`; the key as `Authorization: Bearer` |
 
-A wrong pairing shows as `HTTP 404` on Check connection: the Anthropic SDK
-posting to `/v1/messages` on an OpenAI-style root, or an OpenAI-style client
-posting to `/chat/completions` on the Anthropic API. The check's message
-names the request id the endpoint returned and hints at what to look at.
+A base URL that is not a Chat Completions root shows as `HTTP 404` on Check
+connection. The check's message names the request id the endpoint returned
+and hints at what to look at.
 
 ### Pinning the endpoint
 
@@ -246,7 +248,7 @@ the number of tool steps.
 ### Network egress
 
 Enabling GoFiBot creates outbound HTTPS traffic from the controller to the
-configured endpoint: `api.anthropic.com` by default, or the gateway in
+configured endpoint: `api.openai.com` by default, or the gateway in
 `baseUrl`. No other component (flow runtimes, Python workers, the browser)
 talks to it. On a default-deny cluster, allow egress from the controller Pod
 to that host; nothing else needs changing. Each chat request has a 5 minute
@@ -338,7 +340,7 @@ id the controller no longer knows starts a new one.
 | `FailedPrecondition: the assistant is not enabled` | `enabled` is off. Turn it on under Administration. |
 | `FailedPrecondition: the assistant has no API key` | No stored key and neither `GOFI_ASSISTANT_API_KEY` nor a readable, non-empty `GOFI_ASSISTANT_API_KEY_FILE`. Check `apiKeySource` on the Administration page. |
 | `Unimplemented` on any assistant RPC | The service is not mounted: the controller started without an assistant store (see the Kubernetes note above) or this build predates GoFiBot. Check the controller log at startup. |
-| `Unavailable: model endpoint: ...` | The endpoint did not answer: wrong `baseUrl`, a gateway that does not speak the Messages API, a blocked egress path, an invalid key, or an unknown `model`. Press **Check connection** with the same values; its message is the endpoint's error. |
+| `Unavailable: model endpoint: ...` | The endpoint did not answer: wrong `baseUrl`, a gateway that does not speak Chat Completions, a blocked egress path, an invalid key, or an unknown `model`. Press **Check connection** with the same values; its message is the endpoint's error. |
 | `InvalidArgument: baseUrl must be an http(s) URL` | The gateway URL needs a scheme and host, for example `https://gateway.example.internal`. Paths are kept; the SDK appends `/v1/messages`. |
 | Reply ends with `max_tool_steps` | The model used every allowed tool call. Raise `maxToolSteps` (up to 20) or ask a narrower question. |
 | Reply ends with `max_tokens` | The reply hit 16000 output tokens. Ask for a smaller piece. |
@@ -369,8 +371,9 @@ id the controller no longer knows starts a new one.
   (Kubernetes), withheld from every read, and never sent to a browser. On a
   host with a secrets mount, leave `apiKey` empty and point
   `GOFI_ASSISTANT_API_KEY_FILE` at the mounted file so the store never holds
-  it. Do not set `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or
-  `ANTHROPIC_BASE_URL` on the controller: the SDK would read them.
+  it. The controller reads only its own `GOFI_ASSISTANT_*` variables, so a
+  stray `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in its environment is never
+  used for a chat request.
 - **The endpoint.** Without `GOFI_ASSISTANT_BASE_URL`, any portal user can
   point the controller at another endpoint; the stored key is sent only to
   the stored endpoint, redirects are not followed, and private addresses are

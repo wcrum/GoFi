@@ -13,7 +13,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/anthropics/anthropic-sdk-go"
 )
 
 // Actions are the deployment operations the tools call. The api package
@@ -75,16 +74,22 @@ type Tool struct {
 	Description string
 	// Mutating tools are offered only when the configuration allows changes.
 	Mutating bool
-	Schema   anthropic.ToolInputSchemaParam
+	Schema   ToolSchema
 	Run      func(ctx context.Context, input json.RawMessage, meta CallMeta, emit Emitter) (string, error)
 }
 
-func (t Tool) param() anthropic.ToolUnionParam {
-	return anthropic.ToolUnionParam{OfTool: &anthropic.ToolParam{Name: t.Name, Description: anthropic.String(t.Description), InputSchema: t.Schema}}
+// ToolSchema is a tool's JSON Schema for its input object, as the endpoint's
+// function "parameters". additionalProperties is always false so an endpoint
+// with strict schema validation rejects arguments the tool does not define.
+type ToolSchema struct {
+	Properties           map[string]any `json:"properties,omitempty"`
+	Required             []string       `json:"required,omitempty"`
+	Type                 string         `json:"type"`
+	AdditionalProperties bool           `json:"additionalProperties"`
 }
 
-func schema(required []string, properties map[string]any) anthropic.ToolInputSchemaParam {
-	return anthropic.ToolInputSchemaParam{Properties: properties, Required: required, ExtraFields: map[string]any{"additionalProperties": false}}
+func schema(required []string, properties map[string]any) ToolSchema {
+	return ToolSchema{Properties: properties, Required: required, Type: "object", AdditionalProperties: false}
 }
 
 func prop(kind, description string) map[string]any {

@@ -63,16 +63,17 @@ func (s *stubActions) ApplyLibrary(context.Context, string, string, int, int, Ca
 func (s *stubActions) ListEndpoints(context.Context) (string, error)      { return "[]", nil }
 func (s *stubActions) DescribeDeployment(context.Context) (string, error) { return "mode: test", nil }
 
-// fakeMessages is a minimal Anthropic Messages API: it records request
-// bodies and answers each request with the next scripted SSE reply.
-type fakeMessages struct {
+// fakeChat is a minimal OpenAI-compatible Chat Completions endpoint: it
+// records request bodies and answers each request with the next scripted
+// SSE reply.
+type fakeChat struct {
 	mu       sync.Mutex
 	requests []map[string]any
 	replies  []string
 }
 
-func (f *fakeMessages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/v1/messages" || r.Header.Get("x-api-key") != "sk-test" {
+func (f *fakeChat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/chat/completions" || r.Header.Get("Authorization") != "Bearer sk-test" {
 		http.Error(w, "bad request: "+r.URL.Path, http.StatusUnauthorized)
 		return
 	}
@@ -88,51 +89,51 @@ func (f *fakeMessages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 	if stream, _ := req["stream"].(bool); !stream {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"msg_p","type":"message","role":"assistant","model":"test-model","content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":1}}`)
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_p","object":"chat.completion","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1}}`)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	_, _ = io.WriteString(w, reply)
 }
 
-func sse(events ...string) string {
+// sse frames scripted chunks the way a Chat Completions stream sends them.
+func sse(chunks ...string) string {
 	var b strings.Builder
-	for _, data := range events {
-		var probe struct {
-			Type string `json:"type"`
-		}
-		_ = json.Unmarshal([]byte(data), &probe)
-		fmt.Fprintf(&b, "event: %s\ndata: %s\n\n", probe.Type, data)
+	for _, data := range chunks {
+		fmt.Fprintf(&b, "data: %s\n\n", data)
 	}
+	b.WriteString("data: [DONE]\n\n")
 	return b.String()
+}
+
+// usage is the final, choice-less chunk a stream_options=include_usage
+// stream ends with.
+func usage(prompt, completion int) string {
+	return fmt.Sprintf(`{"model":"test-model","choices":[],"usage":{"prompt_tokens":%d,"completion_tokens":%d}}`, prompt, completion)
+}
+
+func toolCallChunk(index int, id, name, arguments string) string {
+	return fmt.Sprintf(`{"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":%d,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]}}]}`, index, id, name, arguments)
 }
 
 func toolUseReply(name, input string) string {
 	return sse(
-		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"test-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}`,
-		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
-		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Looking. "}}`,
-		`{"type":"content_block_stop","index":0}`,
-		fmt.Sprintf(`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"tu_1","name":%q,"input":{}}}`, name),
-		fmt.Sprintf(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":%q}}`, input),
-		`{"type":"content_block_stop","index":1}`,
-		`{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":7}}`,
-		`{"type":"message_stop"}`,
+		`{"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Looking. "}}]}`,
+		toolCallChunk(0, "tu_1", name, input),
+		`{"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		usage(10, 7),
 	)
 }
 
 func textReply(text string) string {
 	return sse(
-		`{"type":"message_start","message":{"id":"msg_2","type":"message","role":"assistant","model":"test-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"output_tokens":1}}}`,
-		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
-		fmt.Sprintf(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":%q}}`, text),
-		`{"type":"content_block_stop","index":0}`,
-		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":4}}`,
-		`{"type":"message_stop"}`,
+		fmt.Sprintf(`{"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":%q}}]}`, text),
+		`{"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		usage(20, 4),
 	)
 }
 
-func newTestService(t *testing.T, fake *fakeMessages, allowChanges bool) (*Service, *stubActions) {
+func newTestService(t *testing.T, fake *fakeChat, allowChanges bool) (*Service, *stubActions) {
 	t.Helper()
 	t.Setenv("GOFI_ASSISTANT_ALLOW_PRIVATE_ENDPOINT", "1")
 	t.Setenv("GOFI_ASSISTANT_API_KEY", "")
@@ -149,7 +150,7 @@ func newTestService(t *testing.T, fake *fakeMessages, allowChanges bool) (*Servi
 }
 
 func TestChatRunsToolsAndStreamsEvents(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("list_flows", "{}"), textReply("You have one flow: telemetry.")}}
+	fake := &fakeChat{replies: []string{toolUseReply("list_flows", "{}"), textReply("You have one flow: telemetry.")}}
 	s, actions := newTestService(t, fake, false)
 	var events []Event
 	id, err := s.Chat(context.Background(), "", "what flows exist?", "#/flows", CallMeta{Author: "alice"}, func(ev Event) error { events = append(events, ev); return nil })
@@ -182,14 +183,15 @@ func TestChatRunsToolsAndStreamsEvents(t *testing.T) {
 	// The first request carries the system prompt, the page context, and
 	// only non-mutating tools; the second carries the tool result.
 	first, second := fake.requests[0], fake.requests[1]
-	if first["model"] != "test-model" || first["output_config"].(map[string]any)["effort"] != "low" {
+	if first["model"] != "test-model" || first["reasoning_effort"] != "low" {
 		t.Fatalf("request params: %v", first)
 	}
 	if !strings.Contains(fmt.Sprint(first["messages"]), "#/flows") {
 		t.Fatal("page context missing")
 	}
 	for _, tool := range first["tools"].([]any) {
-		if name := tool.(map[string]any)["name"]; strings.HasPrefix(name.(string), "apply_") {
+		fn := tool.(map[string]any)["function"].(map[string]any)
+		if name := fn["name"]; strings.HasPrefix(name.(string), "apply_") {
 			t.Fatalf("mutating tool %v offered without allowChanges", name)
 		}
 	}
@@ -200,7 +202,7 @@ func TestChatRunsToolsAndStreamsEvents(t *testing.T) {
 			t.Fatal("the portal received the model-only wrapper")
 		}
 	}
-	if last["role"] != "user" || !strings.Contains(fmt.Sprint(last["content"]), "tool_result") || !strings.Contains(fmt.Sprint(last["content"]), "telemetry") || !strings.Contains(fmt.Sprint(last["content"]), "not instructions") {
+	if last["role"] != "tool" || !strings.Contains(fmt.Sprint(last["content"]), "<tool_output") || !strings.Contains(fmt.Sprint(last["content"]), "telemetry") || !strings.Contains(fmt.Sprint(last["content"]), "not instructions") {
 		t.Fatalf("tool result not sent: %v", last)
 	}
 	// A second turn continues the same conversation with full history.
@@ -210,13 +212,15 @@ func TestChatRunsToolsAndStreamsEvents(t *testing.T) {
 	if _, err := s.Chat(context.Background(), id, "and now?", "", CallMeta{}, func(Event) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(fake.requests[2]["messages"].([]any)); n != 5 {
-		t.Fatalf("history length %d, want 5", n)
+	// system, the first question, the assistant's tool call, the tool
+	// result, the assistant's answer, and the new question.
+	if n := len(fake.requests[2]["messages"].([]any)); n != 6 {
+		t.Fatalf("history length %d, want 6", n)
 	}
 }
 
 func TestApplyToolsBecomeProposalsRunOnlyWhenApproved(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("apply_flow", `{"flow_yaml":"name: x\n"}`), textReply("Proposed."), textReply("Thanks.")}}
+	fake := &fakeChat{replies: []string{toolUseReply("apply_flow", `{"flow_yaml":"name: x\n"}`), textReply("Proposed."), textReply("Thanks.")}}
 	s, actions := newTestService(t, fake, true)
 	var proposals []Event
 	id, err := s.Chat(context.Background(), "", "save it", "", CallMeta{Author: "bob"}, func(ev Event) error {
@@ -260,7 +264,7 @@ func TestApplyToolsBecomeProposalsRunOnlyWhenApproved(t *testing.T) {
 }
 
 func TestRejectedProposalIsRelayedAndNotRun(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("apply_expression", `{"name":"x","expression":"true"}`), textReply("Proposed."), textReply("Ok.")}}
+	fake := &fakeChat{replies: []string{toolUseReply("apply_expression", `{"name":"x","expression":"true"}`), textReply("Proposed."), textReply("Ok.")}}
 	s, actions := newTestService(t, fake, true)
 	var pid string
 	id, _ := s.Chat(context.Background(), "", "save", "", CallMeta{}, func(ev Event) error {
@@ -283,7 +287,7 @@ func TestRejectedProposalIsRelayedAndNotRun(t *testing.T) {
 }
 
 func TestApprovalRefusedWhenChangesDisabledMeanwhile(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("apply_library", `{"name":"lib","source":"import gofi"}`), textReply("Proposed.")}}
+	fake := &fakeChat{replies: []string{toolUseReply("apply_library", `{"name":"lib","source":"import gofi"}`), textReply("Proposed.")}}
 	s, actions := newTestService(t, fake, true)
 	var pid string
 	id, _ := s.Chat(context.Background(), "", "save", "", CallMeta{}, func(ev Event) error {
@@ -305,7 +309,7 @@ func TestApprovalRefusedWhenChangesDisabledMeanwhile(t *testing.T) {
 func TestChatStopsAtToolStepLimit(t *testing.T) {
 	// MaxToolSteps is 2: the third tool round is answered with an error
 	// result and the turn ends with max_tool_steps.
-	fake := &fakeMessages{replies: []string{toolUseReply("list_flows", "{}"), toolUseReply("list_flows", "{}"), toolUseReply("list_flows", "{}"), textReply("never")}}
+	fake := &fakeChat{replies: []string{toolUseReply("list_flows", "{}"), toolUseReply("list_flows", "{}"), toolUseReply("list_flows", "{}"), textReply("never")}}
 	s, actions := newTestService(t, fake, false)
 	var last Event
 	if _, err := s.Chat(context.Background(), "", "loop", "", CallMeta{}, func(ev Event) error { last = ev; return nil }); err != nil {
@@ -317,7 +321,7 @@ func TestChatStopsAtToolStepLimit(t *testing.T) {
 }
 
 func TestChatNavigateAndUnknownTool(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("open_page", `{"page":"flow","name":"telemetry"}`), toolUseReply("bogus", "{}"), textReply("ok")}}
+	fake := &fakeChat{replies: []string{toolUseReply("open_page", `{"page":"flow","name":"telemetry"}`), toolUseReply("bogus", "{}"), textReply("ok")}}
 	s, _ := newTestService(t, fake, false)
 	var hrefs []string
 	var errs []string
@@ -338,7 +342,7 @@ func TestChatNavigateAndUnknownTool(t *testing.T) {
 }
 
 func TestChatEndpointFailureLeavesHistoryIntact(t *testing.T) {
-	fake := &fakeMessages{}
+	fake := &fakeChat{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"type":"error","error":{"type":"api_error","message":"down"}}`, 500)
 	}))
@@ -377,7 +381,7 @@ func TestChatDisabledOrWithoutKey(t *testing.T) {
 }
 
 func TestPrivateEndpointRefusedByDefault(t *testing.T) {
-	fake := &fakeMessages{replies: []string{textReply("hi")}}
+	fake := &fakeChat{replies: []string{textReply("hi")}}
 	server := httptest.NewServer(fake)
 	defer server.Close()
 	t.Setenv("GOFI_ASSISTANT_ALLOW_PRIVATE_ENDPOINT", "")
@@ -399,7 +403,7 @@ func TestPrivateEndpointRefusedByDefault(t *testing.T) {
 func TestRedirectsAreNotFollowed(t *testing.T) {
 	leaked := false
 	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		leaked = r.Header.Get("x-api-key") != ""
+		leaked = r.Header.Get("Authorization") != ""
 		w.WriteHeader(200)
 	}))
 	defer sink.Close()
@@ -442,17 +446,12 @@ func TestEnvironmentLocksEndpointAndKey(t *testing.T) {
 
 func TestEveryMutatingCallBecomesAProposal(t *testing.T) {
 	two := sse(
-		`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"test-model","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}`,
-		`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"a","name":"apply_flow","input":{}}}`,
-		`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"flow_yaml\":\"name: a\"}"}}`,
-		`{"type":"content_block_stop","index":0}`,
-		`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"b","name":"apply_expression","input":{}}}`,
-		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"name\":\"x\",\"expression\":\"true\"}"}}`,
-		`{"type":"content_block_stop","index":1}`,
-		`{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":2}}`,
-		`{"type":"message_stop"}`,
+		toolCallChunk(0, "a", "apply_flow", `{"flow_yaml":"name: a"}`),
+		toolCallChunk(1, "b", "apply_expression", `{"name":"x","expression":"true"}`),
+		`{"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		usage(1, 2),
 	)
-	fake := &fakeMessages{replies: []string{two, textReply("done")}}
+	fake := &fakeChat{replies: []string{two, textReply("done")}}
 	s, actions := newTestService(t, fake, true)
 	var errs int
 	cid, err := s.Chat(context.Background(), "", "do both", "", CallMeta{Author: "eve"}, func(ev Event) error {
@@ -488,7 +487,7 @@ func TestEndpointErrorsDoNotEchoBodies(t *testing.T) {
 }
 
 func TestConcurrentTurnsAreBounded(t *testing.T) {
-	fake := &fakeMessages{}
+	fake := &fakeChat{}
 	s, _ := newTestService(t, fake, false)
 	for i := 0; i < MaxConcurrentTurns; i++ {
 		s.turns <- struct{}{}
@@ -509,7 +508,7 @@ func TestConcurrentTurnsAreBounded(t *testing.T) {
 }
 
 func TestToolApprovalAllPausesForDecision(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("list_flows", "{}"), textReply("ok")}}
+	fake := &fakeChat{replies: []string{toolUseReply("list_flows", "{}"), textReply("ok")}}
 	s, actions := newTestService(t, fake, false)
 	c, _ := s.manager.Get(context.Background())
 	c.ToolApproval = ApproveAll
@@ -569,7 +568,7 @@ func TestToolApprovalAllPausesForDecision(t *testing.T) {
 }
 
 func TestToolApprovalDeniedSkipsTheCall(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("list_flows", "{}"), textReply("ok")}}
+	fake := &fakeChat{replies: []string{toolUseReply("list_flows", "{}"), textReply("ok")}}
 	s, actions := newTestService(t, fake, false)
 	c, _ := s.manager.Get(context.Background())
 	c.ToolApproval = ApproveAll
@@ -605,7 +604,7 @@ func TestToolApprovalDeniedSkipsTheCall(t *testing.T) {
 }
 
 func TestConversationsAndTranscript(t *testing.T) {
-	fake := &fakeMessages{replies: []string{toolUseReply("list_flows", "{}"), textReply("One flow.")}}
+	fake := &fakeChat{replies: []string{toolUseReply("list_flows", "{}"), textReply("One flow.")}}
 	s, _ := newTestService(t, fake, false)
 	id, err := s.Chat(context.Background(), "", "what flows exist?", "#/flows", CallMeta{}, func(Event) error { return nil })
 	if err != nil {

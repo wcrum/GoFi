@@ -12,8 +12,8 @@ from pydantic import BaseModel
 
 # What GoFi supplies to a worker whose library has AI on. The proxy port is
 # closed, so a real client call fails fast with a connection error.
-AI_ENV = {"GOFI_LLM_PROXY_URL": "http://127.0.0.1:9/gofi/llm", "GOFI_LLM_PROVIDER": "openai", "GOFI_LLM_MODEL": "test-model", "GOFI_SANDBOX_TOKEN": "worker-token-0123"}
-NO_AI_ENV = {"GOFI_LLM_PROXY_URL": "", "GOFI_LLM_PROVIDER": "", "GOFI_LLM_MODEL": "", "GOFI_SANDBOX_TOKEN": "worker-token-0123"}
+AI_ENV = {"GOFI_LLM_PROXY_URL": "http://127.0.0.1:9/gofi/llm", "GOFI_LLM_MODEL": "test-model", "GOFI_SANDBOX_TOKEN": "worker-token-0123"}
+NO_AI_ENV = {"GOFI_LLM_PROXY_URL": "", "GOFI_LLM_MODEL": "", "GOFI_SANDBOX_TOKEN": "worker-token-0123"}
 
 
 class StubRunnable:
@@ -68,14 +68,6 @@ class LLMTest(unittest.TestCase):
             self.assertEqual((client.request_timeout, client.max_retries, client.model_name), (3.5, 0, "test-model"))
             self.assertIs(self.llm.model(timeout=3.5), client)
             self.assertIsNot(self.llm.model(timeout=4.0), client)
-        with mock.patch.dict(os.environ, {**AI_ENV, "GOFI_LLM_PROVIDER": "anthropic"}):
-            client = self.llm.model()
-            self.assertEqual(type(client).__name__, "ChatAnthropic")
-            self.assertEqual(client.anthropic_api_url, "http://127.0.0.1:9/gofi/llm")
-            self.assertEqual(client.anthropic_api_key.get_secret_value(), "worker-token-0123")
-        with mock.patch.dict(os.environ, {**AI_ENV, "GOFI_LLM_PROVIDER": "other"}):
-            with self.assertRaises(self.llm.LLMError):
-                self.llm.model()
 
     def test_a_failed_call_is_an_llm_error_without_the_token(self):
         with mock.patch.dict(os.environ, AI_ENV):

@@ -125,8 +125,7 @@ func (p *openAIProvider) endpoint(path string) string {
 }
 
 // post sends one request, retrying 429 and 5xx answers twice with the
-// endpoint's Retry-After (capped) or a short backoff, as the Anthropic SDK
-// does for its path.
+// endpoint's Retry-After (capped) or a short backoff.
 func (p *openAIProvider) post(ctx context.Context, body any) (*http.Response, error) {
 	var last error
 	for attempt := 0; attempt <= 2; attempt++ {
@@ -210,7 +209,7 @@ func (p *openAIProvider) check(ctx context.Context, c Configuration, _ string) (
 	defer resp.Body.Close()
 	var out oaChunk
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
-		return "", errors.New("model endpoint: the reply was not a chat completion; check the provider and base URL")
+		return "", errors.New("model endpoint: the reply was not a chat completion; check the base URL")
 	}
 	if out.Model == "" {
 		out.Model = c.ModelOrDefault()
@@ -238,7 +237,7 @@ func (p *openAIProvider) complete(ctx context.Context, req completion, onText fu
 		// Some servers ignore stream=true; read one completion instead.
 		var out oaChunk
 		if err := json.NewDecoder(io.LimitReader(resp.Body, MaxResponseBytes)).Decode(&out); err != nil || len(out.Choices) == 0 {
-			return reply{}, errors.New("model endpoint: the reply was not a chat completion; check the provider and base URL")
+			return reply{}, errors.New("model endpoint: the reply was not a chat completion; check the base URL")
 		}
 		choice := out.Choices[0]
 		r := reply{StopReason: finishReason(choice.FinishReason, len(choice.Message.ToolCalls) > 0)}

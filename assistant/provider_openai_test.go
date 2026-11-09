@@ -85,7 +85,7 @@ func newOpenAIService(t *testing.T, fake *fakeChatCompletions, allowChanges bool
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 	m := NewManager(&FileStore{Path: filepath.Join(t.TempDir(), "assistant.yaml")})
-	if _, err := m.Save(context.Background(), Configuration{Enabled: true, Provider: ProviderOpenAI, APIKey: "gsk-test", BaseURL: server.URL + "/v1", Model: "openai/gpt-oss-120b", AllowChanges: allowChanges, Effort: "low"}); err != nil {
+	if _, err := m.Save(context.Background(), Configuration{Enabled: true, APIKey: "gsk-test", BaseURL: server.URL + "/v1", Model: "openai/gpt-oss-120b", AllowChanges: allowChanges, Effort: "low"}); err != nil {
 		t.Fatal(err)
 	}
 	actions := &stubActions{}
@@ -180,7 +180,7 @@ func TestOpenAIProposalsAndErrors(t *testing.T) {
 	// A wrong path answers 404 with a hint and no body echo.
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "INTERNAL PAGE", 404) }))
 	defer bad.Close()
-	_, _, err := Check(context.Background(), Configuration{Enabled: true, Provider: ProviderOpenAI, APIKey: "gsk-test", BaseURL: bad.URL + "/openai/v1", Model: "m"})
+	_, _, err := Check(context.Background(), Configuration{Enabled: true, APIKey: "gsk-test", BaseURL: bad.URL + "/openai/v1", Model: "m"})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 404") || !strings.Contains(err.Error(), "model id") || strings.Contains(err.Error(), "INTERNAL") {
 		t.Fatalf("404: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestOpenAIRetriesRateLimits(t *testing.T) {
 		_, _ = io.WriteString(w, `{"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}]}`)
 	}))
 	defer server.Close()
-	model, _, err := Check(context.Background(), Configuration{Enabled: true, Provider: ProviderOpenAI, APIKey: "k", BaseURL: server.URL + "/v1", Model: "m"})
+	model, _, err := Check(context.Background(), Configuration{Enabled: true, APIKey: "k", BaseURL: server.URL + "/v1", Model: "m"})
 	if err != nil || model != "m" || atomic.LoadInt32(&hits) != 2 {
 		t.Fatalf("model %q err %v hits %d", model, err, hits)
 	}

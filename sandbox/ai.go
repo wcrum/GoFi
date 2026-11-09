@@ -11,8 +11,8 @@ import (
 // AIEnvironment supplies the deployment's AI endpoint (the assistant
 // configuration under Administration, while its "functions may use the AI
 // endpoint" switch is on) to every library. The model key never reaches a worker: the worker gets the
-// controller's LLM proxy address, the provider, and the model, and calls the
-// proxy with its own sandbox token (gofi.llm). The egress rules are what a
+// controller's LLM proxy address and the model, and calls the proxy with
+// its own sandbox token (gofi.llm). The egress rules are what a
 // worker needs to reach the controller; empty when its network already
 // carries the controller (Docker's internal sandbox network).
 //
@@ -26,7 +26,6 @@ type AIEnvironment func() (env map[string]string, egress []EgressRule, ok bool)
 // The variables an AIEnvironment supplies to a worker.
 const (
 	AIEnvProxyURL  = "GOFI_LLM_PROXY_URL" // http://<controller>:<proxy port>
-	AIEnvProvider  = "GOFI_LLM_PROVIDER"  // "anthropic" | "openai": which client gofi.llm builds
 	AIEnvModel     = "GOFI_LLM_MODEL"     // the deployment's model
 	AIEgressReason = "GoFi controller (AI proxy)"
 )

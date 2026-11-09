@@ -3,8 +3,9 @@
 An operator configures one model endpoint under Administration (the same
 configuration GoFiBot uses). A library with AI on calls it through the
 controller's LLM proxy with the worker's own token, so the model key never
-enters the worker. GoFi supplies GOFI_LLM_PROXY_URL, GOFI_LLM_PROVIDER, and
-GOFI_LLM_MODEL; the worker's GOFI_SANDBOX_TOKEN authenticates each call.
+enters the worker. The endpoint speaks OpenAI-compatible Chat Completions.
+GoFi supplies GOFI_LLM_PROXY_URL and GOFI_LLM_MODEL; the worker's
+GOFI_SANDBOX_TOKEN authenticates each call.
 
     label = gofi.llm.classify(fields, ["normal", "suspicious", "critical"])
     summary = gofi.llm.chat("Summarize in one sentence: " + text)
@@ -21,7 +22,7 @@ import time
 
 NOT_ALLOWED = "the deployment's AI endpoint is not enabled for functions; an administrator turns it on under Administration › AI assistant"
 
-_ENV_PROXY, _ENV_PROVIDER, _ENV_MODEL, _ENV_TOKEN = "GOFI_LLM_PROXY_URL", "GOFI_LLM_PROVIDER", "GOFI_LLM_MODEL", "GOFI_SANDBOX_TOKEN"
+_ENV_PROXY, _ENV_MODEL, _ENV_TOKEN = "GOFI_LLM_PROXY_URL", "GOFI_LLM_MODEL", "GOFI_SANDBOX_TOKEN"
 
 
 class LLMError(Exception):
@@ -35,11 +36,10 @@ _runnables = {}
 
 def _settings():
     proxy = os.environ.get(_ENV_PROXY, "").rstrip("/")
-    provider = os.environ.get(_ENV_PROVIDER, "")
     token = os.environ.get(_ENV_TOKEN, "")
-    if not proxy or not provider or not token:
+    if not proxy or not token:
         raise LLMError(NOT_ALLOWED)
-    return proxy, provider, os.environ.get(_ENV_MODEL, ""), token
+    return proxy, os.environ.get(_ENV_MODEL, ""), token
 
 
 def available() -> bool:
@@ -57,22 +57,15 @@ def model(*, timeout: float = 20.0):
     ``with_structured_output``, ``bind_tools``. One client per process; every
     call goes through the controller's proxy. ``timeout`` is per call, in
     seconds; keep it below the library's timeoutSeconds."""
-    proxy, provider, name, token = _settings()
-    key = (proxy, provider, name, float(timeout))
+    proxy, name, token = _settings()
+    key = (proxy, name, float(timeout))
     with _lock:
         client = _models.get(key)
         if client is None:
             try:
-                if provider == "anthropic":
-                    from langchain_anthropic import ChatAnthropic
+                from langchain_openai import ChatOpenAI
 
-                    client = ChatAnthropic(model=name, api_key=token, base_url=proxy, timeout=timeout, max_retries=0)
-                elif provider == "openai":
-                    from langchain_openai import ChatOpenAI
-
-                    client = ChatOpenAI(model=name, api_key=token, base_url=proxy + "/v1", timeout=timeout, max_retries=0)
-                else:
-                    raise LLMError(f"unsupported AI provider {provider!r}; expected anthropic or openai")
+                client = ChatOpenAI(model=name, api_key=token, base_url=proxy + "/v1", timeout=timeout, max_retries=0)
             except ImportError as error:
                 raise LLMError("LangChain is not installed in this worker image") from error
             _models[key] = client

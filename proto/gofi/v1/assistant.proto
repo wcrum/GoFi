@@ -60,9 +60,9 @@ message AssistantConfiguration {
   int32 max_tool_steps = 9;
   // Model effort: "low", "medium", "high"; empty uses the model default.
   string effort = 10;
-  // Protocol the endpoint speaks: "anthropic" (Messages API, default) or
-  // "openai" (Chat Completions: Groq, vLLM, LiteLLM, Ollama, OpenRouter).
-  string provider = 11;
+  // 11 was provider (Anthropic Messages API vs OpenAI Chat Completions);
+  // every endpoint now speaks OpenAI-compatible Chat Completions.
+  reserved 11;
   // "changes" (default): only apply tools wait, as proposals decided after
   // the reply. "all": every tool call pauses the reply until the user
   // approves or denies it (ConfirmAssistantAction with the call's id).

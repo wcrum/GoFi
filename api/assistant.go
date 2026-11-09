@@ -46,7 +46,7 @@ func configurationToProto(c assistant.Configuration) *gofiv1.AssistantConfigurat
 	_, source := assistant.Key(c)
 	c = assistant.Public(c)
 	return &gofiv1.AssistantConfiguration{
-		Enabled: c.Enabled, Provider: c.ProviderOrDefault(), BaseUrl: c.BaseURL, Model: c.Model, HasApiKey: source != "none", ApiKeySource: source,
+		Enabled: c.Enabled, BaseUrl: c.BaseURL, Model: c.Model, HasApiKey: source != "none", ApiKeySource: source,
 		AllowChanges: c.AllowChanges, AllowFunctions: c.AllowFunctions, Instructions: c.Instructions, MaxToolSteps: int32(c.MaxToolSteps), Effort: c.Effort, ToolApproval: c.ToolApprovalOrDefault(),
 	}
 }
@@ -56,7 +56,7 @@ func configurationFromProto(m *gofiv1.AssistantConfiguration) assistant.Configur
 		return assistant.Configuration{}
 	}
 	return assistant.Configuration{
-		Enabled: m.Enabled, Provider: m.Provider, BaseURL: m.BaseUrl, Model: m.Model, APIKey: m.ApiKey, AllowChanges: m.AllowChanges, AllowFunctions: m.AllowFunctions,
+		Enabled: m.Enabled, BaseURL: m.BaseUrl, Model: m.Model, APIKey: m.ApiKey, AllowChanges: m.AllowChanges, AllowFunctions: m.AllowFunctions,
 		Instructions: m.Instructions, MaxToolSteps: int(m.MaxToolSteps), Effort: m.Effort, ToolApproval: m.ToolApproval,
 	}
 }
@@ -250,7 +250,7 @@ func shortID(id string) string {
 func endpointHost(c assistant.Configuration) string {
 	c = assistant.Effective(c)
 	if c.BaseURL == "" {
-		return "api.anthropic.com"
+		return "api.openai.com"
 	}
 	if u, err := url.Parse(c.BaseURL); err == nil {
 		return u.Host

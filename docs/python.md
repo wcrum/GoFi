@@ -156,10 +156,10 @@ A library can hand messages to the deployment's AI model without naming a
 provider, an endpoint, or a key:
 
 1. **The operator, once.** Under Administration › AI assistant, enable the
-   AI endpoint (the same configuration GoFiBot uses): provider (`anthropic`
-   or `openai`, which covers every OpenAI-compatible endpoint: Groq, vLLM,
-   Ollama, LiteLLM), endpoint, model, and key, and turn on **Functions may
-   use the AI endpoint**. That is the only switch: it is deployment-wide,
+   AI endpoint (the same configuration GoFiBot uses): endpoint, model, and
+   key, and turn on **Functions may use the AI endpoint**. The endpoint
+   speaks OpenAI-compatible Chat Completions, which covers OpenAI, Groq,
+   vLLM, Ollama, LiteLLM, OpenRouter, and similar gateways. That is the only switch: it is deployment-wide,
    and libraries carry no AI setting of their own (`spec.ai` is ignored).
 2. **The library author.** Call `gofi.llm`:
 
@@ -186,12 +186,12 @@ out: the agentic boundary is the function body, not the model).
 **The trust model.** While the switch is on, every library can call the deployment's model
 through the controller, with its own worker token; it never sees the key.
 GoFi gives the worker `GOFI_LLM_PROXY_URL` (the controller's AI proxy,
-`http://<controller>:9091` by default), `GOFI_LLM_PROVIDER`, and
-`GOFI_LLM_MODEL`; `gofi.llm` builds a LangChain client against the proxy
-with the worker's `GOFI_SANDBOX_TOKEN` as its API key, and the proxy
-(`POST /v1/chat/completions` or `/v1/messages`) checks the token against
-the running workers, requires the deployment's switch, adds the real key, and
-forwards to the configured endpoint. The key is kept out of the worker on
+`http://<controller>:9091` by default) and `GOFI_LLM_MODEL`; `gofi.llm`
+builds a LangChain client against the proxy with the worker's
+`GOFI_SANDBOX_TOKEN` as its API key, and the proxy
+(`POST /v1/chat/completions`) checks the token against the running workers,
+requires the deployment's switch, adds the real key, and forwards to the
+configured endpoint, which speaks OpenAI-compatible Chat Completions. The key is kept out of the worker on
 purpose: the debugger's `DebugFrame` and watches can read anything the
 worker holds (locals, globals, environment), so a key there would be a key
 anyone who can debug the library can read.
@@ -217,12 +217,12 @@ The proxy also bounds what a library can spend: the model is always the
 deployment's (a request naming another model is refused with 400; `gofi.llm`
 sends none), `max_tokens` / `max_completion_tokens` are capped at
 `GOFI_LLM_MAX_OUTPUT_TOKENS` (default 8192; chart `llmProxy.maxOutputTokens`),
-`anthropic-beta` headers are not forwarded, and at most 4 calls per library
+and at most 4 calls per library
 and 32 per controller are in flight (more get 429 with `Retry-After`, which
-surfaces as an `LLMError`). Each call is logged (library, provider, model,
+surfaces as an `LLMError`). Each call is logged (library, model,
 status, duration; never bodies or keys) and counted in Prometheus
 (`gofi_llm_proxy_calls_total`, `gofi_llm_proxy_duration_seconds`, by library).
-Changing the endpoint, provider, or model under Administration restarts
+Changing the endpoint or model under Administration restarts
 every AI worker. A standby controller replica answers 503 with `Retry-After`
 until it leads; `gofi.llm` retries such an answer up to three times within
 the call's `timeout`.
@@ -272,8 +272,8 @@ injection). Worker stdout ships to the live log stream and central logs; the
 AI sink prints the decision and a truncated message. `get_num_tokens` is not usable: it
 downloads tiktoken encodings, which needs egress the worker does not have.
 
-**LangChain directly.** The worker image includes `langchain-core`,
-`langchain-openai`, and `langchain-anthropic` (versions in
+**LangChain directly.** The worker image includes `langchain-core` and
+`langchain-openai` (versions in
 [Installed packages](#installed-packages)); `gofi.llm.model()` is the
 supported way to reach them, since a client the library builds itself would
 need an endpoint, a key, and egress of its own. The `langchain`
@@ -593,7 +593,6 @@ library's [egress rules](#outbound-network-egress) allow:
 | `pydantic` | 2.14.1 | Typed models that validate frames and fields |
 | `langchain-core` | 1.6.12 | LangChain messages, runnables, structured output (`gofi.llm`) |
 | `langchain-openai` | 1.7.2 (`openai` 3.35.1, `tiktoken` 0.14.0) | `ChatOpenAI`: OpenAI and every OpenAI-compatible endpoint (network) |
-| `langchain-anthropic` | 1.7.6 (`anthropic` 1.15.0) | `ChatAnthropic`: Anthropic models (network) |
 | `langchain-protocol` | 0.0.19 | LangChain's shared interfaces (pure Python) |
 | `langsmith` | 0.14.11 | LangChain tracing client; idle unless configured (pure Python) |
 | `httpx` 0.28.1, `httpcore` 1.0.9, `httpx2` 2.13.1, `httpcore2` 2.13.1 | | HTTP clients the SDKs use (pure Python) |

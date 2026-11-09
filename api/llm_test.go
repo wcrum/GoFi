@@ -40,11 +40,11 @@ type llmFixture struct {
 	calls     int
 }
 
-func newLLMFixture(t *testing.T, provider string, answer func(w http.ResponseWriter, r *http.Request)) *llmFixture {
-	return newLLMFixtureWithLimits(t, provider, answer, 0, LLMPerLibraryInFlight, LLMGlobalInFlight)
+func newLLMFixture(t *testing.T, answer func(w http.ResponseWriter, r *http.Request)) *llmFixture {
+	return newLLMFixtureWithLimits(t, answer, 0, LLMPerLibraryInFlight, LLMGlobalInFlight)
 }
 
-func newLLMFixtureWithLimits(t *testing.T, provider string, answer func(w http.ResponseWriter, r *http.Request), maxTokens, perLibrary, global int) *llmFixture {
+func newLLMFixtureWithLimits(t *testing.T, answer func(w http.ResponseWriter, r *http.Request), maxTokens, perLibrary, global int) *llmFixture {
 	t.Helper()
 	t.Setenv("GOFI_ASSISTANT_ALLOW_PRIVATE_ENDPOINT", "1") // httptest listens on loopback
 	t.Setenv("GOFI_ASSISTANT_API_KEY", "")
@@ -61,12 +61,12 @@ func newLLMFixtureWithLimits(t *testing.T, provider string, answer func(w http.R
 	}))
 	t.Cleanup(f.upstream.Close)
 	f.bot = assistant.NewManager(&assistant.FileStore{Path: filepath.Join(t.TempDir(), "assistant.yaml")})
-	if _, err := f.bot.Save(context.Background(), assistant.Configuration{Enabled: true, Provider: provider, BaseURL: f.upstream.URL + "/v1", Model: "configured-model", APIKey: "real-key", AllowFunctions: true}); err != nil {
+	if _, err := f.bot.Save(context.Background(), assistant.Configuration{Enabled: true, BaseURL: f.upstream.URL + "/v1", Model: "configured-model", APIKey: "real-key", AllowFunctions: true}); err != nil {
 		t.Fatal(err)
 	}
 	f.manager = sandbox.New(llmTestBackend{}, nil)
 	f.manager.AIEnvironment = func() (map[string]string, []sandbox.EgressRule, bool) {
-		return map[string]string{sandbox.AIEnvProxyURL: "http://controller:9091", sandbox.AIEnvProvider: provider, sandbox.AIEnvModel: "configured-model"}, nil, true
+		return map[string]string{sandbox.AIEnvProxyURL: "http://controller:9091", sandbox.AIEnvModel: "configured-model"}, nil, true
 	}
 	ctx := context.Background()
 	for _, d := range []sandbox.Definition{{Name: "ai", SourceCode: "import gofi", AI: true}, {Name: "plain", SourceCode: "import gofi"}} {
@@ -106,7 +106,7 @@ func (f *llmFixture) post(t *testing.T, path, token, body string, headers ...str
 }
 
 func TestLLMProxyForwardsForAILibrariesOnly(t *testing.T) {
-	f := newLLMFixture(t, assistant.ProviderOpenAI, func(w http.ResponseWriter, _ *http.Request) {
+	f := newLLMFixture(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
 	})
@@ -120,7 +120,7 @@ func TestLLMProxyForwardsForAILibrariesOnly(t *testing.T) {
 			t.Fatalf("token %q: %d", tc.token, resp.StatusCode)
 		}
 	}
-	off := assistant.Configuration{Enabled: true, Provider: assistant.ProviderOpenAI, BaseURL: f.upstream.URL + "/v1", Model: "configured-model", APIKey: "real-key"}
+	off := assistant.Configuration{Enabled: true, BaseURL: f.upstream.URL + "/v1", Model: "configured-model", APIKey: "real-key"}
 	if _, err := f.bot.Save(context.Background(), off); err != nil {
 		t.Fatal(err)
 	}
@@ -154,17 +154,20 @@ func TestLLMProxyForwardsForAILibrariesOnly(t *testing.T) {
 	if got["model"] != "configured-model" {
 		t.Fatalf("an empty model must become the deployment's: %v", got)
 	}
-	// The anthropic SDK presents the token as x-api-key; that works too, but
-	// the deployment speaks openai, so the messages path is refused.
-	req, _ := http.NewRequest(http.MethodPost, f.proxy.URL+"/v1/messages", strings.NewReader(`{"messages":[]}`))
+	// A hand-rolled client may present the token as x-api-key; that works
+	// too. Only Chat Completions is served, so any other path is 404.
+	req, _ := http.NewRequest(http.MethodPost, f.proxy.URL+"/v1/chat/completions", strings.NewReader(`{"messages":[]}`))
 	req.Header.Set("X-Api-Key", f.aiToken)
 	resp2, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp2.Body.Close()
-	if resp2.StatusCode != 400 {
-		t.Fatalf("provider mismatch: %d", resp2.StatusCode)
+	if resp2.StatusCode != 200 {
+		t.Fatalf("x-api-key token: %d", resp2.StatusCode)
+	}
+	if resp3 := f.post(t, "/v1/messages", f.aiToken, `{"messages":[]}`); resp3.StatusCode != 404 {
+		t.Fatalf("the Messages path is no longer served: %d", resp3.StatusCode)
 	}
 	// The deployment's model, named explicitly, passes; another model is
 	// refused (cost amplification), and so are oversized or non-object bodies.
@@ -194,7 +197,7 @@ func TestLLMProxyForwardsForAILibrariesOnly(t *testing.T) {
 }
 
 func TestLLMProxyCapsOutputTokens(t *testing.T) {
-	f := newLLMFixtureWithLimits(t, assistant.ProviderOpenAI, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }, 1000, LLMPerLibraryInFlight, LLMGlobalInFlight)
+	f := newLLMFixtureWithLimits(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }, 1000, LLMPerLibraryInFlight, LLMGlobalInFlight)
 	f.post(t, "/v1/chat/completions", f.aiToken, `{"messages":[],"max_tokens":50000,"max_completion_tokens":2000,"temperature":0}`)
 	_, _, got := f.upstreamSaw()
 	if got["max_tokens"] != 1000.0 || got["max_completion_tokens"] != 1000.0 || got["temperature"] != 0.0 {
@@ -209,38 +212,34 @@ func TestLLMProxyCapsOutputTokens(t *testing.T) {
 	}
 }
 
-func TestLLMProxyAnthropicHeadersAndStreaming(t *testing.T) {
-	f := newLLMFixture(t, assistant.ProviderAnthropic, func(w http.ResponseWriter, r *http.Request) {
+func TestLLMProxyStreamsAndHidesTheKey(t *testing.T) {
+	f := newLLMFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(200)
 		flusher := w.(http.Flusher)
-		for _, event := range []string{"event: message_start\ndata: {}\n\n", "event: message_stop\ndata: {}\n\n"} {
+		for _, event := range []string{"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n", "data: [DONE]\n\n"} {
 			_, _ = io.WriteString(w, event)
 			flusher.Flush()
 			time.Sleep(20 * time.Millisecond)
 		}
 	})
-	resp := f.post(t, "/v1/messages", f.aiToken, `{"messages":[{"role":"user","content":"hi"}],"stream":true,"max_tokens":10}`, "Anthropic-Beta", "tools-2024", "Anthropic-Version", "2023-06-01")
+	resp := f.post(t, "/v1/chat/completions", f.aiToken, `{"messages":[{"role":"user","content":"hi"}],"stream":true,"max_tokens":10}`)
 	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("%d %v", resp.StatusCode, resp.Header)
 	}
 	first := make([]byte, 64)
 	n, _ := resp.Body.Read(first)
-	if !strings.HasPrefix(string(first[:n]), "event: message_start") {
+	if !strings.HasPrefix(string(first[:n]), "data: ") {
 		t.Fatalf("first chunk: %q", first[:n])
 	}
 	rest, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(first[:n])+string(rest), "message_stop") {
+	if !strings.Contains(string(first[:n])+string(rest), "[DONE]") {
 		t.Fatal("stream was cut")
 	}
-	// The endpoint saw the real key as x-api-key and the version header;
-	// never the worker's token, and never a beta opt-in from a worker.
+	// The endpoint saw the deployment's real key, never the worker's token.
 	path, header, got := f.upstreamSaw()
-	if path != "/v1/messages" || header.Get("X-Api-Key") != "real-key" || header.Get("Anthropic-Version") != "2023-06-01" {
+	if path != "/v1/chat/completions" || header.Get("Authorization") != "Bearer real-key" {
 		t.Fatalf("upstream saw %s %v", path, header)
-	}
-	if header.Get("Anthropic-Beta") != "" {
-		t.Fatal("anthropic-beta must not be forwarded")
 	}
 	if strings.Contains(header.Get("Authorization"), f.aiToken) || got["model"] != "configured-model" {
 		t.Fatalf("upstream headers %v body %v", header, got)
@@ -250,7 +249,7 @@ func TestLLMProxyAnthropicHeadersAndStreaming(t *testing.T) {
 func TestLLMProxyLimitsCallsInFlight(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan struct{}, 16)
-	f := newLLMFixtureWithLimits(t, assistant.ProviderOpenAI, func(w http.ResponseWriter, _ *http.Request) {
+	f := newLLMFixtureWithLimits(t, func(w http.ResponseWriter, _ *http.Request) {
 		started <- struct{}{}
 		<-release
 		_, _ = w.Write([]byte(`{}`))
@@ -296,8 +295,8 @@ func TestLLMProxyLimitsCallsInFlight(t *testing.T) {
 }
 
 func TestLLMProxyRefusesWhenTheEndpointIsOffOrOnAStandby(t *testing.T) {
-	f := newLLMFixture(t, assistant.ProviderOpenAI, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) })
-	if _, err := f.bot.Save(context.Background(), assistant.Configuration{Enabled: false, Provider: assistant.ProviderOpenAI, BaseURL: f.upstream.URL + "/v1"}); err != nil {
+	f := newLLMFixture(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) })
+	if _, err := f.bot.Save(context.Background(), assistant.Configuration{Enabled: false, BaseURL: f.upstream.URL + "/v1"}); err != nil {
 		t.Fatal(err)
 	}
 	if resp := f.post(t, "/v1/chat/completions", f.aiToken, `{}`); resp.StatusCode != 503 {
@@ -310,16 +309,10 @@ func TestLLMProxyRefusesWhenTheEndpointIsOffOrOnAStandby(t *testing.T) {
 }
 
 func TestLLMUpstreamAndPrepareBody(t *testing.T) {
-	if got := llmUpstream(assistant.Configuration{}, assistant.ProviderOpenAI); got != "https://api.openai.com/v1/chat/completions" {
+	if got := llmUpstream(assistant.Configuration{}); got != "https://api.openai.com/v1/chat/completions" {
 		t.Fatal(got)
 	}
-	if got := llmUpstream(assistant.Configuration{BaseURL: "https://api.groq.com/openai/v1/"}, assistant.ProviderOpenAI); got != "https://api.groq.com/openai/v1/chat/completions" {
-		t.Fatal(got)
-	}
-	if got := llmUpstream(assistant.Configuration{}, assistant.ProviderAnthropic); got != "https://api.anthropic.com/v1/messages" {
-		t.Fatal(got)
-	}
-	if got := llmUpstream(assistant.Configuration{BaseURL: "https://gateway.example/v1"}, assistant.ProviderAnthropic); got != "https://gateway.example/v1/messages" {
+	if got := llmUpstream(assistant.Configuration{BaseURL: "https://api.groq.com/openai/v1/"}); got != "https://api.groq.com/openai/v1/chat/completions" {
 		t.Fatal(got)
 	}
 	body, err := prepareBody([]byte(`{"model":"","messages":[],"max_tokens":99999}`), "m", 8192)

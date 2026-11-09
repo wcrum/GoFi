@@ -8,20 +8,6 @@ import (
 	"strings"
 )
 
-// Providers speak the two wire protocols a configured endpoint may offer.
-const (
-	ProviderAnthropic = "anthropic"
-	ProviderOpenAI    = "openai"
-)
-
-// ProviderOrDefault is the protocol the endpoint speaks.
-func (c Configuration) ProviderOrDefault() string {
-	if c.Provider == "" {
-		return ProviderAnthropic
-	}
-	return c.Provider
-}
-
 // message is one entry of a conversation in provider-neutral form: a user
 // text, an assistant reply (text and/or tool calls), or the results of the
 // previous assistant's tool calls.
@@ -74,14 +60,11 @@ type provider interface {
 	check(ctx context.Context, c Configuration, key string) (string, error)
 }
 
+// providerFor builds the client for the configured endpoint. Every endpoint
+// speaks OpenAI-compatible Chat Completions (OpenAI, Groq, vLLM, LiteLLM,
+// Ollama, OpenRouter, or any gateway that implements /chat/completions).
 func providerFor(c Configuration, key string) (provider, error) {
-	switch c.ProviderOrDefault() {
-	case ProviderAnthropic:
-		return anthropicProvider{client: newClient(c, key)}, nil
-	case ProviderOpenAI:
-		return &openAIProvider{config: Effective(c), key: key}, nil
-	}
-	return nil, fmt.Errorf("unknown provider %q", c.Provider)
+	return &openAIProvider{config: Effective(c), key: key}, nil
 }
 
 // Bounds on what one reply may carry, whatever the endpoint sends.
@@ -124,7 +107,7 @@ func hint(status int) string {
 	case 401, 403:
 		return "; check the API key"
 	case 404:
-		return "; check the provider, the base URL, and the model id"
+		return "; check the base URL and the model id"
 	case 413:
 		return "; the request exceeds what the endpoint accepts per call (tokens or bytes): start a new conversation, or ask for a smaller section"
 	case 429:

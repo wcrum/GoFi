@@ -45,9 +45,6 @@ type AssistantConfiguration struct {
 	MaxToolSteps int32 `protobuf:"varint,9,opt,name=max_tool_steps,json=maxToolSteps,proto3" json:"max_tool_steps,omitempty"`
 	// Model effort: "low", "medium", "high"; empty uses the model default.
 	Effort string `protobuf:"bytes,10,opt,name=effort,proto3" json:"effort,omitempty"`
-	// Protocol the endpoint speaks: "anthropic" (Messages API, default) or
-	// "openai" (Chat Completions: Groq, vLLM, LiteLLM, Ollama, OpenRouter).
-	Provider string `protobuf:"bytes,11,opt,name=provider,proto3" json:"provider,omitempty"`
 	// "changes" (default): only apply tools wait, as proposals decided after
 	// the reply. "all": every tool call pauses the reply until the user
 	// approves or denies it (ConfirmAssistantAction with the call's id).
@@ -156,13 +153,6 @@ func (x *AssistantConfiguration) GetMaxToolSteps() int32 {
 func (x *AssistantConfiguration) GetEffort() string {
 	if x != nil {
 		return x.Effort
-	}
-	return ""
-}
-
-func (x *AssistantConfiguration) GetProvider() string {
-	if x != nil {
-		return x.Provider
 	}
 	return ""
 }
@@ -1826,7 +1816,7 @@ var File_gofi_v1_assistant_proto protoreflect.FileDescriptor
 
 const file_gofi_v1_assistant_proto_rawDesc = "" +
 	"\n" +
-	"\x17gofi/v1/assistant.proto\x12\agofi.v1\"\xb3\x03\n" +
+	"\x17gofi/v1/assistant.proto\x12\agofi.v1\"\x9d\x03\n" +
 	"\x16AssistantConfiguration\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
 	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x14\n" +
@@ -1838,10 +1828,9 @@ const file_gofi_v1_assistant_proto_rawDesc = "" +
 	"\finstructions\x18\b \x01(\tR\finstructions\x12$\n" +
 	"\x0emax_tool_steps\x18\t \x01(\x05R\fmaxToolSteps\x12\x16\n" +
 	"\x06effort\x18\n" +
-	" \x01(\tR\x06effort\x12\x1a\n" +
-	"\bprovider\x18\v \x01(\tR\bprovider\x12#\n" +
+	" \x01(\tR\x06effort\x12#\n" +
 	"\rtool_approval\x18\f \x01(\tR\ftoolApproval\x12'\n" +
-	"\x0fallow_functions\x18\r \x01(\bR\x0eallowFunctions\"\"\n" +
+	"\x0fallow_functions\x18\r \x01(\bR\x0eallowFunctionsJ\x04\b\v\x10\f\"\"\n" +
 	" GetAssistantConfigurationRequest\"\xb2\x02\n" +
 	"!GetAssistantConfigurationResponse\x12E\n" +
 	"\rconfiguration\x18\x01 \x01(\v2\x1f.gofi.v1.AssistantConfigurationR\rconfiguration\x12\x18\n" +

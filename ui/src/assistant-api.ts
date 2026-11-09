@@ -10,7 +10,6 @@ import { t, translateServerError } from './i18n'
 const client = createClient(AssistantService, createConnectTransport({ baseUrl: window.location.origin, useBinaryFormat: true }))
 
 export type ApiKeySource = 'stored' | 'environment' | 'none'
-export type AssistantProvider = 'anthropic' | 'openai'
 export type AssistantEffort = '' | 'low' | 'medium' | 'high'
 /** "changes": only apply tools wait, as proposals decided after the reply.
  * "all": every tool call pauses the reply until the user approves or denies it. */
@@ -19,9 +18,7 @@ export type AssistantToolApproval = 'changes' | 'all'
 /** GoFiBot's model endpoint settings (docs: Administration). */
 export interface AssistantConfiguration {
   enabled: boolean
-  /** Wire protocol of the endpoint: Anthropic Messages API or OpenAI-compatible Chat Completions. */
-  provider: AssistantProvider
-  /** Empty uses the Anthropic API; otherwise a gateway speaking the provider's protocol. */
+  /** The OpenAI-compatible API root, conventionally ending in /v1. */
   baseUrl: string
   model: string
   /** Write-only: never returned; empty on apply keeps the stored key. */
@@ -86,7 +83,7 @@ export interface ChatHandlers {
 }
 
 export const emptyConfiguration = (): AssistantConfiguration => ({
-  enabled: false, provider: 'anthropic', baseUrl: '', model: '', apiKey: '', hasApiKey: false, apiKeySource: 'none', allowChanges: false, allowFunctions: false, instructions: '', maxToolSteps: DEFAULT_MAX_TOOL_STEPS, effort: '', toolApproval: 'changes',
+  enabled: false, baseUrl: '', model: '', apiKey: '', hasApiKey: false, apiKeySource: 'none', allowChanges: false, allowFunctions: false, instructions: '', maxToolSteps: DEFAULT_MAX_TOOL_STEPS, effort: '', toolApproval: 'changes',
 })
 
 /** A Connect failure with a user-facing message; `code` keeps the status for callers that branch on it. */
@@ -128,14 +125,14 @@ function configurationFromProto(proto: ProtoConfiguration | undefined): Assistan
   const source = proto.apiKeySource === 'stored' || proto.apiKeySource === 'environment' ? proto.apiKeySource : 'none'
   const effort = proto.effort === 'low' || proto.effort === 'medium' || proto.effort === 'high' ? proto.effort : ''
   return {
-    enabled: proto.enabled, provider: proto.provider === 'openai' ? 'openai' : 'anthropic', baseUrl: proto.baseUrl, model: proto.model, apiKey: '', hasApiKey: proto.hasApiKey, apiKeySource: source,
+    enabled: proto.enabled, baseUrl: proto.baseUrl, model: proto.model, apiKey: '', hasApiKey: proto.hasApiKey, apiKeySource: source,
     allowChanges: proto.allowChanges, allowFunctions: proto.allowFunctions, instructions: proto.instructions, maxToolSteps: clampToolSteps(proto.maxToolSteps), effort,
     toolApproval: proto.toolApproval === 'all' ? 'all' : 'changes',
   }
 }
 /** The wire shape; read-only fields are sent as-is and ignored by the server. */
 const configurationToProto = (configuration: AssistantConfiguration) => ({
-  enabled: configuration.enabled, provider: configuration.provider, baseUrl: configuration.baseUrl.trim(), model: configuration.model.trim(), apiKey: configuration.apiKey,
+  enabled: configuration.enabled, baseUrl: configuration.baseUrl.trim(), model: configuration.model.trim(), apiKey: configuration.apiKey,
   hasApiKey: configuration.hasApiKey, apiKeySource: configuration.apiKeySource, allowChanges: configuration.allowChanges, allowFunctions: configuration.allowFunctions,
   instructions: configuration.instructions, maxToolSteps: clampToolSteps(configuration.maxToolSteps), effort: configuration.effort, toolApproval: configuration.toolApproval,
 })

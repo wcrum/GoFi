@@ -19,7 +19,7 @@ func aiHook(proxy string, ok bool) AIEnvironment {
 		if !ok {
 			return nil, nil, false
 		}
-		env := map[string]string{AIEnvProxyURL: proxy, AIEnvProvider: "openai", AIEnvModel: "gpt-4o-mini"}
+		env := map[string]string{AIEnvProxyURL: proxy, AIEnvModel: "gpt-4o-mini"}
 		return env, []EgressRule{{Namespace: "gofi", PodSelector: map[string]string{"app.kubernetes.io/name": "gofi"}, Port: 9090}}, true
 	}
 }
@@ -40,7 +40,7 @@ func TestAILibraryInheritsTheProxyAndRestartsWhenItChanges(t *testing.T) {
 		t.Fatalf("last started %q", b.last.Name)
 	}
 	started := b.last
-	if started.Env[AIEnvProxyURL] != "http://controller:9090/gofi/llm" || started.Env[AIEnvProvider] != "openai" || started.Env[AIEnvModel] != "gpt-4o-mini" {
+	if started.Env[AIEnvProxyURL] != "http://controller:9090/gofi/llm" || started.Env[AIEnvModel] != "gpt-4o-mini" {
 		t.Fatalf("AI env: %v", started.Env)
 	}
 	for _, key := range []string{"GOFI_LLM_API_KEY", "GOFI_LLM_BASE_URL"} {
@@ -132,7 +132,7 @@ func TestKubernetesAIWorkerCarriesPlainEnvAndControllerEgress(t *testing.T) {
 	c.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) { cancel(); return false, nil, nil })
 	k := &Kubernetes{Client: c, Namespace: "gofi", Image: DefaultImage}
 	d := Definition{Name: "ai", SourceCode: "import gofi", TimeoutSeconds: 5, MemoryMiB: 128, AI: true,
-		Env:    map[string]string{AIEnvProxyURL: "http://gofi.gofi.svc.cluster.local:9090/gofi/llm", AIEnvProvider: "anthropic", AIEnvModel: "model-small"},
+		Env:    map[string]string{AIEnvProxyURL: "http://gofi.gofi.svc.cluster.local:9090/gofi/llm", AIEnvModel: "model-small"},
 		Egress: []EgressRule{{Namespace: "gofi", PodSelector: map[string]string{"app.kubernetes.io/name": "gofi"}, Port: 9090, Protocol: "tcp", Description: AIEgressReason}}}
 	_, _ = k.Start(ctx, d, "secret")
 	pod, err := c.CoreV1().Pods("gofi").Get(context.Background(), "gofi-python-ai", metav1.GetOptions{})
@@ -143,7 +143,7 @@ func TestKubernetesAIWorkerCarriesPlainEnvAndControllerEgress(t *testing.T) {
 	for _, e := range pod.Spec.Containers[0].Env {
 		env[e.Name] = e.Value
 	}
-	if env[AIEnvProxyURL] != d.Env[AIEnvProxyURL] || env[AIEnvProvider] != "anthropic" || env[AIEnvModel] != "model-small" {
+	if env[AIEnvProxyURL] != d.Env[AIEnvProxyURL] || env[AIEnvModel] != "model-small" {
 		t.Fatalf("env: %v", env)
 	}
 	secret, _ := c.CoreV1().Secrets("gofi").Get(context.Background(), "gofi-python-ai", metav1.GetOptions{})
@@ -165,7 +165,7 @@ func TestKubernetesAIWorkerCarriesPlainEnvAndControllerEgress(t *testing.T) {
 		t.Fatal("the derived AI egress rule must not change the definition hash")
 	}
 	changed := d
-	changed.Env = map[string]string{AIEnvProxyURL: d.Env[AIEnvProxyURL], AIEnvProvider: "anthropic", AIEnvModel: "model-large"}
+	changed.Env = map[string]string{AIEnvProxyURL: d.Env[AIEnvProxyURL], AIEnvModel: "model-large"}
 	if definitionHash(d, DefaultImage) == definitionHash(changed, DefaultImage) {
 		t.Fatal("a changed model must change the definition hash")
 	}

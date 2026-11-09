@@ -23,11 +23,10 @@ import (
 // deployment's model (the assistant configuration under Administration)
 // through the controller, authenticating with its own worker token; the
 // model key stays in the controller and never enters a worker, where the
-// debugger could read it. The worker's LangChain client speaks the
-// provider's own wire protocol to these paths:
+// debugger could read it. The worker's LangChain client speaks
+// OpenAI-compatible Chat Completions to one path:
 //
-//	POST /v1/chat/completions   provider "openai" (Chat Completions)
-//	POST /v1/messages           provider "anthropic" (Messages API)
+//	POST /v1/chat/completions
 //
 // The proxy is served on its own listener (GOFI_LLM_PROXY_ADDR), never on
 // the API server: a worker's egress reaches this port and nothing else, so
@@ -43,7 +42,6 @@ const (
 
 	llmMaxRequestBytes = 1 << 20
 	llmDeadline        = 5 * time.Minute
-	anthropicVersion   = "2023-06-01"
 )
 
 type llmProxy struct {
@@ -70,15 +68,14 @@ func newLLMProxy(manager *sandbox.Supervisor, bot *assistant.Manager, maxOutputT
 	p := &llmProxy{manager: manager, assistant: bot, client: assistant.HTTPClient(), maxOutputTokens: maxOutputTokens, perLibraryLimit: perLibrary, global: make(chan struct{}, global), perLibrary: map[string]int{}}
 	r := chi.NewRouter()
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	r.Post("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { p.serve(w, r, assistant.ProviderOpenAI) })
-	r.Post("/v1/messages", func(w http.ResponseWriter, r *http.Request) { p.serve(w, r, assistant.ProviderAnthropic) })
+	r.Post("/v1/chat/completions", p.serve)
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		llmError(w, http.StatusNotFound, "the AI proxy serves /v1/chat/completions (openai) and /v1/messages (anthropic)")
+		llmError(w, http.StatusNotFound, "the AI proxy serves /v1/chat/completions (OpenAI-compatible Chat Completions)")
 	})
 	return r
 }
 
-// llmError answers in a shape both SDKs report as the message.
+// llmError answers in the shape the OpenAI SDK reports as the message.
 func llmError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -86,7 +83,7 @@ func llmError(w http.ResponseWriter, status int, message string) {
 }
 
 // workerToken is the credential a worker presents: the OpenAI SDK sends a
-// bearer token, the Anthropic SDK an x-api-key header.
+// bearer token. X-Api-Key is still accepted for a hand-rolled client.
 func workerToken(r *http.Request) string {
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
@@ -94,20 +91,13 @@ func workerToken(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("X-Api-Key"))
 }
 
-// llmUpstream is the provider endpoint for one wire protocol.
-func llmUpstream(c assistant.Configuration, provider string) string {
+// llmUpstream is the deployment's Chat Completions endpoint.
+func llmUpstream(c assistant.Configuration) string {
 	base := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
-	if provider == assistant.ProviderOpenAI {
-		if base == "" {
-			base = "https://api.openai.com/v1"
-		}
-		return base + "/chat/completions"
-	}
-	base = strings.TrimSuffix(base, "/v1")
 	if base == "" {
-		base = "https://api.anthropic.com"
+		base = "https://api.openai.com/v1"
 	}
-	return base + "/v1/messages"
+	return base + "/chat/completions"
 }
 
 // prepareBody pins the request to the deployment's model (an empty model is
@@ -156,7 +146,7 @@ func (p *llmProxy) acquire(library string) (release func(), ok bool) {
 	}, true
 }
 
-func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request, provider string) {
+func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	library, status := "-", 0
 	defer func() { observability.LLMProxyCall(library, status, time.Since(started)) }()
@@ -190,10 +180,6 @@ func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request, provider string
 		refuse(http.StatusServiceUnavailable, "the deployment's AI endpoint has no API key")
 		return
 	}
-	if configured := c.ProviderOrDefault(); configured != provider {
-		refuse(http.StatusBadRequest, fmt.Sprintf("the deployment's AI endpoint speaks %s, not %s; gofi.llm picks the matching client from GOFI_LLM_PROVIDER", configured, provider))
-		return
-	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, llmMaxRequestBytes))
 	if err != nil {
 		refuse(http.StatusRequestEntityTooLarge, "the request exceeds 1 MiB")
@@ -214,7 +200,7 @@ func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request, provider string
 	defer release()
 	ctx, cancel := context.WithTimeout(r.Context(), llmDeadline)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmUpstream(c, provider), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, llmUpstream(c), bytes.NewReader(body))
 	if err != nil {
 		refuse(http.StatusBadGateway, "the AI endpoint URL is invalid")
 		return
@@ -223,23 +209,12 @@ func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request, provider string
 	if accept := r.Header.Get("Accept"); accept != "" {
 		req.Header.Set("Accept", accept)
 	}
-	if provider == assistant.ProviderOpenAI {
-		req.Header.Set("Authorization", "Bearer "+key)
-	} else {
-		req.Header.Set("X-Api-Key", key)
-		version := r.Header.Get("Anthropic-Version")
-		if version == "" {
-			version = anthropicVersion
-		}
-		req.Header.Set("Anthropic-Version", version)
-		// anthropic-beta is deliberately not forwarded: a worker must not
-		// opt the deployment's key into beta features.
-	}
+	req.Header.Set("Authorization", "Bearer "+key)
 	resp, err := p.client.Do(req)
 	if err != nil {
 		// The transport error names the upstream host; that stays in the
 		// controller's log, not in a worker's exception text.
-		slog.Warn("AI proxy call failed", "library", lib.Name, "provider", provider, "model", model, "duration", time.Since(started), "error", clipError(err))
+		slog.Warn("AI proxy call failed", "library", lib.Name, "model", model, "duration", time.Since(started), "error", clipError(err))
 		refuse(http.StatusBadGateway, "the model endpoint did not answer; the controller log has the reason")
 		return
 	}
@@ -249,7 +224,7 @@ func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request, provider string
 		// An auth failure body can echo (part of) the key; the worker only
 		// learns that the deployment's key was rejected.
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		slog.Warn("AI proxy call rejected by the model endpoint", "library", lib.Name, "provider", provider, "model", model, "status", resp.StatusCode)
+		slog.Warn("AI proxy call rejected by the model endpoint", "library", lib.Name, "model", model, "status", resp.StatusCode)
 		refuse(http.StatusBadGateway, "the model endpoint rejected the deployment's API key; check it under Administration › AI assistant")
 		return
 	}
@@ -278,7 +253,7 @@ func (p *llmProxy) serve(w http.ResponseWriter, r *http.Request, provider string
 			break
 		}
 	}
-	slog.Info("AI proxy call", "library", lib.Name, "provider", provider, "model", model, "status", resp.StatusCode, "duration", time.Since(started))
+	slog.Info("AI proxy call", "library", lib.Name, "model", model, "status", resp.StatusCode, "duration", time.Since(started))
 }
 
 // clipError bounds an endpoint-controlled error for logs and answers; it

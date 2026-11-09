@@ -10,7 +10,7 @@ import gofi
 from gofi.tooling import validate_source
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
-AI_ENV = {"GOFI_LLM_PROXY_URL": "http://127.0.0.1:9/gofi/llm", "GOFI_LLM_PROVIDER": "openai", "GOFI_LLM_MODEL": "test-model", "GOFI_SANDBOX_TOKEN": "worker-token"}
+AI_ENV = {"GOFI_LLM_PROXY_URL": "http://127.0.0.1:9/gofi/llm", "GOFI_LLM_MODEL": "test-model", "GOFI_SANDBOX_TOKEN": "worker-token"}
 NO_AI_ENV = {key: "" for key in AI_ENV}
 
 

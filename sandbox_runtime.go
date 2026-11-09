@@ -158,7 +158,6 @@ func aiEnvironment(bot *assistant.Manager, backend sandbox.Backend, proxyPort in
 		}
 		env := map[string]string{
 			sandbox.AIEnvProxyURL: "http://" + addr,
-			sandbox.AIEnvProvider: c.ProviderOrDefault(),
 			sandbox.AIEnvModel:    c.ModelOrDefault(),
 		}
 		return env, rules, true

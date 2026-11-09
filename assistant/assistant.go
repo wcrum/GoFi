@@ -1,7 +1,8 @@
 // Package assistant is GoFiBot: a chat assistant over a configurable
-// Anthropic Messages API endpoint, with server-side tools that read and (when
-// allowed) change this deployment's flows, CEL expressions, and Python
-// libraries. The controller owns the API key; browsers never see it.
+// OpenAI-compatible Chat Completions endpoint, with server-side tools that
+// read and (when allowed) change this deployment's flows, CEL expressions,
+// and Python libraries. The controller owns the API key; browsers never see
+// it.
 package assistant
 
 import (
@@ -25,10 +26,9 @@ const (
 // it is the one value that must not be in a plain file.
 type Configuration struct {
 	Enabled bool `json:"enabled,omitempty"`
-	// Provider is the protocol the endpoint speaks: "anthropic" (the
-	// Messages API, default) or "openai" (Chat Completions: Groq, vLLM,
-	// LiteLLM, Ollama, OpenRouter, ...).
-	Provider     string `json:"provider,omitempty"`
+	// BaseURL is the OpenAI-compatible API root, conventionally ending in
+	// /v1 (OpenAI, Groq, vLLM, LiteLLM, Ollama, OpenRouter, or any gateway
+	// that implements /chat/completions).
 	BaseURL      string `json:"baseUrl,omitempty"`
 	Model        string `json:"model,omitempty"`
 	APIKey       string `json:"apiKey,omitempty"`
@@ -90,11 +90,6 @@ func Normalize(c Configuration) (Configuration, error) {
 	}
 	if c.MaxToolSteps < 1 || c.MaxToolSteps > MaxToolSteps {
 		return c, fmt.Errorf("maxToolSteps must be between 1 and %d", MaxToolSteps)
-	}
-	switch c.Provider {
-	case "", ProviderAnthropic, ProviderOpenAI:
-	default:
-		return c, fmt.Errorf("provider must be anthropic or openai")
 	}
 	switch c.ToolApproval {
 	case "", ApproveChanges, ApproveAll:

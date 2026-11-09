@@ -11,9 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
 // ErrDisabled is returned by Chat while the configuration is off.
@@ -24,17 +21,6 @@ var ErrNoKey = errors.New("the assistant has no API key; set one under Administr
 
 // requestTimeout bounds one model request. Tool loops make several.
 const requestTimeout = 5 * time.Minute
-
-func newClient(c Configuration, key string) anthropic.Client {
-	c = Effective(c)
-	opts := []option.RequestOption{option.WithAPIKey(key), option.WithMaxRetries(2), option.WithRequestTimeout(requestTimeout), option.WithHTTPClient(httpClient())}
-	if c.BaseURL != "" {
-		// The SDK appends /v1/messages itself; a base copied from an
-		// OpenAI-style configuration often ends in /v1.
-		opts = append(opts, option.WithBaseURL(strings.TrimSuffix(strings.TrimRight(c.BaseURL, "/"), "/v1")))
-	}
-	return anthropic.NewClient(opts...)
-}
 
 // ErrPrivateEndpoint is returned when the endpoint resolves to a loopback,
 // link-local, or private address and GOFI_ASSISTANT_ALLOW_PRIVATE_ENDPOINT
@@ -116,13 +102,9 @@ func Check(ctx context.Context, c Configuration) (model string, latency time.Dur
 // echoing the endpoint's response body (which an arbitrary endpoint
 // controls) into chat replies or logs.
 func endpointError(err error) error {
-	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) {
-		kind := ""
-		if apiErr.Response != nil {
-			kind = clipText(apiErr.Response.Header.Get("x-request-id"), 64)
-		}
-		return &EndpointError{Status: apiErr.StatusCode, RequestID: kind}
+	var endpoint *EndpointError
+	if errors.As(err, &endpoint) {
+		return endpoint
 	}
 	if errors.Is(err, ErrPrivateEndpoint) {
 		return err

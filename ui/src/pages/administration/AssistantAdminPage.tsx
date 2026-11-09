@@ -5,7 +5,7 @@ import type { GrafanaTheme2 } from '@grafana/data'
 import { Alert, Badge, Button, Combobox, type ComboboxOption, type Column, ConfirmModal, Field, Input, InteractiveTable, SecretInput, Stack, Switch, Text, TextArea, useStyles2 } from '@grafana/ui'
 import {
   applyAssistantConfiguration, checkAssistantConnection, emptyConfiguration, errorMessage, getAssistantConfiguration, isUnimplemented, listAssistantTools,
-  type AssistantConfiguration, type AssistantEffort, type AssistantProvider, type AssistantTool, type AssistantToolApproval, type ConnectionCheck,
+  type AssistantConfiguration, type AssistantEffort, type AssistantTool, type AssistantToolApproval, type ConnectionCheck,
 } from '../../assistant-api'
 import { MAX_TOOL_STEPS, MIN_TOOL_STEPS } from '../../components/assistant/helpers'
 import { notifyAssistantChanged } from '../../components/assistant/useAssistantReadiness'
@@ -15,10 +15,6 @@ import { useToast } from '../../components/Toast'
 import { formatNumber, t } from '../../i18n'
 
 type EffortChoice = 'default' | 'low' | 'medium' | 'high'
-const providerOptions = (): Array<ComboboxOption<AssistantProvider>> => [
-  { value: 'anthropic', label: t('gofi.pages.administration.provider-anthropic', 'Anthropic Messages API') },
-  { value: 'openai', label: t('gofi.pages.administration.provider-openai', 'OpenAI-compatible Chat Completions') },
-]
 const toolApprovalOptions = (): Array<ComboboxOption<AssistantToolApproval>> => [
   { value: 'changes', label: t('gofi.pages.administration.tool-approval-changes', 'Changes only') },
   { value: 'all', label: t('gofi.pages.administration.tool-approval-all', 'Every tool call') },
@@ -136,16 +132,12 @@ export default function AssistantAdminPage() {
                   : <Badge color="orange" icon="exclamation-triangle" text={t('gofi.pages.administration.not-ready', 'Not ready: {{message}}', { message: readiness.message || t('gofi.pages.administration.not-ready-unknown', 'not probed yet') })} />)}
               </Stack>
             </Field>
-            <Field label={t('gofi.pages.administration.provider', 'Provider')} description={t('gofi.pages.administration.provider-description', 'The protocol the endpoint speaks. OpenAI-compatible covers Groq, vLLM, LiteLLM, Ollama, OpenRouter, and similar gateways.')}>
-              <Combobox<AssistantProvider> options={providerOptions()} value={form.provider} onChange={option => set({ provider: option.value })} />
+            <Field label={t('gofi.pages.administration.base-url', 'Endpoint (base URL)')} description={locks.endpoint ? pinnedText()
+              : t('gofi.pages.administration.base-url-description-openai', 'The OpenAI-compatible API root, usually ending in /v1, for example https://api.groq.com/openai/v1.')}>
+              <Input value={form.baseUrl} disabled={locks.endpoint} onChange={event => set({ baseUrl: event.currentTarget.value })} placeholder="https://api.openai.com/v1" spellCheck={false} />
             </Field>
-            <Field label={t('gofi.pages.administration.base-url', 'Endpoint (base URL)')} description={locks.endpoint ? pinnedText() : form.provider === 'openai'
-              ? t('gofi.pages.administration.base-url-description-openai', 'The API root, usually ending in /v1, for example https://api.groq.com/openai/v1.')
-              : t('gofi.pages.administration.base-url-description', 'Any gateway or proxy speaking the Anthropic Messages API.')}>
-              <Input value={form.baseUrl} disabled={locks.endpoint} onChange={event => set({ baseUrl: event.currentTarget.value })} placeholder={form.provider === 'openai' ? 'https://api.openai.com/v1' : t('gofi.pages.administration.base-url-placeholder', 'Leave empty for the Anthropic API')} spellCheck={false} />
-            </Field>
-            <Field label={t('gofi.pages.administration.model', 'Model')} description={form.provider === 'openai' ? t('gofi.pages.administration.model-description-openai', 'The model id the endpoint expects.') : t('gofi.pages.administration.model-description', 'Empty uses the server default.')}>
-              <Input value={form.model} onChange={event => set({ model: event.currentTarget.value })} placeholder={form.provider === 'openai' ? 'openai/gpt-oss-120b' : 'claude-opus-5-5'} spellCheck={false} />
+            <Field label={t('gofi.pages.administration.model', 'Model')} description={t('gofi.pages.administration.model-description-openai', 'The model id the endpoint expects.')}>
+              <Input value={form.model} onChange={event => set({ model: event.currentTarget.value })} placeholder="openai/gpt-oss-120b" spellCheck={false} />
             </Field>
             <Field label={t('gofi.pages.administration.api-key', 'API key')} description={keySourceText(form, locks.key)}>
               <Stack gap={1} alignItems="flex-start" wrap="wrap">
