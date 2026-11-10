@@ -485,14 +485,18 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      # Only the artifacts this job assembles. `name` extracts an artifact's
+      # contents straight into `path`, so these two name their directory; a
+      # `pattern` matching several artifacts keeps one directory per artifact,
+      # which is what the globs below expect.
       - uses: actions/download-artifact@v5
         with:
-          path: artifacts
-          pattern: binaries
+          name: binaries
+          path: artifacts/binaries
       - uses: actions/download-artifact@v5
         with:
-          path: artifacts
-          pattern: charts
+          name: charts
+          path: artifacts/charts
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
