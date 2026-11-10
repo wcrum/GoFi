@@ -199,6 +199,7 @@ func newKube(cs kubernetes.Interface, dyn dynamic.Interface, namespace, image st
 	cluster := clusterinfo.New(cs, dyn, clusterinfo.Options{Namespace: namespace, NodePortMin: spec.MinNodePort, NodePortMax: spec.MaxNodePort,
 		ClusterWide:            envBool("GOFI_CLUSTER_DISCOVERY", true),
 		ManageGatewayListeners: envBool("GOFI_MANAGE_GATEWAY_LISTENERS", false),
+		ManageGateways:         envBool("GOFI_MANAGE_GATEWAYS", false),
 		ManageUDSAllows:        envBool("GOFI_MANAGE_UDS_ALLOWS", false)})
 	defaults, err := kubeclient.LoadPodDefaults("LISTENER")
 	if err != nil {

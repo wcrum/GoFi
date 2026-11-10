@@ -87,6 +87,8 @@ spec:
               value: {{ .Values.discovery.clusterWide | quote }}
             - name: GOFI_MANAGE_GATEWAY_LISTENERS
               value: {{ .Values.gateway.manageListeners | quote }}
+            - name: GOFI_MANAGE_GATEWAYS
+              value: {{ .Values.gateway.manageGateways | quote }}
             - name: GOFI_GATEWAY_MAX_LISTENERS
               value: {{ .Values.gateway.maxListeners | quote }}
             - name: GOFI_LB_ALLOCATE_NODE_PORTS

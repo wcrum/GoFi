@@ -86,6 +86,12 @@ type GatewayExposure struct {
 	Name      string `json:"name"`
 	Listener  string `json:"listener,omitempty"`
 	Port      int    `json:"port,omitempty"`
+	// ClassName lets GoFi create the Gateway when it does not exist yet, with
+	// this GatewayClass (needs chart gateway.manageGateways). Flows naming the
+	// same Gateway share it: one Gateway carries a listener and a route per
+	// flow, since a UDP or TCP route is distinguished only by its port.
+	// Empty means the Gateway must already exist.
+	ClassName string `json:"className,omitempty"`
 }
 
 // Framing controls how the raw byte stream is split into discrete frames.

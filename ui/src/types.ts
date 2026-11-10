@@ -16,7 +16,7 @@ export type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer' | 'Gateway'
 /** `port` maps a Service port different from the listen port; the portal leaves it unset. */
 export interface LoadBalancerOptions { class?: string; addressPool?: string; ip?: string }
 /** Attach to a Gateway API Gateway; an empty listener asks GoFi to add gofi-<flow>. */
-export interface GatewayExposure { namespace: string; name: string; listener?: string; port?: number }
+export interface GatewayExposure { namespace: string; name: string; listener?: string; port?: number; className?: string }
 export interface ServiceExposure {
   type: ServiceType; port?: number; nodePort?: number
   externalTrafficPolicy?: 'Cluster' | 'Local'; annotations?: Record<string, string>

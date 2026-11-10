@@ -363,6 +363,9 @@ message GatewayExposure {
   string name = 2;
   string listener = 3;
   int32 port = 4;
+  // GatewayClass GoFi creates the Gateway with when it does not exist
+  // (chart gateway.manageGateways); empty means it must already exist.
+  string class_name = 5;
 }
 message Framing {
   // "line" | "delimited" | "length-prefix" | "raw" (whole connection or

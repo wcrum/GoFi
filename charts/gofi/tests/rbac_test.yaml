@@ -105,3 +105,27 @@ tests:
           content:
             apiGroups: ["uds.dev"]
           any: true
+  - it: lets GoFi create and delete Gateways by default, and only edit them when told not to
+    documentSelector:
+      path: metadata.name
+      value: gofi-gateway-listeners
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["gateway.networking.k8s.io"]
+            resources: ["gateways"]
+            verbs: ["get", "list", "update", "patch", "create", "delete"]
+  - it: withholds Gateway create and delete when manageGateways is off
+    set:
+      gateway.manageGateways: false
+    documentSelector:
+      path: metadata.name
+      value: gofi-gateway-listeners
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["gateway.networking.k8s.io"]
+            resources: ["gateways"]
+            verbs: ["get", "list", "update", "patch"]

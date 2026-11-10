@@ -1670,9 +1670,14 @@ type GatewayInfo struct {
 	// Istio ambient waypoints are not ingress gateways.
 	Waypoint bool `protobuf:"varint,9,opt,name=waypoint,proto3" json:"waypoint,omitempty"`
 	// Which route kinds this implementation supports: TCPRoute, UDPRoute, ...
-	RouteKinds    []string `protobuf:"bytes,10,rep,name=route_kinds,json=routeKinds,proto3" json:"route_kinds,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RouteKinds []string `protobuf:"bytes,10,rep,name=route_kinds,json=routeKinds,proto3" json:"route_kinds,omitempty"`
+	// The address senders actually use, from the LoadBalancer Service the
+	// implementation runs for this Gateway. `addresses` above is whatever the
+	// implementation published, which for a mesh waypoint is a ClusterIP and an
+	// internal cluster name -- no use to a sender outside the cluster.
+	ExternalAddresses []string `protobuf:"bytes,11,rep,name=external_addresses,json=externalAddresses,proto3" json:"external_addresses,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GatewayInfo) Reset() {
@@ -1775,14 +1780,24 @@ func (x *GatewayInfo) GetRouteKinds() []string {
 	return nil
 }
 
+func (x *GatewayInfo) GetExternalAddresses() []string {
+	if x != nil {
+		return x.ExternalAddresses
+	}
+	return nil
+}
+
 type GatewayClassInfo struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Controller     string                 `protobuf:"bytes,2,opt,name=controller,proto3" json:"controller,omitempty"`
 	Accepted       bool                   `protobuf:"varint,3,opt,name=accepted,proto3" json:"accepted,omitempty"`
 	Implementation string                 `protobuf:"bytes,4,opt,name=implementation,proto3" json:"implementation,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Route kinds this class's controller serves, so the portal can offer the
+	// classes that could carry a flow (Istio serves no UDPRoute).
+	RouteKinds    []string `protobuf:"bytes,5,rep,name=route_kinds,json=routeKinds,proto3" json:"route_kinds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GatewayClassInfo) Reset() {
@@ -1841,6 +1856,13 @@ func (x *GatewayClassInfo) GetImplementation() string {
 		return x.Implementation
 	}
 	return ""
+}
+
+func (x *GatewayClassInfo) GetRouteKinds() []string {
+	if x != nil {
+		return x.RouteKinds
+	}
+	return nil
 }
 
 type AddressPoolInfo struct {
@@ -2024,6 +2046,9 @@ type DescribeClusterResponse struct {
 	// admin gateway at <host>.<uds_admin_domain>. Empty off UDS Core.
 	UdsDomain      string `protobuf:"bytes,16,opt,name=uds_domain,json=udsDomain,proto3" json:"uds_domain,omitempty"`
 	UdsAdminDomain string `protobuf:"bytes,17,opt,name=uds_admin_domain,json=udsAdminDomain,proto3" json:"uds_admin_domain,omitempty"`
+	// GoFi may create a Gateway a flow names with a GatewayClass, and delete it
+	// with its last flow (chart gateway.manageGateways).
+	ManageGateways bool `protobuf:"varint,18,opt,name=manage_gateways,json=manageGateways,proto3" json:"manage_gateways,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2175,6 +2200,13 @@ func (x *DescribeClusterResponse) GetUdsAdminDomain() string {
 		return x.UdsAdminDomain
 	}
 	return ""
+}
+
+func (x *DescribeClusterResponse) GetManageGateways() bool {
+	if x != nil {
+		return x.ManageGateways
+	}
+	return false
 }
 
 type ListClusterNetworkingRequest struct {
@@ -2802,7 +2834,7 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\bhostname\x18\x04 \x01(\tR\bhostname\x12%\n" +
 	"\x0eallowed_routes\x18\x05 \x01(\tR\rallowedRoutes\x12'\n" +
 	"\x0fattached_routes\x18\x06 \x01(\x05R\x0eattachedRoutes\x12&\n" +
-	"\x0fmanaged_by_gofi\x18\a \x01(\bR\rmanagedByGofi\"\xdd\x02\n" +
+	"\x0fmanaged_by_gofi\x18\a \x01(\bR\rmanagedByGofi\"\x8c\x03\n" +
 	"\vGatewayInfo\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -2820,14 +2852,17 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"\bwaypoint\x18\t \x01(\bR\bwaypoint\x12\x1f\n" +
 	"\vroute_kinds\x18\n" +
 	" \x03(\tR\n" +
-	"routeKinds\"\x8a\x01\n" +
+	"routeKinds\x12-\n" +
+	"\x12external_addresses\x18\v \x03(\tR\x11externalAddresses\"\xab\x01\n" +
 	"\x10GatewayClassInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
 	"controller\x18\x02 \x01(\tR\n" +
 	"controller\x12\x1a\n" +
 	"\baccepted\x18\x03 \x01(\bR\baccepted\x12&\n" +
-	"\x0eimplementation\x18\x04 \x01(\tR\x0eimplementation\"\x82\x01\n" +
+	"\x0eimplementation\x18\x04 \x01(\tR\x0eimplementation\x12\x1f\n" +
+	"\vroute_kinds\x18\x05 \x03(\tR\n" +
+	"routeKinds\"\x82\x01\n" +
 	"\x0fAddressPoolInfo\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1c\n" +
@@ -2841,7 +2876,7 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"class_name\x18\x03 \x01(\tR\tclassName\x12\x1c\n" +
 	"\taddresses\x18\x04 \x03(\tR\taddresses\x12\x14\n" +
 	"\x05ports\x18\x05 \x03(\tR\x05ports\x12\x14\n" +
-	"\x05hosts\x18\x06 \x03(\tR\x05hosts\"\xa7\x06\n" +
+	"\x05hosts\x18\x06 \x03(\tR\x05hosts\"\xd0\x06\n" +
 	"\x17DescribeClusterResponse\x12-\n" +
 	"\x12kubernetes_version\x18\x01 \x01(\tR\x11kubernetesVersion\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12!\n" +
@@ -2863,7 +2898,8 @@ const file_gofi_v1_kubernetes_proto_rawDesc = "" +
 	"namespaces\x12\x1d\n" +
 	"\n" +
 	"uds_domain\x18\x10 \x01(\tR\tudsDomain\x12(\n" +
-	"\x10uds_admin_domain\x18\x11 \x01(\tR\x0eudsAdminDomain\"<\n" +
+	"\x10uds_admin_domain\x18\x11 \x01(\tR\x0eudsAdminDomain\x12'\n" +
+	"\x0fmanage_gateways\x18\x12 \x01(\bR\x0emanageGateways\"<\n" +
 	"\x1cListClusterNetworkingRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"\x80\x02\n" +
 	"\x10NetworkingObject\x12\x12\n" +

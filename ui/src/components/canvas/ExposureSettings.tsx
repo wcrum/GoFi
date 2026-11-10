@@ -7,6 +7,7 @@ import { KeyValueEditor } from './KeyValueEditor'
 import { t } from '../../i18n'
 
 const ADD_LISTENER = '__gofi_add_listener__'
+const CREATE_GATEWAY = '__gofi_create_gateway__'
 
 const has = (info: ClusterInfo | undefined, id: string) => !!info?.capabilities.find(capability => capability.id === id)?.present
 
@@ -54,6 +55,11 @@ export function ExposureSettings({ listen, onChange, readOnly, deployment }: { l
   // for UDP only Envoy Gateway can serve a route at all -- Istio implements
   // no UDPRoute and rejects a UDP listener.
   const eligibleGateways = gateways.filter(supports)
+  // Creating a Gateway is offered only where the chart allows it, and only for
+  // a GatewayClass whose controller serves this route kind -- an Istio class
+  // would take a UDPRoute and never program it.
+  const creating = Boolean(service?.gateway?.className)
+  const usableClasses = (info?.gatewayClasses ?? []).filter(cls => !cls.routeKinds?.length || cls.routeKinds.includes(routeKind))
   const envoyAvailable = (info?.gatewayClasses ?? []).some(cls => cls.implementation === 'envoy-gateway')
   const waypointCount = (info?.gateways ?? []).filter(gw => gw.waypoint).length
   const gatewayHelp = eligibleGateways.length
@@ -65,8 +71,13 @@ export function ExposureSettings({ listen, onChange, readOnly, deployment }: { l
         : t('gofi.canvas.exposure-settings.no-gateways', 'No Gateway API Gateway can carry this flow{{waypoints}}. GoFi writes the {{routeKind}} and can add its own listener once a Gateway exists, but not the Gateway itself — each brings a proxy and an address, so a cluster admin adds one (Envoy Gateway for UDP, Istio for TCP) — or expose this flow with LoadBalancer or NodePort.', { routeKind, waypoints: waypointCount ? t('gofi.canvas.exposure-settings.waypoints-only', ' ({{count}} mesh waypoint(s) here serve the mesh only)', { count: waypointCount }) : '' })
   const listeners = (selectedGateway?.listeners ?? []).filter(l => l.protocol.toUpperCase() === transport && !l.managedByGofi)
   const gatewayPort = service?.gateway?.port || listen.port
+  const selectedListener = listeners.find(l => l.name === service?.gateway?.listener)
+  // The port senders actually reach: an existing listener's own port, or the
+  // one the new listener opens. Unset stays a placeholder -- 0 is not a port,
+  // and the Gateway would reject a listener on it.
+  const effectivePort = service?.gateway?.listener ? selectedListener?.port : gatewayPort
   const senderAddress = exposure === 'Gateway' && selectedGateway
-    ? `${selectedGateway.addresses?.[0] ?? '<gateway address>'}:${service?.gateway?.listener ? (listeners.find(l => l.name === service.gateway!.listener)?.port ?? '?') : gatewayPort}`
+    ? `${selectedGateway.addresses?.[0] ?? '<gateway address>'}:${effectivePort || '<port>'}`
     : undefined
 
   return <>
@@ -103,13 +114,39 @@ export function ExposureSettings({ listen, onChange, readOnly, deployment }: { l
 
     {exposure === 'Gateway' && <>
       <Field label={t('gofi.canvas.exposure-settings.gateway', 'Gateway')} description={gatewayHelp}>
-        <Combobox disabled={readOnly} value={service?.gateway ? `${service.gateway.namespace}/${service.gateway.name}` : null}
-          options={gateways.map(gw => ({ value: `${gw.namespace}/${gw.name}`, label: `${gw.namespace}/${gw.name}`,
-            description: [gw.implementation || gw.className, gw.addresses?.length ? gw.addresses.join(', ') : '', supports(gw) ? '' : t('gofi.canvas.exposure-settings.no-route-support', 'no {{routeKind}} support', { routeKind }), gw.programmed === false ? t('gofi.canvas.exposure-settings.not-programmed', 'not programmed') : ''].filter(Boolean).join(' · ') }))}
-          onChange={option => { const [namespace, name] = option.value.split('/'); set({ gateway: { namespace, name } }) }} />
+        <Combobox disabled={readOnly} value={creating ? CREATE_GATEWAY : service?.gateway ? `${service.gateway.namespace}/${service.gateway.name}` : null}
+          options={[
+            ...(info?.manageGateways && usableClasses.length ? [{ value: CREATE_GATEWAY, label: t('gofi.canvas.exposure-settings.create-gateway', 'Create a Gateway'), description: t('gofi.canvas.exposure-settings.create-gateway-description', 'GoFi creates it, adds this flow as a listener, and other flows can attach to it the same way.') }] : []),
+            ...gateways.map(gw => ({ value: `${gw.namespace}/${gw.name}`, label: `${gw.namespace}/${gw.name}`,
+              // The address senders use, not the cluster-internal one a mesh
+              // waypoint publishes.
+              description: [gw.implementation || gw.className,
+                gw.externalAddresses?.length ? gw.externalAddresses.join(', ') : t('gofi.canvas.exposure-settings.no-external-address', 'no external address'),
+                supports(gw) ? '' : t('gofi.canvas.exposure-settings.no-route-support', 'no {{routeKind}} support', { routeKind }),
+                gw.programmed === false ? t('gofi.canvas.exposure-settings.not-programmed', 'not programmed') : ''].filter(Boolean).join(' · ') })),
+          ]}
+          onChange={option => {
+            if (option.value === CREATE_GATEWAY) {
+              const className = usableClasses[0]?.name ?? ''
+              set({ gateway: { namespace: info?.namespace ?? 'gofi', name: `gofi-${transport.toLowerCase()}`, className } })
+              return
+            }
+            const [namespace, name] = option.value.split('/')
+            set({ gateway: { namespace, name } })
+          }} />
       </Field>
       {selectedGateway && !supports(selectedGateway) && <Alert severity="warning" title={t('gofi.canvas.exposure-settings.gateway-no-route', '{{gateway}} does not route {{network}}', { gateway: selectedGateway.implementation || selectedGateway.className, network: transport })} bottomSpacing={0}>{t('gofi.canvas.exposure-settings.choose-envoy-gateway', 'Choose an Envoy Gateway Gateway for {{routeKind}}s.', { routeKind })}</Alert>}
-      {selectedGateway && <Field label={t('gofi.canvas.exposure-settings.listener', 'Listener')} description={info?.manageGatewayListeners ? t('gofi.canvas.exposure-settings.listener-managed-description', 'Use an existing listener, or let GoFi add one for this flow.') : t('gofi.canvas.exposure-settings.listener-unmanaged-description', 'GoFi may not add listeners here (chart gateway.manageListeners); pick an existing one.')}>
+      {creating && <>
+        <Field label={t('gofi.canvas.exposure-settings.gateway-class', 'GatewayClass')} description={t('gofi.canvas.exposure-settings.gateway-class-description', 'Its controller serves the {{routeKind}} and deploys the proxy that takes the address.', { routeKind })}>
+          <Combobox disabled={readOnly} value={service?.gateway?.className ?? null}
+            options={usableClasses.map(cls => ({ value: cls.name, label: cls.name, description: [cls.implementation || cls.controller, cls.accepted === false ? t('gofi.canvas.exposure-settings.class-not-accepted', 'not accepted') : ''].filter(Boolean).join(' · ') }))}
+            onChange={option => set({ gateway: { ...service!.gateway!, className: option.value } })} />
+        </Field>
+        <Field label={t('gofi.canvas.exposure-settings.gateway-name', 'Gateway name')} description={t('gofi.canvas.exposure-settings.gateway-name-description', 'Flows naming this Gateway share it, each as its own listener on one address. GoFi deletes it again with its last flow.')}>
+          <Input disabled={readOnly} value={service?.gateway?.name ?? ''} onChange={event => set({ gateway: { ...service!.gateway!, name: event.currentTarget.value } })} />
+        </Field>
+      </>}
+      {selectedGateway && <Field label={t('gofi.canvas.exposure-settings.listener', 'Listener')} description={info?.manageGatewayListeners ? t('gofi.canvas.exposure-settings.listener-managed-description', 'Which port on the Gateway address this flow arrives on: an existing listener, or one GoFi opens for this flow alone. {{routeKind}}s are told apart only by port, so a listener carries one flow.', { routeKind }) : t('gofi.canvas.exposure-settings.listener-unmanaged-description', 'GoFi may not add listeners here (chart gateway.manageListeners); pick an existing one. {{routeKind}}s are told apart only by port, so pick one no other route uses.', { routeKind })}>
         <Combobox disabled={readOnly} value={service?.gateway?.listener || (info?.manageGatewayListeners ? ADD_LISTENER : null)}
           options={[
             ...(info?.manageGatewayListeners ? [{ value: ADD_LISTENER, label: t('gofi.canvas.exposure-settings.add-listener', 'Add a listener for this flow'), description: t('gofi.canvas.exposure-settings.add-listener-description', 'GoFi adds gofi-<flow> ({{network}}) to {{gateway}}', { network: transport, gateway: `${selectedGateway.namespace}/${selectedGateway.name}` }) }] : []),
@@ -117,11 +154,13 @@ export function ExposureSettings({ listen, onChange, readOnly, deployment }: { l
           ]}
           onChange={option => set({ gateway: { ...service!.gateway!, listener: option.value === ADD_LISTENER ? undefined : option.value, port: option.value === ADD_LISTENER ? service?.gateway?.port : undefined } })} />
       </Field>}
-      {selectedGateway && !service?.gateway?.listener && info?.manageGatewayListeners && <Field label={t('gofi.canvas.exposure-settings.gateway-port', 'Gateway port')} description={t('gofi.canvas.exposure-settings.gateway-port-description', 'Port the new listener opens on the Gateway address.')}>
-        <Input disabled={readOnly} type="number" min={1} max={65535} value={service?.gateway?.port ?? ''} placeholder={String(listen.port || 9000)} onChange={event => set({ gateway: { ...service!.gateway!, port: Number(event.currentTarget.value) || undefined } })} />
+      {(creating || (selectedGateway && !service?.gateway?.listener && info?.manageGatewayListeners)) && <Field label={t('gofi.canvas.exposure-settings.gateway-port', 'Gateway port')} description={t('gofi.canvas.exposure-settings.gateway-port-description', 'Port the new listener opens on the Gateway address, and the port senders use. It defaults to this flow\'s own port and must be free on the Gateway.')}
+        invalid={!effectivePort} error={!effectivePort ? t('gofi.canvas.exposure-settings.gateway-port-required', 'Set a port: the new listener needs one, and the flow has none of its own to borrow.') : undefined}>
+        <Input disabled={readOnly} type="number" min={1} max={65535} value={service?.gateway?.port ?? ''} placeholder={listen.port ? String(listen.port) : t('gofi.canvas.exposure-settings.gateway-port-placeholder', 'required')} onChange={event => set({ gateway: { ...service!.gateway!, port: Number(event.currentTarget.value) || undefined } })} />
       </Field>}
       {selectedGateway?.listeners?.find(l => l.name === service?.gateway?.listener)?.allowedRoutes === 'Same' && selectedGateway.namespace !== info?.namespace &&
         <Alert severity="warning" title={t('gofi.canvas.exposure-settings.listener-same-namespace', 'This listener only accepts routes from its own namespace')} bottomSpacing={0}>{t('gofi.canvas.exposure-settings.listener-same-namespace-fix', 'Set allowedRoutes to include namespace {{namespace}}, or let GoFi add a listener.', { namespace: info?.namespace })}</Alert>}
+      {selectedListener && (selectedListener.attachedRoutes ?? 0) > 0 && <Alert severity="warning" title={t('gofi.canvas.exposure-settings.listener-taken', '{{listener}} already carries {{count}} route(s)', { listener: selectedListener.name, count: selectedListener.attachedRoutes })} bottomSpacing={0}>{t('gofi.canvas.exposure-settings.listener-taken-fix', 'A {{routeKind}} is matched by port alone, so two routes on one listener conflict and the older one wins. Add a listener for this flow instead.', { routeKind })}</Alert>}
       {senderAddress && <Text variant="bodySmall" color="secondary">{t('gofi.canvas.exposure-settings.senders-use', 'Senders use {{address}}.', { address: senderAddress })}</Text>}
     </>}
 

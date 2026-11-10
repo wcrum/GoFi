@@ -134,11 +134,14 @@ subjects:
     name: {{ include "gofi.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 {{- end }}
-{{- if .Values.gateway.manageListeners }}
+{{- if or .Values.gateway.manageListeners .Values.gateway.manageGateways }}
 ---
 # Gateway exposure may add a gofi-* listener to a chosen Gateway in another
 # namespace (and remove it when the flow goes away). GoFi only edits
-# listeners whose names start with gofi-.
+# listeners whose names start with gofi-. With manageGateways it may also
+# create a Gateway a flow names with a GatewayClass, and delete that Gateway
+# once its last GoFi listener goes -- it only ever deletes a Gateway it
+# created and labelled itself.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -148,7 +151,7 @@ metadata:
 rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["gateways"]
-    verbs: ["get", "list", "update", "patch"]
+    verbs: ["get", "list", "update", "patch"{{- if .Values.gateway.manageGateways }}, "create", "delete"{{- end }}]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

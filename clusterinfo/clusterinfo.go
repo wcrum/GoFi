@@ -28,9 +28,14 @@ import (
 
 // Well-known controllers and the route kinds each implementation programs.
 const (
-	EnvoyGatewayController  = "gateway.envoyproxy.io/gatewayclass-controller"
-	IstioGatewayController  = "istio.io/gateway-controller"
-	IstioWaypointController = "istio.io/mesh-controller"
+	EnvoyGatewayController = "gateway.envoyproxy.io/gatewayclass-controller"
+	// A second Envoy Gateway control plane, deployed for UDP by the UDS
+	// envoy-gateway package (GatewayClass udp-gateway-class). Same
+	// implementation, its own controllerName, so it needs its own entry or
+	// GoFi reports the Gateway as an unknown implementation.
+	EnvoyGatewayUDPController = "gateway.envoyproxy.io/udp-controller"
+	IstioGatewayController    = "istio.io/gateway-controller"
+	IstioWaypointController   = "istio.io/mesh-controller"
 )
 
 var routeKinds = map[string][]string{
@@ -44,6 +49,9 @@ type Options struct {
 	// ClusterWide means GoFi has a read-only ClusterRole for discovery.
 	ClusterWide            bool
 	ManageGatewayListeners bool
+	// ManageGateways lets GoFi create a Gateway a flow names with a
+	// GatewayClass, and delete it again with its last flow.
+	ManageGateways bool
 	ManageUDSAllows        bool
 	NodePortMin            int
 	NodePortMax            int
@@ -265,7 +273,7 @@ func SupportsRouteKind(controller, kind string) (supported, known bool) {
 
 func implementation(controller string) string {
 	switch controller {
-	case EnvoyGatewayController:
+	case EnvoyGatewayController, EnvoyGatewayUDPController:
 		return "envoy-gateway"
 	case IstioGatewayController:
 		return "istio"

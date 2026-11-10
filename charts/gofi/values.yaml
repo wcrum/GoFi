@@ -29,6 +29,13 @@ discovery:
 # Gateway exposure may add a gofi-* listener to a Gateway in another namespace.
 gateway:
   manageListeners: true
+  # Let GoFi create a Gateway a flow names with a GatewayClass, and delete it
+  # again with its last flow, so a flow can be exposed without an admin
+  # pre-creating the Gateway. This grants GoFi cluster-wide create and delete
+  # on Gateways; it only ever deletes one it created and labelled itself, and
+  # only once that Gateway's last GoFi listener is gone. Set false to require
+  # an existing Gateway (GoFi then adds listeners to it, nothing more).
+  manageGateways: true
   # Listeners GoFi may hold on one Gateway (implementations cap a Gateway at
   # ~64 listeners). Flows beyond this report a Problem instead of breaking the
   # Gateway; shard flows across Gateways or namespaces (docs/deployment.md).

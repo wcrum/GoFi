@@ -222,6 +222,60 @@ func (k *Kube) checkRouteSupport(ctx context.Context, namespace, name, kind stri
 	return nil
 }
 
+// desiredListener is the listener GoFi puts on a Gateway for one flow: its
+// transport and port, open to routes of this kind from GoFi's namespace only.
+func (k *Kube) desiredListener(listener, protocol, routeKind string, port int) map[string]any {
+	return map[string]any{"name": listener, "protocol": protocol, "port": int64(port),
+		"allowedRoutes": map[string]any{
+			"namespaces": map[string]any{"from": "Selector", "selector": map[string]any{"matchLabels": map[string]any{"kubernetes.io/metadata.name": k.namespace}}},
+			"kinds":      []any{map[string]any{"group": gatewayGroup, "kind": routeKind}},
+		}}
+}
+
+// ensureGateway creates the Gateway a flow names, when the flow chose a
+// GatewayClass and no such Gateway exists. A Gateway is a cluster-level
+// object -- its implementation deploys a proxy and takes a load-balancer
+// address -- so GoFi creates one only where the chart allows it
+// (gateway.manageGateways), labels it as its own, and gives it this flow's
+// listener. Flows naming the same Gateway share it: a UDP or TCP route is told
+// apart only by its port, so each flow adds a listener rather than a Gateway,
+// and one address carries them all.
+func (k *Kube) ensureGateway(ctx context.Context, flow string, gw *spec.GatewayExposure, listen *spec.ListenSource, routeKind string) error {
+	if gw.ClassName == "" {
+		return nil
+	}
+	gateways := k.dyn.Resource(gatewaysGVR).Namespace(gw.Namespace)
+	getCtx, cancel := apiCall(ctx)
+	_, err := gateways.Get(getCtx, gw.Name, metav1.GetOptions{})
+	cancel()
+	if err == nil {
+		return nil // already there: created earlier, or shared with another flow
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("Gateway %s/%s: %w", gw.Namespace, gw.Name, err)
+	}
+	if k.cluster == nil || !k.cluster.Opts.ManageGateways {
+		return fmt.Errorf("Gateway %s/%s does not exist and GoFi may not create Gateways (chart gateway.manageGateways); create it, or expose this flow with a LoadBalancer or NodePort Service", gw.Namespace, gw.Name)
+	}
+	port := gw.Port
+	if port == 0 {
+		port = listen.Port
+	}
+	object := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": gatewayGroup + "/v1", "kind": "Gateway",
+		"metadata": map[string]any{"name": gw.Name, "namespace": gw.Namespace,
+			"labels": map[string]any{kubeLabelManaged: "true"}},
+		"spec": map[string]any{"gatewayClassName": gw.ClassName,
+			"listeners": []any{k.desiredListener(GatewayListenerName(k.namespace, flow), string(transportOf(listen.Network)), routeKind, port)}},
+	}}
+	createCtx, cancel := apiCall(ctx)
+	defer cancel()
+	if _, err := gateways.Create(createCtx, object, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create Gateway %s/%s with GatewayClass %s: %w", gw.Namespace, gw.Name, gw.ClassName, err)
+	}
+	return nil
+}
+
 func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinition) error {
 	listen := def.Source.Listen
 	if listen == nil || listen.Service == nil || listen.Service.Type != "Gateway" || listen.Service.Gateway == nil {
@@ -234,6 +288,9 @@ func (k *Kube) reconcileGatewayRoute(ctx context.Context, def spec.FlowDefinitio
 	kind, resource := routeKind(listen.Network)
 	gvr, err := k.routeGVR(resource)
 	if err != nil {
+		return err
+	}
+	if err := k.ensureGateway(ctx, def.Name, gw, listen, kind); err != nil {
 		return err
 	}
 	if err := k.checkRouteSupport(ctx, gw.Namespace, gw.Name, kind); err != nil {
@@ -338,11 +395,7 @@ func (k *Kube) ensureGatewayListener(ctx context.Context, namespace, name, liste
 			return fmt.Errorf("Gateway %s/%s: %w", namespace, name, err)
 		}
 		listeners, _, _ := unstructured.NestedSlice(gw.Object, "spec", "listeners")
-		desired := map[string]any{"name": listener, "protocol": protocol, "port": int64(port),
-			"allowedRoutes": map[string]any{
-				"namespaces": map[string]any{"from": "Selector", "selector": map[string]any{"matchLabels": map[string]any{"kubernetes.io/metadata.name": k.namespace}}},
-				"kinds":      []any{map[string]any{"group": gatewayGroup, "kind": routeKind}},
-			}}
+		desired := k.desiredListener(listener, protocol, routeKind, port)
 		index := -1
 		mine := 0
 		for i, raw := range listeners {
@@ -408,6 +461,18 @@ func (k *Kube) removeGatewayListener(ctx context.Context, managed string) error 
 			}
 		}
 		if len(kept) == len(listeners) {
+			return nil
+		}
+		if len(kept) == 0 && gw.GetLabels()[kubeLabelManaged] == "true" {
+			// GoFi created this Gateway and its last flow is gone. A Gateway
+			// must carry at least one listener, so the object goes rather than
+			// being left invalid; its implementation then removes the proxy and
+			// releases the address.
+			deleteCtx, cancel := apiCall(ctx)
+			defer cancel()
+			if err := gateways.Delete(deleteCtx, parts[1], metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
 			return nil
 		}
 		if err := unstructured.SetNestedSlice(gw.Object, kept, "spec", "listeners"); err != nil {

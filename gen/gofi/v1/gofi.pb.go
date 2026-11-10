@@ -2332,11 +2332,14 @@ func (x *LoadBalancerOptions) GetIp() string {
 // Attach the flow to a Gateway API Gateway with a TCPRoute or UDPRoute. An
 // empty listener asks GoFi to add a gofi-<flow> listener on `port`.
 type GatewayExposure struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Listener      string                 `protobuf:"bytes,3,opt,name=listener,proto3" json:"listener,omitempty"`
-	Port          int32                  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Listener  string                 `protobuf:"bytes,3,opt,name=listener,proto3" json:"listener,omitempty"`
+	Port      int32                  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	// GatewayClass GoFi creates the Gateway with when it does not exist
+	// (chart gateway.manageGateways); empty means it must already exist.
+	ClassName     string `protobuf:"bytes,5,opt,name=class_name,json=className,proto3" json:"class_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2397,6 +2400,13 @@ func (x *GatewayExposure) GetPort() int32 {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *GatewayExposure) GetClassName() string {
+	if x != nil {
+		return x.ClassName
+	}
+	return ""
 }
 
 type Framing struct {
@@ -6425,12 +6435,14 @@ const file_gofi_v1_gofi_proto_rawDesc = "" +
 	"\x13LoadBalancerOptions\x12\x14\n" +
 	"\x05class\x18\x01 \x01(\tR\x05class\x12!\n" +
 	"\faddress_pool\x18\x02 \x01(\tR\vaddressPool\x12\x0e\n" +
-	"\x02ip\x18\x03 \x01(\tR\x02ip\"s\n" +
+	"\x02ip\x18\x03 \x01(\tR\x02ip\"\x92\x01\n" +
 	"\x0fGatewayExposure\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
 	"\blistener\x18\x03 \x01(\tR\blistener\x12\x12\n" +
-	"\x04port\x18\x04 \x01(\x05R\x04port\"\xa3\x01\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\x12\x1d\n" +
+	"\n" +
+	"class_name\x18\x05 \x01(\tR\tclassName\"\xa3\x01\n" +
 	"\aFraming\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x1c\n" +
 	"\tdelimiter\x18\x02 \x01(\tR\tdelimiter\x12\x1d\n" +

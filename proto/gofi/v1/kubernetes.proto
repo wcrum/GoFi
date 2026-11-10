@@ -217,12 +217,20 @@ message GatewayInfo {
   bool waypoint = 9;
   // Which route kinds this implementation supports: TCPRoute, UDPRoute, ...
   repeated string route_kinds = 10;
+  // The address senders actually use, from the LoadBalancer Service the
+  // implementation runs for this Gateway. `addresses` above is whatever the
+  // implementation published, which for a mesh waypoint is a ClusterIP and an
+  // internal cluster name -- no use to a sender outside the cluster.
+  repeated string external_addresses = 11;
 }
 message GatewayClassInfo {
   string name = 1;
   string controller = 2;
   bool accepted = 3;
   string implementation = 4;
+  // Route kinds this class's controller serves, so the portal can offer the
+  // classes that could carry a flow (Istio serves no UDPRoute).
+  repeated string route_kinds = 5;
 }
 message AddressPoolInfo {
   string namespace = 1;
@@ -266,6 +274,9 @@ message DescribeClusterResponse {
   // admin gateway at <host>.<uds_admin_domain>. Empty off UDS Core.
   string uds_domain = 16;
   string uds_admin_domain = 17;
+  // GoFi may create a Gateway a flow names with a GatewayClass, and delete it
+  // with its last flow (chart gateway.manageGateways).
+  bool manage_gateways = 18;
 }
 
 message ListClusterNetworkingRequest {

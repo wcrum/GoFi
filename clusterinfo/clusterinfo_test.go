@@ -229,3 +229,28 @@ func TestSelectorCoversOnlyWhenEveryGatewayLabelIsOnTheService(t *testing.T) {
 		t.Fatal("an empty selector matches nothing in particular, so it must not match")
 	}
 }
+
+// The UDS envoy-gateway package runs a second Envoy Gateway control plane for
+// UDP under its own controllerName. Both names are Envoy Gateway, which serves
+// UDPRoute; Istio never does, and an unknown controller must stay unknown so
+// callers do not refuse a conformant third-party implementation.
+func TestSupportsRouteKindKnowsBothEnvoyControllers(t *testing.T) {
+	cases := []struct {
+		controller, kind string
+		supported, known bool
+	}{
+		{EnvoyGatewayController, "UDPRoute", true, true},
+		{EnvoyGatewayUDPController, "UDPRoute", true, true},
+		{EnvoyGatewayUDPController, "TCPRoute", true, true},
+		{IstioGatewayController, "UDPRoute", false, true},
+		{IstioGatewayController, "TCPRoute", true, true},
+		{IstioWaypointController, "TCPRoute", false, false},
+		{"example.com/some-controller", "UDPRoute", false, false},
+	}
+	for _, c := range cases {
+		supported, known := SupportsRouteKind(c.controller, c.kind)
+		if supported != c.supported || known != c.known {
+			t.Errorf("SupportsRouteKind(%q, %q) = (%v, %v), want (%v, %v)", c.controller, c.kind, supported, known, c.supported, c.known)
+		}
+	}
+}

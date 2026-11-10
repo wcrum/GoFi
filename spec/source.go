@@ -100,6 +100,12 @@ func (s ListenSource) Validate() error {
 		if gw.Port < 0 || gw.Port > 65535 {
 			return fmt.Errorf("source.listen.service.gateway.port must be between 1 and 65535 when specified")
 		}
+		if gw.ClassName != "" && len(validation.IsDNS1123Subdomain(gw.ClassName)) != 0 {
+			return fmt.Errorf("source.listen.service.gateway.className must be a valid GatewayClass name")
+		}
+		if gw.ClassName != "" && gw.Listener != "" {
+			return fmt.Errorf("source.listen.service.gateway.className creates the Gateway with its own listener, so it cannot name an existing listener")
+		}
 	} else if gw != nil {
 		return fmt.Errorf("source.listen.service.gateway requires type Gateway")
 	}

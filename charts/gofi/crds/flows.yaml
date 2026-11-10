@@ -251,6 +251,13 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 65535
+                                className:
+                                  type: string
+                                  description: >-
+                                    GatewayClass GoFi creates the Gateway with
+                                    when it is absent (gateway.manageGateways).
+                                    Flows naming one Gateway share it, each with
+                                    its own listener and route.
                           x-kubernetes-validations:
                             - rule: "!has(self.nodePort) || self.nodePort == 0 || self.type == 'NodePort' || self.type == 'LoadBalancer'"
                               message: nodePort requires type NodePort or LoadBalancer

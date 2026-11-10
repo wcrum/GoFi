@@ -33,7 +33,7 @@ var components = []component{
 // Describe reports capabilities, Gateways, address pools, and load balancers.
 func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse, error) {
 	out := &gofiv1.DescribeClusterResponse{Namespace: c.Opts.Namespace, ClusterWide: c.Opts.ClusterWide,
-		ManageGatewayListeners: c.Opts.ManageGatewayListeners, ManageUdsAllows: c.Opts.ManageUDSAllows,
+		ManageGatewayListeners: c.Opts.ManageGatewayListeners, ManageUdsAllows: c.Opts.ManageUDSAllows, ManageGateways: c.Opts.ManageGateways,
 		NodePortMin: int32(c.Opts.NodePortMin), NodePortMax: int32(c.Opts.NodePortMax)}
 	if info, err := c.Disc.ServerVersion(); err == nil {
 		out.KubernetesVersion = info.GitVersion
@@ -78,7 +78,8 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 	for _, class := range classes {
 		controller := str(class.Object, "spec", "controllerName")
 		classController[class.GetName()] = controller
-		out.GatewayClasses = append(out.GatewayClasses, &gofiv1.GatewayClassInfo{Name: class.GetName(), Controller: controller, Accepted: conditionTrue(class.Object, "Accepted"), Implementation: implementation(controller)})
+		out.GatewayClasses = append(out.GatewayClasses, &gofiv1.GatewayClassInfo{Name: class.GetName(), Controller: controller, Accepted: conditionTrue(class.Object, "Accepted"),
+			Implementation: implementation(controller), RouteKinds: routeKinds[implementation(controller)]})
 	}
 	hasController := func(controller string) []string {
 		var names []string
@@ -121,6 +122,9 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 	// Each load balancer's own selector, to match it to the Istio Gateways
 	// whose Pods it fronts below.
 	lbSelectors := map[string]map[string]string{}
+	// "<gateway namespace>/<gateway name>" -> the external addresses of the
+	// LoadBalancer Service its implementation runs.
+	gatewayAddresses := map[string][]string{}
 	serviceNamespace := ""
 	if !c.Opts.ClusterWide {
 		serviceNamespace = c.Opts.Namespace
@@ -145,6 +149,12 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 				info.Ports = append(info.Ports, fmt.Sprintf("%d/%s", port.Port, port.Protocol))
 			}
 			lbSelectors[svc.Namespace+"/"+svc.Name] = svc.Spec.Selector
+			// A gateway implementation runs one Service per Gateway and labels
+			// it with the Gateway it belongs to; that Service's address is the
+			// one senders use.
+			if owner := gatewayOwner(svc.Labels, svc.Namespace); owner != "" {
+				gatewayAddresses[owner] = append(gatewayAddresses[owner], info.Addresses...)
+			}
 			out.LoadBalancers = append(out.LoadBalancers, info)
 		}
 	}
@@ -183,6 +193,14 @@ func (c *Client) Describe(ctx context.Context) (*gofiv1.DescribeClusterResponse,
 		for _, lb := range out.LoadBalancers {
 			sort.Strings(lb.Hosts)
 		}
+	}
+
+	// Gateways are built before the Services are read, so attach the
+	// sender-facing address now.
+	for _, gw := range out.Gateways {
+		addresses := gatewayAddresses[gw.Namespace+"/"+gw.Name]
+		sort.Strings(addresses)
+		gw.ExternalAddresses = slices.Compact(addresses)
 	}
 
 	// UDS Core's domains complete a published name: a Package exposing host
@@ -346,6 +364,22 @@ func allowedRoutes(listener map[string]any) string {
 
 // selectorCovers reports whether a Service's selector includes every label a
 // Gateway selects, i.e. the Service fronts that Gateway's Pods.
+// gatewayOwner reads the Gateway a gateway-implementation Service belongs to
+// from its labels: Envoy Gateway records the Gateway's name and namespace,
+// Istio only its name (the Service then lives in the Gateway's namespace).
+func gatewayOwner(labels map[string]string, namespace string) string {
+	if name := labels["gateway.envoyproxy.io/owning-gateway-name"]; name != "" {
+		if owning := labels["gateway.envoyproxy.io/owning-gateway-namespace"]; owning != "" {
+			return owning + "/" + name
+		}
+		return namespace + "/" + name
+	}
+	if name := labels["istio.io/gateway-name"]; name != "" {
+		return namespace + "/" + name
+	}
+	return ""
+}
+
 func selectorCovers(gatewaySelector, serviceSelector map[string]string) bool {
 	if len(gatewaySelector) == 0 || len(serviceSelector) == 0 {
 		return false

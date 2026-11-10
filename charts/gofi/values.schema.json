@@ -7,7 +7,9 @@
       "description": "Kubernetes EnvVar objects appended to the main container",
       "items": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
           "name": {
             "type": "string",
@@ -180,7 +182,12 @@
   "properties": {
     "profile": {
       "type": "string",
-      "enum": ["", "edge", "default", "large"],
+      "enum": [
+        "",
+        "edge",
+        "default",
+        "large"
+      ],
       "description": "GOFI_PROFILE preset for the controller and listener Pods (docs/configuration.md); empty keeps the binary's default"
     },
     "replicaCount": {
@@ -711,6 +718,9 @@
       "type": "object",
       "properties": {
         "manageListeners": {
+          "type": "boolean"
+        },
+        "manageGateways": {
           "type": "boolean"
         },
         "maxListeners": {

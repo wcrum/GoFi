@@ -107,7 +107,8 @@ source, framing, and parser settings have structural schemas.
   and watch (the driver reads routes from an informer), Leases when leader
   election is on, Deployments when workers run with `replicas > 1` or
   autoscale, and the `gofi-flows` UDS Package when `uds.manageAllows` is on.
-  `discovery.clusterWide` and `gateway.manageListeners` add the cluster roles
+  `discovery.clusterWide`, `gateway.manageListeners` and `gateway.manageGateways`
+  add the cluster roles
   documented above. Set `serviceAccount.create/name` and `rbac.create=false` to
   provide your own equivalent account and permissions.
 - Controller Pods run as UID/GID `65532`, drop Linux capabilities, use a read-only
