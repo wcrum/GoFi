@@ -270,7 +270,7 @@
         "load-balancer-default-description": "The cluster default load balancer serves this Service.",
         "load-balancer-description": "An external address on any port, such as 60084",
         "no-gateway-api": "Gateway API is not installed",
-        "no-gateways": "No Gateway API Gateway can carry this flow{{waypoints}}. GoFi does not create Gateways — each brings its own proxy and address, so a cluster admin adds one (Envoy Gateway for UDP, Istio for TCP) — or expose this flow with LoadBalancer or NodePort.",
+        "no-gateways": "No Gateway API Gateway can carry this flow{{waypoints}}. GoFi writes the {{routeKind}} and can add its own listener once a Gateway exists, but not the Gateway itself — each brings a proxy and an address, so a cluster admin adds one (Envoy Gateway for UDP, Istio for TCP) — or expose this flow with LoadBalancer or NodePort.",
         "no-load-balancer": "No load balancer detected in this cluster",
         "no-route-support": "no {{routeKind}} support",
         "node-port-description": "A port on every node ({{min}}–{{max}})",
@@ -287,7 +287,7 @@
         "uds-allow-managed": "GoFi adds the network allow for this exposure to its gofi-flows network policy Package.",
         "uds-allow-unmanaged": "The cluster's network policy blocks this ingress unless a Package allows it. Enable managed allows in the chart (uds.manageAllows), or add an allow for this port.",
         "no-udp-gateway": "Nothing here can carry a UDPRoute: Istio implements none, and this cluster has no Envoy Gateway GatewayClass. Expose this flow with LoadBalancer or NodePort, or have Envoy Gateway installed first (on UDS Core, the envoy-gateway component).",
-        "no-gateway-for-route": "None of the {{count}} Gateway(s) GoFi can see carries a {{routeKind}}. GoFi does not create Gateways — each brings its own proxy and address, so a cluster admin adds one — or expose this flow with LoadBalancer or NodePort.",
+        "no-gateway-for-route": "None of the {{count}} Gateway(s) GoFi can see carries a {{routeKind}}. GoFi writes the {{routeKind}} and can add its own listener, but not the Gateway itself — each brings a proxy and an address, so a cluster admin adds one — or expose this flow with LoadBalancer or NodePort.",
         "waypoints-only": " ({{count}} mesh waypoint(s) here serve the mesh only)"
       },
       "flow-canvas": {
