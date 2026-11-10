@@ -207,6 +207,8 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       PUBLISH: ${{ needs.prepare.outputs.publish }}
+      # Skip buildx build-record artifacts: nothing consumes them.
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -486,6 +488,19 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
+          pattern: binaries
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: charts
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: zarf-*
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: sbom-*
       - name: Assemble release assets
         run: |
           set -euo pipefail
