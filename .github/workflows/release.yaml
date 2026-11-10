@@ -341,6 +341,17 @@ jobs:
       - uses: actions/attest-build-provenance@v3
         with:
           subject-path: dist/*.tgz
+      # cosign reads credentials from ~/.docker/config.json, which only a docker
+      # login writes; `helm registry login` writes Helm's own registry config.
+      # Without this the chart pushes fine and the signature push comes back
+      # "UNAUTHORIZED: unauthenticated" (the images job works because it logs
+      # in this way before signing).
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push to OCI registry and sign the OCI digests
         if: env.PUBLISH == 'true'
         env:
@@ -354,12 +365,11 @@ jobs:
             # Push through tee, not a command substitution: helm's own error has
             # to reach the log, and `set -e` must fail the step on a bad push.
             helm push "$f" "oci://$CHART_REPO" 2>&1 | tee push.log
-            # helm's push output is not a contract (Helm 4 no longer prints the
-            # "Digest:" line this used to parse, which left the reference below
-            # as "<chart>@" and failed the step). Sign the tag and let cosign
-            # resolve the digest; report the digest only when helm offers one.
+            # Sign the digest helm reports. Its output format is not a contract,
+            # so fall back to the tag rather than building "<chart>@" and failing.
             digest=$(sed -n 's/^[[:space:]]*[Dd]igest:[[:space:]]*//p' push.log | tail -1)
-            cosign sign --yes "$CHART_REPO/$name:$ver"
+            if [ -n "$digest" ]; then ref="$CHART_REPO/$name@$digest"; else ref="$CHART_REPO/$name:$ver"; fi
+            cosign sign --yes "$ref"
             echo "$CHART_REPO/$name:$ver ${digest:-signed by tag}" >> dist/charts.txt
             echo "- chart \`oci://$CHART_REPO/$name:$ver\` ${digest:-signed by tag}" >> "$GITHUB_STEP_SUMMARY"
           done
