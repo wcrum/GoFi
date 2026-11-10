@@ -392,11 +392,17 @@ jobs:
       attestations: write
     strategy:
       fail-fast: false
+      # Both architectures publish to one flavor-tagged ref, which zarf keeps as
+      # an OCI index with a manifest per architecture. Serial, so the second
+      # publish cannot race the first and the last signature covers the final
+      # index.
+      max-parallel: 1
       matrix:
         arch: [amd64, arm64]
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       PUBLISH: ${{ needs.prepare.outputs.publish }}
+      FLAVOR: upstream
     steps:
       - uses: actions/checkout@v5
         with:
@@ -426,12 +432,12 @@ jobs:
         if: env.PUBLISH == 'true'   # dry runs have no pushed images to pull
         run: |
           set -euo pipefail
-          zarf package create . --flavor upstream --architecture "${{ matrix.arch }}" --confirm --output dist
+          zarf package create . --flavor "$FLAVOR" --architecture "${{ matrix.arch }}" --confirm --output dist
           ls -l dist
       - name: Create package (dry run, local images unavailable; validate only)
         if: env.PUBLISH != 'true'
         run: |
-          zarf dev lint . --flavor upstream || true
+          zarf dev lint . --flavor "$FLAVOR" || true
           mkdir -p dist && echo "dry run: package not built (images are not pushed)" > dist/DRY_RUN
       - uses: sigstore/cosign-installer@v3
       - name: Sign package archive (keyless) and attest
@@ -453,7 +459,7 @@ jobs:
           set -euo pipefail
           pkg=$(ls dist/zarf-package-*.tar.zst)
           zarf package publish "$pkg" "oci://$ZARF_REPO"
-          ref="$ZARF_REPO/gofi:${VERSION}-${{ matrix.arch }}"
+          ref="$ZARF_REPO/gofi:${VERSION}-${FLAVOR}"
           digest=$(zarf tools crane digest "$ref")
           cosign sign --yes "$ZARF_REPO/gofi@$digest"
           echo "- zarf \`oci://$ref\` $digest" >> "$GITHUB_STEP_SUMMARY"
@@ -505,7 +511,7 @@ jobs:
             echo
             echo "Images: \`ghcr.io/wcrum/gofi:${VERSION}\`, \`ghcr.io/wcrum/gofi:${VERSION}-edge\`, \`ghcr.io/wcrum/gofi-python:${VERSION}\`, \`ghcr.io/wcrum/gofi-python-tooling:${VERSION}\` (multi-arch)."
             echo "Charts: \`oci://ghcr.io/wcrum/charts/gofi:${VERSION}\`, \`oci://ghcr.io/wcrum/charts/uds-gofi-config\`."
-            echo "Zarf: \`oci://ghcr.io/wcrum/packages/gofi:${VERSION}-amd64\`, \`...-arm64\` (also attached below)."
+            echo "Zarf: \`oci://ghcr.io/wcrum/packages/gofi:${VERSION}-upstream\` (one tag, an OCI index carrying amd64 and arm64; the archives are attached below)."
             if [ -f artifacts/charts/charts.txt ]; then echo; echo '```'; cat artifacts/charts/charts.txt; echo '```'; fi
           } > notes.md
       - name: Create release
