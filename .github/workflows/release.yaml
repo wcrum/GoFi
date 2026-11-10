@@ -349,13 +349,19 @@ jobs:
           set -euo pipefail
           echo "$GH_TOKEN" | helm registry login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
           for f in dist/*.tgz; do
-            out=$(helm push "$f" "oci://$CHART_REPO" 2>&1); echo "$out"
-            digest=$(echo "$out" | sed -n 's/^Digest: //p')
-            name=$(tar -xOzf "$f" --wildcards '*/Chart.yaml' | sed -n 's/^name: //p')
-            ver=$(tar -xOzf "$f" --wildcards '*/Chart.yaml' | sed -n 's/^version: //p')
-            cosign sign --yes "$CHART_REPO/$name@$digest"
-            echo "$CHART_REPO/$name:$ver $digest" >> dist/charts.txt
-            echo "- chart \`oci://$CHART_REPO/$name:$ver\` $digest" >> "$GITHUB_STEP_SUMMARY"
+            name=$(tar -xOzf "$f" --wildcards '*/Chart.yaml' | sed -n 's/^name: //p' | head -1)
+            ver=$(tar -xOzf "$f" --wildcards '*/Chart.yaml' | sed -n 's/^version: //p' | head -1)
+            # Push through tee, not a command substitution: helm's own error has
+            # to reach the log, and `set -e` must fail the step on a bad push.
+            helm push "$f" "oci://$CHART_REPO" 2>&1 | tee push.log
+            # helm's push output is not a contract (Helm 4 no longer prints the
+            # "Digest:" line this used to parse, which left the reference below
+            # as "<chart>@" and failed the step). Sign the tag and let cosign
+            # resolve the digest; report the digest only when helm offers one.
+            digest=$(sed -n 's/^[[:space:]]*[Dd]igest:[[:space:]]*//p' push.log | tail -1)
+            cosign sign --yes "$CHART_REPO/$name:$ver"
+            echo "$CHART_REPO/$name:$ver ${digest:-signed by tag}" >> dist/charts.txt
+            echo "- chart \`oci://$CHART_REPO/$name:$ver\` ${digest:-signed by tag}" >> "$GITHUB_STEP_SUMMARY"
           done
       - uses: actions/upload-artifact@v4
         with:

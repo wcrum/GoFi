@@ -21,6 +21,10 @@ esc() { printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g'; }
 CUR=$(esc "$CURRENT")
 
 sed -i "s/^version: $CUR\$/version: $VERSION/; s/^appVersion: \"$CUR\"\$/appVersion: \"$VERSION\"/" charts/gofi/Chart.yaml
+# The UDS config chart carries its own version, which used to stay behind and
+# made every release push and sign the same oci tag over the last one. It rides
+# the release version too, so each release is pinnable.
+sed -i -E "s/^version: .+\$/version: $VERSION/" chart/Chart.yaml
 sed -i "s/^appVersion: \"$CUR\"\$/appVersion: \"$VERSION\"/" chart/Chart.yaml
 sed -i "s/^\(  *tag: \)\"$CUR\"\$/\1\"$VERSION\"/" charts/gofi/values.yaml values/*.yaml
 sed -i -E "s#(ghcr\.io/wcrum/gofi[a-z-]*):$CUR([^0-9A-Za-z.+-]|\$)#\1:$VERSION\2#g" zarf.yaml python/Dockerfile
