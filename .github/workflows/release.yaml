@@ -533,12 +533,29 @@ jobs:
             echo "Zarf: \`oci://ghcr.io/wcrum/packages/gofi:${VERSION}-upstream\` (one tag, an OCI index carrying amd64 and arm64; the archives are attached below)."
             if [ -f artifacts/charts/charts.txt ]; then echo; echo '```'; cat artifacts/charts/charts.txt; echo '```'; fi
           } > notes.md
+      # Create-or-update: a release for this tag may already exist, either made
+      # by hand or left behind by an earlier run of the same tag that reached
+      # this step. `gh release create` has no idempotent mode, so re-create the
+      # notes and overwrite the assets instead of failing. The auto-generated
+      # changelog is fetched through the API rather than `--generate-notes`,
+      # which `gh release edit` does not support, so both paths get the same
+      # notes.
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', needs.prepare.outputs.version) }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          args=(--title "GoFi ${VERSION}" --notes-file notes.md --generate-notes --verify-tag)
+          gen=$(gh api -X POST "repos/$REPO/releases/generate-notes" \
+                  -f tag_name="$TAG" --jq '.body // ""' 2>/dev/null) || gen=''
+          if [ -n "$gen" ]; then printf '\n%s\n' "$gen" >> notes.md; fi
+          args=(--title "GoFi ${VERSION}" --notes-file notes.md)
           case "$VERSION" in *-*) args+=(--prerelease);; esac
-          gh release create "$TAG" "${args[@]}" release/*
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists; updating it"
+            gh release edit "$TAG" "${args[@]}"
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" --verify-tag "${args[@]}" release/*
+          fi
